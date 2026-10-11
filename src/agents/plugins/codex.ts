@@ -52,6 +52,9 @@ function createCodexParser(): (text: string) => ParsedTranscript {
   const calls = new Map<string, Call>()
   /** Call ids whose question was already recorded or answered. Later copies must not reopen it. */
   const questions = new Set<string>()
+  /** Preserve request identity and its original candidates across incremental log reads. */
+  const elicitations = new Map<string, { callId: string; pending: Set<string> }>()
+  let elicitationSequence = 0
   /** Background script cells and unified-exec sessions, keyed to their starting call. */
   const cells = new Map<string, string>()
   const processes = new Map<string, string>()
@@ -69,6 +72,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
     cells.clear()
     processes.clear()
     calls.clear()
+    elicitations.clear()
   }
 
   const parse = (text: string): ParsedTranscript => {
@@ -95,7 +99,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
         const payload = isRecord(row.payload) ? row.payload : {}
         const type = textOf(payload.type)
         if (type === 'task_complete' || type === 'turn_aborted' || type === 'error' || type === 'user_message') settleTurn()
-        const produced = codexEvent(payload, calls).filter((event) => {
+        const produced = (type === 'elicitation_request' ? elicitationEvents(payload) : codexEvent(payload, calls)).filter((event) => {
           if (event.kind !== 'tool' && event.kind !== 'approval') return true
           if (!event.callId || !isUserInputTool(event.operation?.name) || !questions.has(event.callId)) return true
           return false
@@ -146,6 +150,14 @@ function createCodexParser(): (text: string) => ParsedTranscript {
       const result: AgentEvent = { kind: 'tool_result', title: ok ? '工具完成' : '工具失败', ok, callId }
       const events = call && callId ? backgroundEvents(call, callId, output, result) : [result]
       if (callId) calls.delete(callId)
+      for (const event of [...events]) {
+        if (event.kind !== 'tool_result' || !event.callId) continue
+        for (const request of elicitations.values()) {
+          if (!request.pending.delete(event.callId) || request.pending.size || request.callId === event.callId) continue
+          // An ambiguous approval cannot be retired by just one candidate's result.
+          events.push({ kind: 'tool_result', title: '审批结束', ok: true, callId: request.callId })
+        }
+      }
       return events
     }
     if (type === 'reasoning') {
@@ -170,6 +182,28 @@ function createCodexParser(): (text: string) => ParsedTranscript {
       return result
     }
     return []
+  }
+
+  function elicitationEvents(payload: Record<string, unknown>): AgentEvent[] {
+    const server = textOf(payload.server_name)
+    const id = payload.id
+    const key = JSON.stringify([server, typeof id, typeof id === 'string' || typeof id === 'number' ? id : ++elicitationSequence])
+    if (elicitations.has(key)) return []
+    const request = isRecord(payload.request) ? payload.request : {}
+    const reason = cleanText(textOf(request.message) || textOf(request.url))
+    const explicit = textOf(payload.call_id)
+    const candidates = [...calls.entries()].filter(([callId, call]) => {
+      const operation = describeOperation(call.name, call.input)
+      if (operation.kind !== 'mcp' || (explicit && callId !== explicit)) return false
+      // Never infer an owner from another server, or from ordering alone.
+      return server ? operation.name?.split(' / ')[0] === server : !!explicit
+    })
+    const owner = candidates.length === 1 ? candidates[0] : undefined
+    const callId = owner?.[0] ?? `elicitation:${key}`
+    elicitations.set(key, { callId, pending: new Set(candidates.map(([id]) => id)) })
+    if (owner) return [mcpApproval(owner[1], callId, reason)]
+    // Keep an unmatched/ambiguous request independent. End-of-turn events also clear it.
+    return [{ kind: 'approval', title: server ? `MCP 授权：${server}` : 'MCP 授权', callId, ...(reason ? { reason } : {}) }]
   }
 
   /** Keep a yielded call running until the wait that observes its end. */
@@ -240,12 +274,6 @@ function codexEvent(payload: Record<string, unknown>, calls: Map<string, Call>):
     // MCP tool approval rides on the same event; its call id belongs to the MCP call.
     if (call && describeOperation(call.name, call.input).kind === 'mcp') return [mcpApproval(call, callId, questionText(payload.questions))]
     return [toolEvent('request_user_input', { questions: payload.questions }, callId)]
-  }
-  if (type === 'elicitation_request') {
-    const request = isRecord(payload.request) ? payload.request : {}
-    const reason = cleanText(textOf(request.message) || textOf(request.url))
-    const owner = [...calls.entries()].reverse().find(([, call]) => describeOperation(call.name, call.input).kind === 'mcp')
-    return [owner ? mcpApproval(owner[1], owner[0], reason) : { kind: 'approval', title: 'MCP 授权', ...(reason ? { reason } : {}) }]
   }
   if (type === 'request_permissions') {
     const callId = textOf(payload.call_id) || undefined
