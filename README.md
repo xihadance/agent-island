@@ -90,7 +90,7 @@ HTTP 对应字段为 `operation: { kind, name?, command?, shell?, cwd? }`，`kin
 
 Claude Code 的原生 API 错误（`isApiErrorMessage`）显示失败，即使该记录同时带有 `stop_sequence`；用户中断标记同样会结束当前计时。本地 `/list-agents` 等带本地命令关联标记的操作不会覆盖失败状态或开始新一轮。原生 `continued-in` 续接记录会移除旧会话卡片，将旧目录的子任务状态关联到新会话，避免压缩续接后出现重复会话。应用观察期间新产生的完成或失败记录，即使首次发现晚于短暂的新鲜窗口，也会正常显示。
 
-检测到 agent 进程时，会从最近 24 小时、每种 agent 最新 64 个候选记录中寻找未结束的会话；已跟踪的会话不会因超过这个窗口而消失。新版 Claude Code 的忙碌会话还会通过 `~/.claude/sessions/<PID>.json` 和存活 PID 关联，可恢复超过 24 小时的长任务。没有进程依据时只检查最近两分钟的记录，且不复活旧的完成记录。文件暂时不更新不会被当作成功；已跟踪任务的具体登记变为空闲或关联进程退出、且日志静默超过一分钟后显示中断。仍在等用户回答问题、且日志里还没有答复时，保持「需要你回复」，不会因为一直没回复就被记成中断。这包括 Claude 的 `AskUserQuestion`、Cursor 的 `AskQuestion`、Gemini 的 `ask_user`，以及 Codex 的 `request_user_input`。另一个 Claude 进程不会无限维持旧会话的运行状态；缺少具体会话登记时，同类进程依据最多保留 30 分钟静默宽限。
+检测到 agent 进程时，会从最近 24 小时、每种 agent 最新 64 个候选记录中寻找未结束的会话；已跟踪的会话不会因超过这个窗口而消失。新版 Claude Code 的忙碌会话还会通过 `~/.claude/sessions/<PID>.json` 和存活 PID 关联，可恢复超过 24 小时的长任务。没有进程依据时只检查最近两分钟的记录，且不复活旧的完成记录。文件暂时不更新不会被当作成功；已跟踪任务的具体登记变为空闲或关联进程退出、且日志静默超过一分钟后显示中断。仍在等用户回答问题、且日志里还没有答复时，保持「需要你回复」，不会因为一直没回复就被记成中断。这包括 Claude 的 `AskUserQuestion`、Cursor 的 `AskQuestion`、Gemini 的 `ask_user`，以及 Codex 的 `request_user_input`。等待用户审批（包括 Codex MCP 工具授权和 `request_permissions`）的会话同样保持「需要审批」，日志静默不会把它记成中断。另一个 Claude 进程不会无限维持旧会话的运行状态；缺少具体会话登记时，同类进程依据最多保留 30 分钟静默宽限。
 
 | Agent | 记录位置 |
 | --- | --- |
@@ -115,7 +115,7 @@ Codex 子线程继承的父会话历史不会重复计入任务：以日志首�
 
 客户端识别同样按会话取证：Codex 使用 `session_meta` 中的来源，命令行显示「CLI」，兼容编辑器共享的扩展标识显示「IDE 扩展」。新版 Claude Code 使用原生会话登记的 PID 和进程祖先识别宿主，优先显示编辑器或终端应用，其次显示 PowerShell、cmd 等 Shell；进程退出后保留本次运行中观察到的来源。没有可靠信息时显示「未知客户端」，不会根据工具的 Shell、工作目录或同类 Agent 进程猜测。Cursor/Gemini 等没有可关联来源的记录可通过 HTTP/CLI 指定客户端。
 
-操作识别基于工具名称和记录的参数。读取 `SKILL.md` 表示「读取技能」，不代表能证明该技能后续的所有指令都已执行。MCP 支持直接工具调用和 `functions.exec` 中明确写出的静态 MCP 工具名；动态生成的调用名称无法可靠识别。审批识别支持明确的 Codex 审批请求、`sandbox_permissions: "require_escalated"` 请求和 Gemini 的等待审批状态；请求可能被原工具自动放行，后续执行或结果记录会更新状态。没有审批日志的会话不会根据等待时长或自然语言猜测为需要审批，可使用 `approval` 状态显式推送。
+操作识别基于工具名称和记录的参数。读取 `SKILL.md` 表示「读取技能」，不代表能证明该技能后续的所有指令都已执行。MCP 支持直接工具调用和 `functions.exec` 中明确写出的静态 MCP 工具名；动态生成的调用名称无法可靠识别。审批识别支持明确的 Codex 审批请求（含 MCP 工具授权的 `request_user_input` / `elicitation_request` 事件与 `request_permissions`）、`sandbox_permissions: "require_escalated"` 请求和 Gemini 的等待审批状态；请求可能被原工具自动放行，后续执行或结果记录会更新状态。没有审批日志的会话不会根据等待时长或自然语言猜测为需要审批，可使用 `approval` 状态显式推送。
 
 ## 窗口
 

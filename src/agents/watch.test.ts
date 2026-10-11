@@ -242,6 +242,26 @@ describe('SessionWatcher', () => {
     expect(store.get('cursor-ask')).toMatchObject({ state: 'running', title: '要写文档还是直接改代码？', operation: { name: 'AskQuestion' } })
   })
 
+  it('keeps a pending MCP authorization through silence', async () => {
+    const { roots } = tempHome()
+    const file = path.join(roots.codex, 'rollout-mcp.jsonl')
+    writeJsonl(file, [
+      { type: 'response_item', payload: { type: 'function_call', name: 'mcp__github__create_issue', call_id: 'm1',
+        arguments: JSON.stringify({ title: '修复登录' }) } },
+      { type: 'event_msg', payload: { type: 'request_user_input', call_id: 'm1', questions: [
+        { id: 'mcp', header: 'Approve app tool call?', question: 'Allow the github MCP server to run tool "create_issue"?' }] } }
+    ])
+    touch(file, NOW)
+    let now = NOW
+    const store = newStore()
+    const watcher = new SessionWatcher(store, { roots, now: () => now, listProcesses: () => new Set(), processMs: 0, discoveryMs: 0 })
+    await watcher.scan()
+    expect(store.get('codex-rollout-mcp')).toMatchObject({ state: 'approval' })
+    now += 90_000
+    await watcher.scan()
+    expect(store.get('codex-rollout-mcp')).toMatchObject({ state: 'approval', title: '调用 github / create_issue' })
+  })
+
   it('keeps a quiet file quiet until it belongs to a session we already showed', async () => {
     const home = tempHome()
     const file = path.join(home.roots.claude, 'proj', 'quiet.jsonl')

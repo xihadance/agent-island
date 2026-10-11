@@ -420,8 +420,8 @@ export class SessionWatcher {
 }
 
 function presentSession(view: SessionView, live: boolean, age: number, known: boolean): SessionView | null {
-  // A question with no reply is still waiting on the user. Silence is not an interruption.
-  if (view.terminal || live || isUserInputTool(view.operation?.name)) return view
+  // A recorded question or approval is still waiting on the user. Silence is not an interruption.
+  if (view.terminal || live || view.state === 'approval' || isUserInputTool(view.operation?.name)) return view
   if (!known) return null
   if (age <= 60_000) return view
   return {

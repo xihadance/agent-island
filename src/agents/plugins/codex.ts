@@ -2,8 +2,8 @@ import { open } from 'node:fs/promises'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { isUserInputTool } from '../../shared/island-behavior'
-import { commandText } from '../operation'
-import { cleanText, contentEvents, eventTimestamp, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, safeId, textOf, timestampEvents, toolEvent } from '../events'
+import { commandText, describeOperation } from '../operation'
+import { cleanText, contentEvents, eventTimestamp, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, questionText, safeId, textOf, timestampEvents, toolEvent } from '../events'
 import type { AgentEvent, AgentPlugin, ChildLink, ParsedTranscript } from '../types'
 import { unwrapExec } from '../script-tool'
 export { unwrapExec } from '../script-tool'
@@ -95,7 +95,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
         const payload = isRecord(row.payload) ? row.payload : {}
         const type = textOf(payload.type)
         if (type === 'task_complete' || type === 'turn_aborted' || type === 'error' || type === 'user_message') settleTurn()
-        const produced = codexEvent(payload).filter((event) => {
+        const produced = codexEvent(payload, calls).filter((event) => {
           if (event.kind !== 'tool' && event.kind !== 'approval') return true
           if (!event.callId || !isUserInputTool(event.operation?.name) || !questions.has(event.callId)) return true
           return false
@@ -208,7 +208,7 @@ function codexClient(meta: Record<string, unknown>): string | undefined {
   return undefined
 }
 
-function codexEvent(payload: Record<string, unknown>): AgentEvent[] {
+function codexEvent(payload: Record<string, unknown>, calls: Map<string, Call>): AgentEvent[] {
   const type = textOf(payload.type)
   if (type === 'user_message') return [{ kind: 'user', title: cleanText(textOf(payload.message) || textOf(payload.text)) }]
   if (type === 'agent_message' || type === 'agent_reasoning') {
@@ -235,7 +235,27 @@ function codexEvent(payload: Record<string, unknown>): AgentEvent[] {
     return [toolEvent(type === 'exec_approval_request' ? 'shell' : 'apply_patch', payload, textOf(payload.call_id) || undefined, true)]
   }
   if (type === 'request_user_input') {
-    return [toolEvent('request_user_input', { questions: payload.questions }, textOf(payload.call_id) || undefined)]
+    const callId = textOf(payload.call_id) || undefined
+    const call = callId ? calls.get(callId) : undefined
+    // MCP tool approval rides on the same event; its call id belongs to the MCP call.
+    if (call && describeOperation(call.name, call.input).kind === 'mcp') return [mcpApproval(call, callId, questionText(payload.questions))]
+    return [toolEvent('request_user_input', { questions: payload.questions }, callId)]
+  }
+  if (type === 'elicitation_request') {
+    const request = isRecord(payload.request) ? payload.request : {}
+    const reason = cleanText(textOf(request.message) || textOf(request.url))
+    const owner = [...calls.entries()].reverse().find(([, call]) => describeOperation(call.name, call.input).kind === 'mcp')
+    return [owner ? mcpApproval(owner[1], owner[0], reason) : { kind: 'approval', title: 'MCP 授权', ...(reason ? { reason } : {}) }]
+  }
+  if (type === 'request_permissions') {
+    const callId = textOf(payload.call_id) || undefined
+    const call = callId ? calls.get(callId) : undefined
+    const reason = cleanText(textOf(payload.reason))
+    if (call) {
+      const approval = toolEvent(call.name, call.input, callId, true)
+      return [reason ? { ...approval, reason } : approval]
+    }
+    return [{ kind: 'approval', title: '申请额外权限', callId, ...(reason ? { reason } : {}) }]
   }
   if (type === 'item_completed' && isRecord(payload.item)) {
     if (payload.item.type === 'CollabAgentToolCall') return collabEvents(payload.item)
@@ -302,6 +322,12 @@ function unansweredAccept(output: unknown): boolean {
   if (body.interrupted === true || body.accepted !== true) return false
   if (body.answers === undefined) return true
   return isRecord(body.answers) && Object.keys(body.answers).length === 0
+}
+
+/** An MCP call asking the human to authorize it shows as an approval, not a plain tool run. */
+function mcpApproval(call: Call, callId: string | undefined, reason: string): AgentEvent {
+  const approval = toolEvent(call.name, call.input, callId, true)
+  return reason ? { ...approval, reason } : approval
 }
 
 function scriptStatus(head: string): 'done' | 'error' | 'stopped' | undefined {
