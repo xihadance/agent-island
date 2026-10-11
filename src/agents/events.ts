@@ -1,3 +1,4 @@
+import { isUserInputTool } from '../shared/island-behavior'
 import { commandText, describeOperation } from './operation'
 import type { AgentEvent, ToolEvent } from './types'
 
@@ -139,6 +140,8 @@ export function toolEvent(name: string, input: Record<string, unknown>, callId?:
 }
 
 export function toolTitle(name: string, input: Record<string, unknown>): string {
+  const question = userInputTitle(name, input)
+  if (question) return clip(question, 80)
   const description = textOf(input.description) || textOf(input.summary)
   if (description) return clip(description, 80)
   const operation = describeOperation(name, input)
@@ -223,4 +226,20 @@ export function safeId(value: string, max = 60): string {
 
 function hasError(value: unknown): boolean {
   return isRecord(value) && (value.error !== undefined || value.is_error === true)
+}
+
+/** The question a human still has to answer, when this call is one of those tools. */
+function userInputTitle(name: string, input: Record<string, unknown>): string | undefined {
+  if (!isUserInputTool(name)) return undefined
+  const questions = Array.isArray(input.questions) ? input.questions : []
+  for (const item of questions) {
+    if (typeof item === 'string') {
+      const text = cleanText(item)
+      if (text) return text
+    } else if (isRecord(item)) {
+      const text = cleanText(textOf(item.question) || textOf(item.title) || textOf(item.header) || textOf(item.prompt))
+      if (text) return text
+    }
+  }
+  return '需要你回复'
 }

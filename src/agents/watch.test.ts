@@ -196,6 +196,30 @@ describe('SessionWatcher', () => {
     ])
   })
 
+  it('keeps an unanswered Codex question through silence instead of reporting an interruption', async () => {
+    const { roots } = tempHome()
+    const question = path.join(roots.codex, 'rollout-question.jsonl')
+    const idle = path.join(roots.codex, 'rollout-idle.jsonl')
+    writeJsonl(question, [
+      { type: 'response_item', payload: { type: 'function_call', name: 'request_user_input', call_id: 'q',
+        arguments: JSON.stringify({ questions: [{ question: '要改哪些文件？' }] }) } },
+      { type: 'response_item', payload: { type: 'function_call_output', call_id: 'q', output: { accepted: true } } }
+    ])
+    writeJsonl(idle, [{ type: 'response_item', payload: { type: 'reasoning', summary: [{ text: '处理中' }] } }])
+    touch(question, NOW)
+    touch(idle, NOW)
+    let now = NOW
+    const store = newStore()
+    const watcher = new SessionWatcher(store, { roots, now: () => now, listProcesses: () => new Set(), processMs: 0, discoveryMs: 0 })
+    await watcher.scan()
+    now += 90_000
+    await watcher.scan()
+    expect(store.get('codex-rollout-question')).toMatchObject({
+      state: 'running', title: '要改哪些文件？', operation: { kind: 'tool', name: 'request_user_input' }
+    })
+    expect(store.get('codex-rollout-idle')).toMatchObject({ state: 'error', title: '会话已中断' })
+  })
+
   it('keeps a quiet file quiet until it belongs to a session we already showed', async () => {
     const home = tempHome()
     const file = path.join(home.roots.claude, 'proj', 'quiet.jsonl')
