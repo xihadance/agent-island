@@ -1,6 +1,7 @@
 import { open } from 'node:fs/promises'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
+import { isUserInputTool } from '../../shared/island-behavior'
 import { commandText } from '../operation'
 import { cleanText, contentEvents, eventTimestamp, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, safeId, textOf, timestampEvents, toolEvent } from '../events'
 import type { AgentEvent, AgentPlugin, ChildLink, ParsedTranscript } from '../types'
@@ -49,6 +50,8 @@ function codexSessionId(file: string): string {
 
 function createCodexParser(): (text: string) => ParsedTranscript {
   const calls = new Map<string, Call>()
+  /** Call ids whose question was already recorded or answered. Later copies must not reopen it. */
+  const questions = new Set<string>()
   /** Background script cells and unified-exec sessions, keyed to their starting call. */
   const cells = new Map<string, string>()
   const processes = new Map<string, string>()
@@ -92,7 +95,15 @@ function createCodexParser(): (text: string) => ParsedTranscript {
         const payload = isRecord(row.payload) ? row.payload : {}
         const type = textOf(payload.type)
         if (type === 'task_complete' || type === 'turn_aborted' || type === 'error' || type === 'user_message') settleTurn()
-        events.push(...timestampEvents(codexEvent(payload), row))
+        const produced = codexEvent(payload).filter((event) => {
+          if (event.kind !== 'tool' && event.kind !== 'approval') return true
+          if (!event.callId || !isUserInputTool(event.operation?.name) || !questions.has(event.callId)) return true
+          return false
+        })
+        for (const event of produced) {
+          if ((event.kind === 'tool' || event.kind === 'approval') && event.callId && isUserInputTool(event.operation?.name)) questions.add(event.callId)
+        }
+        events.push(...timestampEvents(produced, row))
         continue
       }
       if (row.type === 'response_item') {
@@ -118,15 +129,22 @@ function createCodexParser(): (text: string) => ParsedTranscript {
       }
       const callId = textOf(payload.call_id) || undefined
       const event = toolEvent(name, input, callId)
-      if (callId) calls.set(callId, { name: name.split('.').pop() ?? name, input, title: event.title, background: event.operation?.kind !== 'agent', at })
+      if (callId) {
+        calls.set(callId, { name: name.split('.').pop() ?? name, input, title: event.title, background: event.operation?.kind !== 'agent', at })
+        if (isUserInputTool(event.operation?.name)) questions.add(callId)
+      }
       return [event]
     }
     if (type === 'function_call_output' || type === 'custom_tool_call_output' || type === 'tool_result') {
       const callId = textOf(payload.call_id) || undefined
+      const call = callId ? calls.get(callId) : undefined
+      const output = outputText(payload.output)
+      // Async questions return immediately with accepted:true. That is not an answer,
+      // and it is not an interruption: the user still has to reply.
+      if (call && isUserInputTool(call.name) && unansweredAccept(payload.output)) return []
       const ok = payload.is_error !== true && payload.status !== 'error'
       const result: AgentEvent = { kind: 'tool_result', title: ok ? '工具完成' : '工具失败', ok, callId }
-      const call = callId ? calls.get(callId) : undefined
-      const events = call && callId ? backgroundEvents(call, callId, outputText(payload.output), result) : [result]
+      const events = call && callId ? backgroundEvents(call, callId, output, result) : [result]
       if (callId) calls.delete(callId)
       return events
     }
@@ -146,7 +164,9 @@ function createCodexParser(): (text: string) => ParsedTranscript {
         return prompt
       }
       const result = contentEvents(payload.content, role)
-      if (role === 'assistant' && payload.phase === 'final_answer') result.push({ kind: 'done', title: '' })
+      // Async questions are delivered as a final message without ending the turn.
+      const asks = payload.delivery === 'async' || (Array.isArray(payload.questions) && payload.questions.length > 0)
+      if (role === 'assistant' && payload.phase === 'final_answer' && !asks) result.push({ kind: 'done', title: '' })
       return result
     }
     return []
@@ -214,8 +234,15 @@ function codexEvent(payload: Record<string, unknown>): AgentEvent[] {
   if (type === 'exec_approval_request' || type === 'apply_patch_approval_request') {
     return [toolEvent(type === 'exec_approval_request' ? 'shell' : 'apply_patch', payload, textOf(payload.call_id) || undefined, true)]
   }
+  if (type === 'request_user_input') {
+    return [toolEvent('request_user_input', { questions: payload.questions }, textOf(payload.call_id) || undefined)]
+  }
   if (type === 'item_completed' && isRecord(payload.item)) {
     if (payload.item.type === 'CollabAgentToolCall') return collabEvents(payload.item)
+    const questions = payload.item.questions
+    if (payload.item.type === 'AgentMessage' && Array.isArray(questions) && questions.length > 0) {
+      return [toolEvent('request_user_input_async', { questions }, textOf(payload.item.id) || undefined)]
+    }
     if (payload.item.type === 'SubAgentActivity' && payload.item.kind === 'started') {
       const item = payload.item
       const taskId = safeId(textOf(item.agent_thread_id))
@@ -266,6 +293,15 @@ function agentEnd(id: string, state: unknown): AgentEvent[] {
   if (!status) return []
   const detail = cleanText(message)
   return [{ kind: 'task_end', taskId: safeId(id), status, ...(detail ? { detail } : {}) }]
+}
+
+/** `{"accepted":true}` only means the question is on screen. An empty or missing answer map is still unanswered. */
+function unansweredAccept(output: unknown): boolean {
+  const text = outputText(output).trim()
+  const body = isRecord(output) && typeof output.accepted === 'boolean' ? output : parseMaybeRecord(text)
+  if (body.interrupted === true || body.accepted !== true) return false
+  if (body.answers === undefined) return true
+  return isRecord(body.answers) && Object.keys(body.answers).length === 0
 }
 
 function scriptStatus(head: string): 'done' | 'error' | 'stopped' | undefined {

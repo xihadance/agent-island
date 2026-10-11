@@ -10,7 +10,7 @@ export function isIslandMode(value: unknown): value is IslandMode {
 
 export function isUserInputTool(name: string | undefined): boolean {
   const tool = name?.split(/[.:]/).pop()?.toLowerCase()
-  return !!tool && ['askuserquestion', 'ask_user', 'request_user_input', 'request_user_input_async'].includes(tool)
+  return !!tool && ['askuserquestion', 'askquestion', 'ask_user', 'request_user_input', 'request_user_input_async'].includes(tool)
 }
 
 export function attentionKind(activity: Activity): AttentionKind | undefined {

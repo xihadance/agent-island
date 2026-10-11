@@ -1,4 +1,5 @@
 import type { ActivityOperation, ActivityState, ActivityStep, ActivityTask, TaskStatus } from '../shared/activity'
+import { isUserInputTool } from '../shared/island-behavior'
 import { clip } from './events'
 import type { AgentEvent, ChildLink, SessionView } from './types'
 
@@ -96,7 +97,7 @@ export function createReducer() {
         continue
       }
       if (event.kind === 'thinking' || event.kind === 'text') {
-        if (steps.some((step) => step.status === 'waiting')) continue
+        if (steps.some((step) => step.status === 'waiting') || holdForAnswer()) continue
         state = 'thinking'
         operation = undefined
         detail = taskDetail
@@ -160,9 +161,15 @@ export function createReducer() {
         continue
       }
       if (event.kind === 'done') {
+        // An unanswered question is not a finished turn, even when the model marks the ask as its final message.
+        for (const step of steps) {
+          if (step.status !== 'active' && step.status !== 'waiting') continue
+          if (isUserInputStep(step)) continue
+          step.status = 'done'
+        }
+        if (holdForAnswer()) continue
         state = 'success'
         title = event.title && event.title !== '已完成' ? clip(event.title, 80) : title === '等待回复' ? '已完成' : clip(title, 80)
-        for (const step of steps) if (step.status === 'active' || step.status === 'waiting') step.status = 'done'
         operation = undefined
         detail = taskDetail
         terminal = true
@@ -187,7 +194,28 @@ export function createReducer() {
     for (const task of settled.slice(0, Math.max(0, settled.length - MAX_TASKS))) tasks.delete(task.id)
   }
 
+  /** Open human questions with no other tools in flight. Approval still takes the headline. */
+  function holdForAnswer(): boolean {
+    if (state === 'error' || steps.some((step) => step.status === 'waiting')) return false
+    const input = steps.find((step) => step.status === 'active' && isUserInputStep(step))
+    if (!input || steps.some((step) => step.status === 'active' && !isUserInputStep(step))) return false
+    const event = stepEvents.get(input.id)
+    state = 'running'
+    title = input.label
+    operation = event?.operation
+    detail = taskDetail
+    terminal = false
+    endedAt = undefined
+    return true
+  }
+
+  function isUserInputStep(step: ActivityStep): boolean {
+    const event = stepEvents.get(step.id)
+    return event?.kind === 'tool' && isUserInputTool(event.operation?.name)
+  }
+
   function snapshot(): TurnView {
+    holdForAnswer()
     return {
       state,
       title: state === 'success' && title === '等待回复' ? '已完成' : title,

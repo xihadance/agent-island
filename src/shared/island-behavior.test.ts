@@ -10,7 +10,7 @@ describe('managed island attention', () => {
     }
     expect(attentionKind(store.upsert({ id: 'approval', state: 'approval' }))).toBe('approval')
     expect(attentionKind(store.upsert({ id: 'failure', state: 'error' }))).toBe('error')
-    for (const name of ['AskUserQuestion', 'functions.request_user_input', 'request_user_input_async', 'ask_user']) {
+    for (const name of ['AskUserQuestion', 'AskQuestion', 'functions.request_user_input', 'request_user_input_async', 'ask_user']) {
       expect(attentionKind(store.upsert({ id: 'input', state: 'running', operation: { kind: 'tool', name } }))).toBe('input')
     }
     expect(attentionKind(store.upsert({ id: 'input', state: 'success' }))).toBeUndefined()

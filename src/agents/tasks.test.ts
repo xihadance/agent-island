@@ -67,6 +67,70 @@ describe('Codex background work', () => {
     expect(settled?.tasks?.map((task) => task.status)).toEqual(['done', 'done'])
   })
 
+  it('keeps an unanswered question instead of treating silence or a final message as an interruption', () => {
+    const ask = { type: 'response_item', payload: { type: 'function_call', name: 'request_user_input', call_id: 'q',
+      arguments: JSON.stringify({ questions: [{ id: 'scope', header: '范围', question: '要改哪些文件？' }] }) } }
+    const waiting = parseTranscript('codex', 'ask', jsonl([
+      ask,
+      { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '等你选择' }] } }
+    ]))
+    expect(waiting).toMatchObject({ state: 'running', title: '要改哪些文件？', terminal: false, operation: { kind: 'tool', name: 'request_user_input' } })
+
+    const asyncAsk = parseTranscript('codex', 'ask', jsonl([
+      { type: 'response_item', payload: { type: 'function_call', name: 'functions.request_user_input_async', call_id: 'q',
+        arguments: JSON.stringify({ questions: [{ title: '文档用哪种风格？', options: ['简洁', '详细'] }] }) } },
+      { type: 'response_item', payload: { type: 'function_call_output', call_id: 'q', output: '{"accepted":true}' } },
+      { type: 'event_msg', payload: { type: 'item_completed', item: { type: 'AgentMessage', id: 'q', phase: 'final_answer', delivery: 'async',
+        questions: [{ title: '文档用哪种风格？' }] } } },
+      { type: 'event_msg', payload: { type: 'task_complete', last_agent_message: '先确认风格' } }
+    ]))
+    expect(asyncAsk).toMatchObject({ state: 'running', title: '文档用哪种风格？', terminal: false, operation: { name: 'request_user_input_async' } })
+
+    const eventOnly = parseTranscript('codex', 'ask', jsonl([
+      { type: 'event_msg', payload: { type: 'request_user_input', call_id: 'q', questions: [{ question: '继续吗？' }] } }
+    ]))
+    expect(eventOnly).toMatchObject({ state: 'running', title: '继续吗？', terminal: false })
+  })
+
+  it('clears a pending question once the user answers, and still records a real interrupt', () => {
+    const ask = { type: 'response_item', payload: { type: 'function_call', name: 'request_user_input', call_id: 'q',
+      arguments: JSON.stringify({ questions: [{ question: '继续吗？' }] }) } }
+    const answered = parseTranscript('codex', 'ask', jsonl([
+      ask,
+      { type: 'response_item', payload: { type: 'function_call_output', call_id: 'q', output: '{"answers":{"q":{"answers":["继续"]}}}' } },
+      { type: 'event_msg', payload: { type: 'item_completed', item: { type: 'AgentMessage', id: 'q', questions: [{ title: '继续吗？' }] } } }
+    ]))
+    expect(answered).toMatchObject({ state: 'thinking', title: '正在处理结果', terminal: false })
+    expect(answered?.operation).toBeUndefined()
+
+    const aborted = parseTranscript('codex', 'ask', jsonl([
+      ask,
+      { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<turn_aborted>\nThe user interrupted\n</turn_aborted>' }] } },
+      { type: 'event_msg', payload: { type: 'turn_aborted', reason: 'interrupted' } }
+    ]))
+    expect(aborted).toMatchObject({ state: 'error', title: '已中断', terminal: true })
+  })
+
+  it('keeps unanswered Claude, Gemini, and Cursor questions pending', () => {
+    const claude = parseTranscript('claude', 'ask', jsonl([
+      { type: 'assistant', message: { stop_reason: 'end_turn', content: [
+        { type: 'tool_use', id: 'q', name: 'AskUserQuestion', input: { questions: [{ question: '用哪种方案？' }] } }
+      ] } }
+    ]))
+    expect(claude).toMatchObject({ state: 'running', title: '用哪种方案？', terminal: false, operation: { name: 'AskUserQuestion' } })
+
+    const gemini = parseTranscript('gemini', 'ask', JSON.stringify({ messages: [
+      { type: 'gemini', toolCalls: [{ id: 'q', name: 'ask_user', args: { questions: [{ question: '继续发布吗？' }] }, status: 'awaiting_approval' }] }
+    ] }))
+    expect(gemini).toMatchObject({ state: 'running', title: '继续发布吗？', terminal: false, operation: { name: 'ask_user' } })
+    expect(gemini?.state).not.toBe('approval')
+
+    const cursor = parseTranscript('cursor', 'ask', jsonl([
+      { role: 'assistant', message: { content: [{ type: 'tool_use', name: 'AskQuestion', input: { questions: [{ prompt: '要写文档还是直接改代码？' }] } }] } }
+    ]))
+    expect(cursor).toMatchObject({ state: 'running', title: '要写文档还是直接改代码？', terminal: false, operation: { name: 'AskQuestion' } })
+  })
+
   it('does not treat injected user-role messages as prompts', () => {
     const view = parseTranscript('codex', 'aborted', jsonl([
       exec('run', shell),

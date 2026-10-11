@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { ActivityStore } from '../shared/activity'
+import { isUserInputTool } from '../shared/island-behavior'
 import { collect, mapLimited, readSession, SessionReader, type SessionFile } from './files'
 import { activityId } from './parse'
 import { BUILTIN_PLUGINS } from './plugins'
@@ -419,7 +420,8 @@ export class SessionWatcher {
 }
 
 function presentSession(view: SessionView, live: boolean, age: number, known: boolean): SessionView | null {
-  if (view.terminal || live) return view
+  // A question with no reply is still waiting on the user. Silence is not an interruption.
+  if (view.terminal || live || isUserInputTool(view.operation?.name)) return view
   if (!known) return null
   if (age <= 60_000) return view
   return {
