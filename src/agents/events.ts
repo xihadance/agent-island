@@ -37,7 +37,8 @@ const TOOL_LABEL: Record<string, string> = {
   list_directory: '查看目录',
   websearch: '搜索网页',
   webfetch: '打开网页',
-  task: '派生子任务'
+  task: '派生子任务',
+  request_permissions: '申请权限'
 }
 
 const AGENT_ACTION: Record<string, string> = {
@@ -230,18 +231,23 @@ function hasError(value: unknown): boolean {
   return isRecord(value) && (value.error !== undefined || value.is_error === true)
 }
 
-/** The question a human still has to answer, when this call is one of those tools. */
-function userInputTitle(name: string, input: Record<string, unknown>): string | undefined {
-  if (!isUserInputTool(name)) return undefined
-  const questions = Array.isArray(input.questions) ? input.questions : []
+/** The first recorded question text, when a call carries any. */
+export function questionText(questions: unknown): string {
+  if (!Array.isArray(questions)) return ''
   for (const item of questions) {
     if (typeof item === 'string') {
       const text = cleanText(item)
       if (text) return text
     } else if (isRecord(item)) {
-      const text = cleanText(textOf(item.question) || textOf(item.title) || textOf(item.header) || textOf(item.prompt))
+      const text = cleanText(textOf(item.question) || textOf(item.title) || textOf(item.prompt) || textOf(item.header))
       if (text) return text
     }
   }
-  return '需要你回复'
+  return ''
+}
+
+/** The question a human still has to answer, when this call is one of those tools. */
+function userInputTitle(name: string, input: Record<string, unknown>): string | undefined {
+  if (!isUserInputTool(name)) return undefined
+  return questionText(input.questions) || '需要你回复'
 }
