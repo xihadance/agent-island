@@ -131,6 +131,44 @@ describe('Codex background work', () => {
     expect(cursor).toMatchObject({ state: 'running', title: '要写文档还是直接改代码？', terminal: false, operation: { name: 'AskQuestion' } })
   })
 
+  it('shows MCP tool authorization as an approval and clears it once answered', () => {
+    const call = { type: 'response_item', payload: { type: 'function_call', name: 'mcp__github__create_issue', call_id: 'm1',
+      arguments: JSON.stringify({ title: '修复登录' }) } }
+    const approval = { type: 'event_msg', payload: { type: 'request_user_input', call_id: 'm1', questions: [
+      { id: 'mcp', header: 'Approve app tool call?', question: 'Allow the github MCP server to run tool "create_issue"?' }] } }
+    const waiting = parseTranscript('codex', 'mcp', jsonl([call, approval]))
+    expect(waiting).toMatchObject({ state: 'approval', title: '调用 github / create_issue',
+      detail: 'Allow the github MCP server to run tool "create_issue"?', operation: { kind: 'mcp', name: 'github / create_issue' } })
+    expect(waiting?.steps[0].status).toBe('waiting')
+
+    const answered = parseTranscript('codex', 'mcp', jsonl([call, approval,
+      { type: 'response_item', payload: { type: 'function_call_output', call_id: 'm1', output: '{"created":true}' } }]))
+    expect(answered).toMatchObject({ state: 'thinking', title: '正在处理结果' })
+    expect(answered?.steps[0].status).toBe('done')
+  })
+
+  it('shows MCP authorization requested through elicitation', () => {
+    const call = { type: 'response_item', payload: { type: 'function_call', name: 'mcp__github__create_issue', call_id: 'm1',
+      arguments: JSON.stringify({ title: '修复登录' }) } }
+    const elicitation = { type: 'event_msg', payload: { type: 'elicitation_request', server_name: 'github', id: 'e1',
+      request: { mode: 'form', message: 'Allow the github MCP server to run tool "create_issue"?', requested_schema: {} } } }
+    const waiting = parseTranscript('codex', 'mcp', jsonl([call, elicitation]))
+    expect(waiting).toMatchObject({ state: 'approval', title: '调用 github / create_issue',
+      detail: 'Allow the github MCP server to run tool "create_issue"?' })
+    const resolved = parseTranscript('codex', 'mcp', jsonl([call, elicitation,
+      { type: 'response_item', payload: { type: 'function_call_output', call_id: 'm1', output: '{"created":true}' } }]))
+    expect(resolved?.state).not.toBe('approval')
+  })
+
+  it('shows Codex permission requests as approvals', () => {
+    const rows = [
+      { type: 'response_item', payload: { type: 'function_call', name: 'request_permissions', call_id: 'p1',
+        arguments: JSON.stringify({ reason: '需要写入 build 目录' }) } },
+      { type: 'event_msg', payload: { type: 'request_permissions', call_id: 'p1', reason: '需要写入 build 目录' } }
+    ]
+    expect(parseTranscript('codex', 'perm', jsonl(rows))).toMatchObject({ state: 'approval', title: '申请权限', detail: '需要写入 build 目录' })
+  })
+
   it('does not treat injected user-role messages as prompts', () => {
     const view = parseTranscript('codex', 'aborted', jsonl([
       exec('run', shell),

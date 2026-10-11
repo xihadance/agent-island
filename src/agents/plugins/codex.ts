@@ -2,8 +2,8 @@ import { open } from 'node:fs/promises'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { isUserInputTool } from '../../shared/island-behavior'
-import { commandText } from '../operation'
-import { cleanText, contentEvents, eventTimestamp, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, safeId, textOf, timestampEvents, toolEvent } from '../events'
+import { commandText, describeOperation } from '../operation'
+import { cleanText, contentEvents, eventTimestamp, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, questionText, safeId, textOf, timestampEvents, toolEvent } from '../events'
 import type { AgentEvent, AgentPlugin, ChildLink, ParsedTranscript } from '../types'
 import { unwrapExec } from '../script-tool'
 export { unwrapExec } from '../script-tool'
@@ -52,6 +52,9 @@ function createCodexParser(): (text: string) => ParsedTranscript {
   const calls = new Map<string, Call>()
   /** Call ids whose question was already recorded or answered. Later copies must not reopen it. */
   const questions = new Set<string>()
+  /** Preserve request identity and its original candidates across incremental log reads. */
+  const elicitations = new Map<string, { callId: string; pending: Set<string> }>()
+  let elicitationSequence = 0
   /** Background script cells and unified-exec sessions, keyed to their starting call. */
   const cells = new Map<string, string>()
   const processes = new Map<string, string>()
@@ -69,6 +72,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
     cells.clear()
     processes.clear()
     calls.clear()
+    elicitations.clear()
   }
 
   const parse = (text: string): ParsedTranscript => {
@@ -95,7 +99,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
         const payload = isRecord(row.payload) ? row.payload : {}
         const type = textOf(payload.type)
         if (type === 'task_complete' || type === 'turn_aborted' || type === 'error' || type === 'user_message') settleTurn()
-        const produced = codexEvent(payload).filter((event) => {
+        const produced = (type === 'elicitation_request' ? elicitationEvents(payload) : codexEvent(payload, calls)).filter((event) => {
           if (event.kind !== 'tool' && event.kind !== 'approval') return true
           if (!event.callId || !isUserInputTool(event.operation?.name) || !questions.has(event.callId)) return true
           return false
@@ -146,6 +150,14 @@ function createCodexParser(): (text: string) => ParsedTranscript {
       const result: AgentEvent = { kind: 'tool_result', title: ok ? '工具完成' : '工具失败', ok, callId }
       const events = call && callId ? backgroundEvents(call, callId, output, result) : [result]
       if (callId) calls.delete(callId)
+      for (const event of [...events]) {
+        if (event.kind !== 'tool_result' || !event.callId) continue
+        for (const request of elicitations.values()) {
+          if (!request.pending.delete(event.callId) || request.pending.size || request.callId === event.callId) continue
+          // An ambiguous approval cannot be retired by just one candidate's result.
+          events.push({ kind: 'tool_result', title: '审批结束', ok: true, callId: request.callId })
+        }
+      }
       return events
     }
     if (type === 'reasoning') {
@@ -170,6 +182,28 @@ function createCodexParser(): (text: string) => ParsedTranscript {
       return result
     }
     return []
+  }
+
+  function elicitationEvents(payload: Record<string, unknown>): AgentEvent[] {
+    const server = textOf(payload.server_name)
+    const id = payload.id
+    const key = JSON.stringify([server, typeof id, typeof id === 'string' || typeof id === 'number' ? id : ++elicitationSequence])
+    if (elicitations.has(key)) return []
+    const request = isRecord(payload.request) ? payload.request : {}
+    const reason = cleanText(textOf(request.message) || textOf(request.url))
+    const explicit = textOf(payload.call_id)
+    const candidates = [...calls.entries()].filter(([callId, call]) => {
+      const operation = describeOperation(call.name, call.input)
+      if (operation.kind !== 'mcp' || (explicit && callId !== explicit)) return false
+      // Never infer an owner from another server, or from ordering alone.
+      return server ? operation.name?.split(' / ')[0] === server : !!explicit
+    })
+    const owner = candidates.length === 1 ? candidates[0] : undefined
+    const callId = owner?.[0] ?? `elicitation:${key}`
+    elicitations.set(key, { callId, pending: new Set(candidates.map(([id]) => id)) })
+    if (owner) return [mcpApproval(owner[1], callId, reason)]
+    // Keep an unmatched/ambiguous request independent. End-of-turn events also clear it.
+    return [{ kind: 'approval', title: server ? `MCP 授权：${server}` : 'MCP 授权', callId, ...(reason ? { reason } : {}) }]
   }
 
   /** Keep a yielded call running until the wait that observes its end. */
@@ -208,7 +242,7 @@ function codexClient(meta: Record<string, unknown>): string | undefined {
   return undefined
 }
 
-function codexEvent(payload: Record<string, unknown>): AgentEvent[] {
+function codexEvent(payload: Record<string, unknown>, calls: Map<string, Call>): AgentEvent[] {
   const type = textOf(payload.type)
   if (type === 'user_message') return [{ kind: 'user', title: cleanText(textOf(payload.message) || textOf(payload.text)) }]
   if (type === 'agent_message' || type === 'agent_reasoning') {
@@ -235,7 +269,21 @@ function codexEvent(payload: Record<string, unknown>): AgentEvent[] {
     return [toolEvent(type === 'exec_approval_request' ? 'shell' : 'apply_patch', payload, textOf(payload.call_id) || undefined, true)]
   }
   if (type === 'request_user_input') {
-    return [toolEvent('request_user_input', { questions: payload.questions }, textOf(payload.call_id) || undefined)]
+    const callId = textOf(payload.call_id) || undefined
+    const call = callId ? calls.get(callId) : undefined
+    // MCP tool approval rides on the same event; its call id belongs to the MCP call.
+    if (call && describeOperation(call.name, call.input).kind === 'mcp') return [mcpApproval(call, callId, questionText(payload.questions))]
+    return [toolEvent('request_user_input', { questions: payload.questions }, callId)]
+  }
+  if (type === 'request_permissions') {
+    const callId = textOf(payload.call_id) || undefined
+    const call = callId ? calls.get(callId) : undefined
+    const reason = cleanText(textOf(payload.reason))
+    if (call) {
+      const approval = toolEvent(call.name, call.input, callId, true)
+      return [reason ? { ...approval, reason } : approval]
+    }
+    return [{ kind: 'approval', title: '申请额外权限', callId, ...(reason ? { reason } : {}) }]
   }
   if (type === 'item_completed' && isRecord(payload.item)) {
     if (payload.item.type === 'CollabAgentToolCall') return collabEvents(payload.item)
@@ -302,6 +350,12 @@ function unansweredAccept(output: unknown): boolean {
   if (body.interrupted === true || body.accepted !== true) return false
   if (body.answers === undefined) return true
   return isRecord(body.answers) && Object.keys(body.answers).length === 0
+}
+
+/** An MCP call asking the human to authorize it shows as an approval, not a plain tool run. */
+function mcpApproval(call: Call, callId: string | undefined, reason: string): AgentEvent {
+  const approval = toolEvent(call.name, call.input, callId, true)
+  return reason ? { ...approval, reason } : approval
 }
 
 function scriptStatus(head: string): 'done' | 'error' | 'stopped' | undefined {
