@@ -75,7 +75,9 @@ export function toolCallEvents(calls: unknown[]): AgentEvent[] {
     const input = parseMaybeRecord(call.args ?? call.input ?? call.arguments)
     const status = textOf(call.status)
     const callId = textOf(call.id) || undefined
-    const events: AgentEvent[] = [toolEvent(name, input, callId, status === 'awaiting_approval' || status === 'awaitingApproval')]
+    // ask_user waits in the same status Gemini uses for shell approval. A question is not an approval.
+    const approval = (status === 'awaiting_approval' || status === 'awaitingApproval') && !isUserInputTool(name)
+    const events: AgentEvent[] = [toolEvent(name, input, callId, approval)]
     if (status === 'success' || status === 'error' || status === 'cancelled' || call.result !== undefined) {
       events.push({
         kind: 'tool_result',

@@ -111,6 +111,26 @@ describe('Codex background work', () => {
     expect(aborted).toMatchObject({ state: 'error', title: '已中断', terminal: true })
   })
 
+  it('keeps unanswered Claude, Gemini, and Cursor questions pending', () => {
+    const claude = parseTranscript('claude', 'ask', jsonl([
+      { type: 'assistant', message: { stop_reason: 'end_turn', content: [
+        { type: 'tool_use', id: 'q', name: 'AskUserQuestion', input: { questions: [{ question: '用哪种方案？' }] } }
+      ] } }
+    ]))
+    expect(claude).toMatchObject({ state: 'running', title: '用哪种方案？', terminal: false, operation: { name: 'AskUserQuestion' } })
+
+    const gemini = parseTranscript('gemini', 'ask', JSON.stringify({ messages: [
+      { type: 'gemini', toolCalls: [{ id: 'q', name: 'ask_user', args: { questions: [{ question: '继续发布吗？' }] }, status: 'awaiting_approval' }] }
+    ] }))
+    expect(gemini).toMatchObject({ state: 'running', title: '继续发布吗？', terminal: false, operation: { name: 'ask_user' } })
+    expect(gemini?.state).not.toBe('approval')
+
+    const cursor = parseTranscript('cursor', 'ask', jsonl([
+      { role: 'assistant', message: { content: [{ type: 'tool_use', name: 'AskQuestion', input: { questions: [{ prompt: '要写文档还是直接改代码？' }] } }] } }
+    ]))
+    expect(cursor).toMatchObject({ state: 'running', title: '要写文档还是直接改代码？', terminal: false, operation: { name: 'AskQuestion' } })
+  })
+
   it('does not treat injected user-role messages as prompts', () => {
     const view = parseTranscript('codex', 'aborted', jsonl([
       exec('run', shell),
