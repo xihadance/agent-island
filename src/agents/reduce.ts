@@ -194,11 +194,11 @@ export function createReducer() {
     for (const task of settled.slice(0, Math.max(0, settled.length - MAX_TASKS))) tasks.delete(task.id)
   }
 
-  /** An open human question with nothing else in flight. Approval still takes the headline. */
+  /** Open human questions with no other tools in flight. Approval still takes the headline. */
   function holdForAnswer(): boolean {
     if (state === 'error' || steps.some((step) => step.status === 'waiting')) return false
     const input = steps.find((step) => step.status === 'active' && isUserInputStep(step))
-    if (!input || steps.some((step) => step.status === 'active' && step !== input)) return false
+    if (!input || steps.some((step) => step.status === 'active' && !isUserInputStep(step))) return false
     const event = stepEvents.get(input.id)
     state = 'running'
     title = input.label
