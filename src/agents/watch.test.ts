@@ -5,9 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ActivityStore } from '../shared/activity'
 import type { AgentKind } from './parse'
 import { claudePlugin } from './plugins'
-import type { ProcessSnapshot } from './processes'
+import { processSnapshotFrom, type ProcessSnapshot } from './processes'
 import type { SessionRegistration } from './types'
 import { SessionWatcher, matchAgentProcesses, readSession, type AgentRoots } from './watch'
+import { attentionKind } from '../shared/island-behavior'
 
 const NOW = Date.parse('2026-10-09T08:00:00Z')
 const tempDirs: string[] = []
@@ -287,7 +288,75 @@ describe('SessionWatcher', () => {
     expect(store.list()[0]).toMatchObject({ state: 'running', title: 'npm test' })
     now += 25 * 60 * 60_000
     await watcher.scan()
-    expect(store.list()[0]?.state).toBe('error')
+    if (kind === 'cursor') expect(store.list()[0]).toMatchObject({ state: 'running', stale: true })
+    else expect(store.list()[0]?.state).toBe('error')
+  })
+
+  it.each(['Cursor.exe', 'cursor-agent.exe', 'absent'])('keeps silent Cursor work uncertain with %s and resumes without resetting timing', async (name) => {
+    const { roots } = tempHome()
+    const file = path.join(roots.cursor, 'project', 'agent-transcripts', 'long', 'long.jsonl')
+    const use = { role: 'assistant', message: { content: [{ type: 'tool_use', id: 'cmd', name: 'Shell', input: { command: 'long-job' } }] } }
+    writeJsonl(file, [use]); touch(file, NOW)
+    let now = NOW
+    const snapshot = processSnapshotFrom(JSON.stringify(name === 'absent' ? [] : [{ pid: 11, parentPid: 0, name, commandLine: '' }]), 'win32')
+    const store = newStore()
+    const watcher = new SessionWatcher(store, { roots, now: () => now, listProcessSnapshot: () => snapshot })
+    try {
+      await watcher.scan()
+      const initial = store.list()[0]
+      for (const age of [61_000, 31 * 60_000]) {
+        now = NOW + age
+        await watcher.scan()
+        const activity = store.list()[0]
+        expect(activity).toMatchObject({ state: 'running', stale: true, startedAt: initial.startedAt, title: 'long-job' })
+        expect(activity.endedAt).toBeUndefined()
+        expect(attentionKind(activity)).toBeUndefined()
+      }
+      appendFileSync(file, JSON.stringify(use) + '\n'); touch(file, now)
+      await watcher.scan()
+      expect(store.list()[0].stale).toBeUndefined()
+      expect(store.list()[0].startedAt).toBe(initial.startedAt)
+      appendFileSync(file, JSON.stringify({ type: 'turn_ended', status: 'error', error: '真实失败' }) + '\n'); touch(file, now + 1)
+      await watcher.scan()
+      expect(store.list()[0]).toMatchObject({ state: 'error', title: '真实失败' })
+      expect(attentionKind(store.list()[0])).toBe('error')
+    } finally { watcher.stop() }
+  })
+
+  it('recovers a quiet desktop Cursor session without reviving completed or older history', async () => {
+    const { roots } = tempHome()
+    for (const [id, age, done] of [['recent', 20 * 60_000, false], ['old', 2 * 60 * 60_000, false], ['done', 20 * 60_000, true]] as const) {
+      const file = path.join(roots.cursor, 'project', 'agent-transcripts', `${id}.jsonl`)
+      writeJsonl(file, done ? [{ type: 'turn_ended', status: 'success' }] : [{ role: 'assistant', content: 'Still thinking' }])
+      touch(file, NOW - age)
+    }
+    const store = newStore()
+    const snapshot = processSnapshotFrom(JSON.stringify([{ pid: 11, parentPid: 0, name: 'Cursor.exe', commandLine: '' }]), 'win32')
+    const watcher = new SessionWatcher(store, { roots, now: () => NOW, listProcessSnapshot: () => snapshot })
+    try {
+      await watcher.scan()
+      expect(store.list()).toHaveLength(1)
+      expect(store.list()[0]).toMatchObject({ id: 'cursor-recent', state: 'thinking', stale: true })
+    } finally { watcher.stop() }
+  })
+
+  it('publishes only the final snapshot when many sessions change in one scan', async () => {
+    const { roots } = tempHome()
+    for (let i = 0; i < 32; i++) {
+      const file = path.join(roots.codex, `rollout-${i}.jsonl`)
+      writeJsonl(file, [{ role: 'assistant', content: 'Working' }]); touch(file, NOW)
+    }
+    const store = newStore()
+    const updates = vi.fn()
+    store.subscribe(updates)
+    const watcher = new SessionWatcher(store, { roots, now: () => NOW, listProcesses: () => new Set(['codex']) })
+    try {
+      await watcher.scan()
+      expect(updates).toHaveBeenCalledTimes(1)
+      expect(updates.mock.calls[0][0]).toHaveLength(32)
+      await watcher.scan()
+      expect(updates).toHaveBeenCalledTimes(1)
+    } finally { watcher.stop() }
   })
 
   it('isolates idle and exited sessions from another busy Claude process and freezes interruption timing', async () => {
@@ -562,6 +631,49 @@ describe('SessionWatcher', () => {
     await pending
     expect(processes).toHaveBeenCalledTimes(1)
     expect(store.list()).toEqual([])
+  })
+
+  it('keeps periodic log updates flowing while a process refresh is slow', async () => {
+    const { roots } = tempHome()
+    const file = path.join(roots.codex, 'rollout-live.jsonl')
+    writeJsonl(file, [{ role: 'assistant', content: 'Working' }]); touch(file, NOW)
+    let now = NOW
+    let finish!: (running: Set<string>) => void
+    const processes = vi.fn().mockResolvedValueOnce(new Set(['codex']))
+      .mockImplementation(() => new Promise<Set<string>>(resolve => { finish = resolve }))
+    const store = newStore()
+    const watcher = new SessionWatcher(store, { roots, now: () => now, listProcesses: processes })
+    try {
+      watcher.start(); await watcher.scan()
+      now += 6000
+      appendFileSync(file, JSON.stringify({ type: 'event_msg', payload: { type: 'task_complete' } }) + '\n')
+      touch(file, now)
+      await watcher.scan()
+      expect(store.list()[0].state).toBe('success')
+      expect(processes).toHaveBeenCalledTimes(2)
+      now += 6000; await watcher.scan()
+      expect(processes).toHaveBeenCalledTimes(2)
+    } finally { watcher.stop(); finish?.(new Set()); }
+  })
+
+  it('backs off process queries while idle and resumes the active cadence after a new log', async () => {
+    const { roots } = tempHome()
+    const store = newStore()
+    let now = NOW
+    const processes = vi.fn(() => new Set<string>())
+    const watcher = new SessionWatcher(store, { roots, now: () => now, listProcesses: processes })
+    try {
+      await watcher.scan()
+      now += 5000; await watcher.scan()
+      expect(processes).toHaveBeenCalledTimes(1)
+      now = NOW + 30_000; await watcher.scan()
+      expect(processes).toHaveBeenCalledTimes(2)
+      const file = path.join(roots.codex, 'rollout-new.jsonl')
+      writeJsonl(file, [{ role: 'assistant', content: 'Working' }]); touch(file, now)
+      now += 10_000; await watcher.scan()
+      now += 800; await watcher.scan()
+      expect(processes).toHaveBeenCalledTimes(3)
+    } finally { watcher.stop() }
   })
 
   it('preserves a session through partial writes, and failures past the history window', async () => {

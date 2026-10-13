@@ -99,9 +99,11 @@ Claude Code 的原生 API 错误（`isApiErrorMessage`）显示失败，即使�
 | Gemini | `~/.gemini/tmp/<项目>/chats/session-*.json`，兼容 JSONL |
 | Cursor | `~/.cursor/projects/<项目>/agent-transcripts/<会话>/<会话>.jsonl` |
 
+Cursor 桌面版和 CLI 均可作为会话恢复线索，但进程存在不代表某个会话仍在执行。已跟踪的普通 Cursor 任务静默超过一分钟时，保留最后记录的状态、操作和计时，标注「暂未收到更新」，不会仅因静默一分钟或三十分钟就显示失败、停止子任务或弹出托管异常提醒。后续日志更新会恢复正常显示；明确的完成、失败、审批和用户提问仍按日志处理。不再需要关注的待确认会话可展开后关闭。`stale: true` 表示显示的是最后记录、当前状态尚未确认；HTTP 可用 `stale: false` 清除此标记，终态也会自动清除。
+
 Windows 上这些目录在 `%USERPROFILE%` 下面，布局相同。可以用 `CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`GEMINI_CLI_HOME`、`CURSOR_HOME` 改根目录。支持原生可执行文件及通过 Node.js 启动的 npm agent。设置 `CUTE_ISLAND_WATCH=0` 可以关掉自动识别，只保留上面的 HTTP 接口。
 
-扫描使用异步 I/O：已发现的日志约每 800 毫秒检查一次，新文件约每 10 秒发现一次，进程查询间隔 5 秒；内容未变化时不重新读取和解析。内置 Agent 的 JSONL 首次按 64 KiB 分块读取并建立状态，之后只解析追加的数据；保留未写完的记录，文件替换或截断后重新建立状态。后台任务的启动记录不会因落到文件尾部窗口以外而丢失；Gemini JSON 整份读取，上限 16 MiB。
+扫描使用异步 I/O：已发现的日志约每 800 毫秒检查一次，新文件约每 10 秒发现一次，有近期任务时进程查询间隔 5 秒，空闲时延长为 30 秒；内容未变化时不重新读取和解析。同一轮扫描只推送一份最终活动列表。常驻扫描复用文件系统变更通知和目录索引，每分钟全量校准一次；变更通知不可用时恢复定期遍历。启动后在后台刷新进程快照，慢查询不再阻塞本轮日志更新；Windows 查询进程完成后立即退出，停止监听时释放目录监听器。内置 Agent 的 JSONL 首次按 64 KiB 分块读取并建立状态，之后只解析追加的数据；保留未写完的记录，文件替换或截断后重新建立状态。后台任务的启动记录不会因落到文件尾部窗口以外而丢失；Gemini JSON 整份读取，上限 16 MiB。
 
 执行时间优先使用日志中最近一轮用户请求或明确的执行开始事件时间，结束时间取对应完成记录。中途启动灵动岛也能恢复日志记录的耗时。没有开始时间时使用本轮第一条带时间的执行记录；日志完全不含时间戳时，从首次观察到该轮计时，因此无法还原启动灵动岛之前的耗时。计时在界面内每秒刷新，不会额外扫描日志或改变会话排序。
 
@@ -152,11 +154,11 @@ node scripts/smoke-interaction.cjs
 
 它验证实际窗口移动、点击与拖动区分、命令选择、透明度、四边收纳与点击展开、托管模式鼠标穿透与提醒、子任务状态与执行时间、子会话审批、重启恢复和托盘重置，截图保存在 `output/playwright/`。
 
-发布前同步更新 `package.json`、`package-lock.json` 和 `RELEASE_NOTES.md`。推送版本标签，或在 Actions 里手动运行 Release，都会在三端打包成功后发布到这个仓库的 [Releases](https://github.com/xihadance/cute-island/releases)，并附上版本说明。手动运行时，标签取 `package.json` 里的版本号，例如当前是 `v0.1.8`。
+发布前同步更新 `package.json`、`package-lock.json` 和 `RELEASE_NOTES.md`。推送版本标签，或在 Actions 里手动运行 Release，都会在三端打包成功后发布到这个仓库的 [Releases](https://github.com/xihadance/cute-island/releases)，并附上版本说明。手动运行时，标签取 `package.json` 里的版本号，例如当前是 `v0.1.9`。
 
 ```bash
-git tag v0.1.8
-git push origin v0.1.8
+git tag v0.1.9
+git push origin v0.1.9
 ```
 
 ## 图标

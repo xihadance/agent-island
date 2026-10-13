@@ -21,6 +21,39 @@ function schedulerOf(pending: Array<{ fn: () => void; cancelled: boolean }>) {
 }
 
 describe('ActivityStore', () => {
+  it('batches nested updates while keeping reads synchronous, including a partial failed batch', () => {
+    const store = new ActivityStore(() => ({ cancel() {} }))
+    const updates: Activity[][] = []
+    store.subscribe(activities => updates.push(activities))
+    store.batch(() => {
+      store.upsert({ id: 'a' })
+      store.batch(() => store.upsert({ id: 'b' }))
+      expect(store.list()).toHaveLength(2)
+      store.dismiss('a')
+      expect(updates).toHaveLength(0)
+    })
+    expect(updates).toHaveLength(1)
+    expect(updates[0].map(a => a.id)).toEqual(['b'])
+    store.batch(() => {})
+    expect(updates).toHaveLength(1)
+    expect(() => store.batch(() => { store.upsert({ id: 'c' }); throw new Error('failed') })).toThrow('failed')
+    expect(updates).toHaveLength(2)
+    expect(updates[1]).toHaveLength(2)
+  })
+
+  it('keeps observation uncertainty separate from execution and clears it on recovery or end', () => {
+    const store = new ActivityStore(() => ({ cancel() {} }))
+    const initial = store.upsert({ id: 'quiet', state: 'running', startedAt: 1000 })
+    expect(store.upsert({ id: 'quiet', stale: true })).toMatchObject({ state: 'running', stale: true, startedAt: initial.startedAt })
+    expect(store.upsert({ id: 'quiet', client: 'Cursor' }).stale).toBe(true)
+    expect(store.upsert({ id: 'quiet', stale: false }).stale).toBeUndefined()
+    store.upsert({ id: 'quiet', stale: true })
+    expect(store.end('quiet', { result: 'success' }).stale).toBeUndefined()
+    expect(store.upsert({ id: 'quiet', stale: true, state: 'error' }).stale).toBeUndefined()
+    store.upsert({ id: 'quiet', stale: true, state: 'running' })
+    expect(store.upsert({ id: 'quiet', startedAt: 2000 }).stale).toBeUndefined()
+    expect(() => store.upsert({ id: 'quiet', stale: 'yes' })).toThrow('stale')
+  })
   it('preserves recorded execution times across metadata updates and explicitly starts a new round', () => {
     let now = 100_000
     const store = new ActivityStore(() => ({ cancel() {} }), () => now)

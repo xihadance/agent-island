@@ -163,8 +163,35 @@ async function smoke() {
       await fs.writeFile(`output/playwright/${name}.png`, Buffer.from(result.data, 'base64'))
     }
     const roundStart = Date.now() - 65_000
+    await push({ id: 'quiet-cursor', agent: 'Cursor', state: 'running', stale: true, startedAt: roundStart,
+      title: '等待长任务输出', operation: { kind: 'command', command: 'long-job' } })
+    assert.equal(await evaluate('document.querySelector(".activity-status").textContent.trim()'), '暂未收到更新')
+    assert.equal(await evaluate('document.querySelector(".activity-status .is-animated")'), null)
+    const quiet = (await evaluate('window.island.getActivities()'))[0]
+    assert.equal(quiet.state, 'running')
+    assert.equal(quiet.endedAt, undefined)
+    await screenshot('cursor-uncertain-compact')
+    await click('.island')
+    assert.equal(await mode(), 'expanded')
+    await screenshot('cursor-uncertain-expanded')
+    await fetch(`http://127.0.0.1:${fixturePort}/mode/managed`, { method: 'POST' })
+    await delay(400)
+    assert.equal(await evaluate('document.querySelector(".island").dataset.attention'), 'false', 'Uncertain Cursor is not a failure alert')
+    await fetch(`http://127.0.0.1:${fixturePort}/mode/focus`, { method: 'POST' })
+    await delay(400)
+    await push({ id: 'quiet-cursor', stale: false })
+    assert.equal(await evaluate('document.querySelector(".activity-status").hasAttribute("data-stale")'), false)
+    assert.equal((await evaluate('window.island.getActivities()'))[0].startedAt, roundStart)
+    await push({ id: 'quiet-cursor', stale: true })
+    if (await mode() !== 'expanded') await click('.island')
+    await click('[data-testid=close-activity]')
+    assert.equal((await evaluate('window.island.getActivities()')).length, 0)
+    await evaluate('document.querySelector(".island").focus(); document.querySelector(".island").blur()')
+    await setCursor({ x: -10000, y: -10000 })
+    await mouse('mouseMoved', { x: 0, y: 550 })
+    const taskRoundStart = Date.now() - 65_000
     const taskStart = Date.now() - 45_000
-    await push({ id: 'drag', agent: 'Codex', client: 'Windows Terminal', startedAt: roundStart, state: 'running', title: '拖动与透明度验证', operation: { kind: 'command', command: 'npm run typecheck', shell: 'cmd' },
+    await push({ id: 'drag', agent: 'Codex', client: 'Windows Terminal', startedAt: taskRoundStart, state: 'running', title: '拖动与透明度验证', operation: { kind: 'command', command: 'npm run typecheck', shell: 'cmd' },
       tasks: [{ id: 'child', kind: 'agent', label: '检查代码', status: 'active', state: 'thinking', detail: '读取组件', startedAt: taskStart },
         { id: 'command', kind: 'command', label: '类型检查', status: 'done', startedAt: taskStart, endedAt: taskStart + 42_000 }] })
     assert.equal(await evaluate('document.querySelector(".task-badge").textContent.trim()'), '1')
@@ -462,6 +489,7 @@ async function smoke() {
     await delay(700)
     assert.equal(path.dirname(profile), path.resolve(os.tmpdir()))
     assert.ok(path.basename(profile).startsWith('island-interaction-'))
+    assert.ok(path.resolve(profile).startsWith(path.resolve(os.tmpdir()) + path.sep) && path.basename(profile).startsWith('island-interaction-'))
     await fs.rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
   }
 }

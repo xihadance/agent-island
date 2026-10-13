@@ -62,6 +62,8 @@ export interface Activity {
   startedAt: number
   updatedAt: number
   endedAt?: number
+  /** The last recorded state is retained, but recent session liveness is unknown. */
+  stale?: boolean
 }
 
 export interface ActivityInput {
@@ -78,6 +80,7 @@ export interface ActivityInput {
   /** Unix milliseconds for the latest execution round. Omit to time local updates. */
   startedAt?: number
   endedAt?: number
+  stale?: boolean
 }
 
 export interface EndInput {
@@ -197,6 +200,7 @@ interface ParsedActivity {
   tasks?: ActivityTask[] | null
   startedAt?: number
   endedAt?: number
+  stale?: boolean
 }
 
 export class ActivityStore {
@@ -205,6 +209,8 @@ export class ActivityStore {
   private readonly dismissTimers = new Map<string, { cancel: () => void }>()
   private readonly dismissGeneration = new Map<string, number>()
   private nextGeneration = 0
+  private batchDepth = 0
+  private batchChanged = false
 
   constructor(
     private readonly schedule: Scheduler = defaultScheduler,
@@ -224,6 +230,18 @@ export class ActivityStore {
     this.listeners.add(listener)
     return () => {
       this.listeners.delete(listener)
+    }
+  }
+
+  /** Mutations stay synchronous; subscribers see only the final state of a scan. */
+  batch(update: () => void): void {
+    this.batchDepth += 1
+    try { update() } finally {
+      this.batchDepth -= 1
+      if (!this.batchDepth && this.batchChanged) {
+        this.batchChanged = false
+        this.emit()
+      }
     }
   }
 
@@ -249,6 +267,7 @@ export class ActivityStore {
       updatedAt: now
     }
     const terminal = state === 'success' || state === 'error'
+    if (!terminal && (parsed.stale ?? (!restarting && current?.stale))) next.stale = true
     if (terminal) {
       next.endedAt = parsed.endedAt ?? (!newRound && current?.state === state && current.endedAt !== undefined ? current.endedAt : now)
       next.endedAt = Math.max(next.startedAt, next.endedAt)
@@ -275,6 +294,7 @@ export class ActivityStore {
       updatedAt: now,
       endedAt: now
     }
+    delete next.stale
     this.activities.set(id, next)
     this.syncDismissTimer(next)
     this.emit()
@@ -324,6 +344,8 @@ export class ActivityStore {
   }
 
   private emit(): void {
+    if (this.batchDepth) { this.batchChanged = true; return }
+    if (!this.listeners.size) return
     const snapshot = this.list()
     for (const listener of this.listeners) {
       try {
@@ -409,6 +431,10 @@ export function parseActivityInput(input: unknown): ParsedActivity {
   if ('state' in body && body.state !== undefined) {
     if (!isActivityState(body.state)) throw new ActivityError(400, 'state 无效')
     parsed.state = body.state
+  }
+  if (body.stale !== undefined) {
+    if (typeof body.stale !== 'boolean') throw new ActivityError(400, 'stale 必须是布尔值')
+    parsed.stale = body.stale
   }
   if ('client' in body && body.client !== undefined) {
     if (body.client === null) parsed.client = null

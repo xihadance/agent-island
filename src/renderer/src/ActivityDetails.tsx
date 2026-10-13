@@ -61,11 +61,12 @@ function TaskRow({ task }: { task: ActivityTask }) {
 }
 
 export function Status({ activity, compact = false }: { activity: Activity; compact?: boolean }) {
-  const kind = activity.state === 'running' ? activity.operation?.kind ?? 'running' : activity.state
-  const label = compact && activity.state === 'running' && activity.operation ? OPERATION_LABEL[activity.operation.kind] : STATE_LABEL[activity.state]
+  const kind = activity.stale ? 'waiting' : activity.state === 'running' ? activity.operation?.kind ?? 'running' : activity.state
+  const label = activity.stale ? '暂未收到更新' : compact && activity.state === 'running' && activity.operation ? OPERATION_LABEL[activity.operation.kind] : STATE_LABEL[activity.state]
+  const description = activity.stale ? `最后记录：${STATE_LABEL[activity.state]}，当前状态尚未确认；请在 ${activity.agent} 中查看` : `${STATE_LABEL[activity.state]}${activity.operation ? ` · ${OPERATION_LABEL[activity.operation.kind]}` : ''}`
   return (
-    <span className={`activity-status state-${activity.state}${compact ? ' status-compact' : ''}`} title={`${STATE_LABEL[activity.state]}${activity.operation ? ` · ${OPERATION_LABEL[activity.operation.kind]}` : ''}`}>
-      <ActivityIcon kind={kind} animated={activity.state === 'running' || activity.state === 'thinking' || activity.state === 'success'} />
+    <span className={`activity-status state-${activity.stale ? 'waiting' : activity.state}${compact ? ' status-compact' : ''}`} title={description} data-stale={activity.stale || undefined}>
+      <ActivityIcon kind={kind} animated={!activity.stale && (activity.state === 'running' || activity.state === 'thinking' || activity.state === 'success')} />
       <span>{label}</span>
     </span>
   )
@@ -84,7 +85,7 @@ export function OperationDetails({ activity, showApprovalNotice = true }: { acti
       {operation && (
         <div className={`operation-detail operation-${operation.kind}`} data-testid="operation-detail" onClick={(event) => event.stopPropagation()}>
           <div className="operation-heading">
-            <ActivityIcon kind={operation.kind} animated={activity.state === 'running'} />
+            <ActivityIcon kind={operation.kind} animated={!activity.stale && activity.state === 'running'} />
             <span>{OPERATION_LABEL[operation.kind]}</span>
             <span className="operation-name" title={operation.name}>{operation.shell || (operation.kind === 'command' ? 'Shell' : operation.name)}</span>
           </div>
@@ -102,7 +103,7 @@ export function Steps({ activity }: { activity: Activity }) {
     <ol className="steps" aria-label="最近步骤">
       {activity.steps.slice(-4).map((step) => (
         <li key={step.id} data-status={step.status}>
-          <ActivityIcon kind={step.status === 'active' ? step.kind ?? 'active' : step.status === 'waiting' ? 'approval' : step.status} animated={step.status === 'active'} />
+          <ActivityIcon kind={step.status === 'active' ? step.kind ?? 'active' : step.status === 'waiting' ? 'approval' : step.status} animated={!activity.stale && step.status === 'active'} />
           <span className="step-label" title={step.label}>{step.label}</span>
           <span className="sr-only">{({ active: '执行中', pending: '未开始', waiting: '需要审批', done: '已完成', error: '失败' })[step.status]}</span>
         </li>

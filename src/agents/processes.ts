@@ -26,14 +26,17 @@ export interface ProcessSnapshot {
 
 /** One query provides both liveness and the ancestry needed for session client labels. */
 export async function listProcessSnapshot(plugins: readonly AgentPlugin[] = BUILTIN_PLUGINS): Promise<ProcessSnapshot> {
-  const names = [...new Set([...plugins.flatMap((plugin) => plugin.executables), ...RUNTIMES])]
-  const pattern = `^(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(\\.exe)?$`
   const { stdout } = process.platform === 'win32'
-      ? await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-        `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; parentPid = $_.ParentProcessId; name = $_.Name; commandLine = $(if ($_.Name -match '${pattern}') { $_.CommandLine } else { '' }); createdAt = $(if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('o') } else { '' }) } } | ConvertTo-Json -Compress`],
+      ? await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsSnapshotScript(plugins)],
         { encoding: 'utf8', timeout: 5000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 })
       : await execFileAsync('ps', ['-ax', '-o', 'pid=,ppid=,args='], { encoding: 'utf8', timeout: 3000, maxBuffer: 2 * 1024 * 1024 })
   return processSnapshotFrom(stdout, process.platform, plugins)
+}
+
+function windowsSnapshotScript(plugins: readonly AgentPlugin[]): string {
+  const names = [...new Set([...plugins.flatMap((plugin) => plugin.executables), ...RUNTIMES])]
+  const pattern = `^(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(\\.exe)?$`
+  return `$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; @(Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; parentPid = $_.ParentProcessId; name = $_.Name; commandLine = $(if ($_.Name -match '${pattern.replace(/'/g, "''")}') { $_.CommandLine } else { '' }); createdAt = $(if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('o') } else { '' }) } }) | ConvertTo-Json -Compress`
 }
 
 export function processSnapshotFrom(output: string, platform: string, plugins: readonly AgentPlugin[] = BUILTIN_PLUGINS): ProcessSnapshot {
@@ -67,8 +70,7 @@ const CLIENT_PROCESSES: Record<string, string> = {
 const SHELL_PROCESSES: Record<string, string> = { pwsh: 'PowerShell', powershell: 'PowerShell', cmd: 'cmd', bash: 'Bash', zsh: 'Zsh', fish: 'Fish' }
 
 /** Only call with a PID bound to this particular native session. */
-export function clientForProcess(pid: number, processes: readonly ProcessInfo[]): string | undefined {
-  const byPid = new Map(processes.map((row) => [row.pid, row]))
+export function clientForProcess(pid: number, processes: readonly ProcessInfo[], byPid: ReadonlyMap<number, ProcessInfo> = new Map(processes.map((row) => [row.pid, row]))): string | undefined {
   const visited = new Set<number>()
   let current = byPid.get(pid)
   let shell: string | undefined

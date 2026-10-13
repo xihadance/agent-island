@@ -25,6 +25,7 @@ export interface SessionView {
   tasks: ActivityTask[]
   /** The transcript itself says this turn finished. */
   terminal: boolean
+  stale?: boolean
 }
 
 export type ToolEvent = Extract<AgentEvent, { kind: 'tool' | 'approval' }>
@@ -89,6 +90,8 @@ export interface AgentPlugin {
   readonly executables: readonly string[]
   /** Script paths that identify the agent when it runs under node or bun. */
   readonly scripts?: readonly RegExp[]
+  /** Silence cannot prove that this source stopped executing a session. */
+  readonly uncertainWhenSilent?: boolean
   /**
    * Resolve a sub-agent transcript to its parent. Returns null for top-level
    * sessions, undefined while metadata is incomplete. May read sidecars or the transcript head.

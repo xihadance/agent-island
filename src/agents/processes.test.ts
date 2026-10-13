@@ -4,6 +4,11 @@ import { clientForProcess, processSnapshotFrom, type ProcessInfo } from './proce
 const proc = (pid: number, parentPid: number, name: string, commandLine = ''): ProcessInfo => ({ pid, parentPid, name, commandLine })
 
 describe('session client process evidence', () => {
+  it('detects desktop Cursor without treating arbitrary command arguments as a host', () => {
+    expect(processSnapshotFrom(JSON.stringify([proc(11, 0, 'Cursor.exe')]), 'win32').running.has('cursor')).toBe(true)
+    expect(processSnapshotFrom(' 11 1 "/Applications/Cursor.app/Contents/MacOS/Cursor"\n', 'darwin').running.has('cursor')).toBe(true)
+    expect(processSnapshotFrom(' 11 1 node unrelated.js Cursor.exe\n', 'linux').running.has('cursor')).toBe(false)
+  })
   it('keeps simultaneous hosts of the same agent separate and prefers the host over its shell', () => {
     const processes = [proc(1, 2, 'claude.exe'), proc(2, 3, 'pwsh.exe'), proc(3, 0, 'WindowsTerminal.exe'),
       proc(4, 5, 'claude.exe'), proc(5, 0, 'Code.exe'), proc(6, 7, 'claude.exe'), proc(7, 0, 'Cursor.exe'),

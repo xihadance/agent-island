@@ -236,7 +236,7 @@ function SessionRow({
           {typeof activity.progress === 'number' && <Progress value={activity.progress} />}
           <Steps activity={activity} />
           <Tasks activity={activity} />
-          {activity.state === 'error' && !onAcknowledge && (
+          {(activity.state === 'error' || activity.stale) && !onAcknowledge && (
             <button
               type="button"
               className="close"
@@ -268,7 +268,7 @@ function Expanded({ activity, onDismiss, onAcknowledge }: { activity: Activity; 
           <Status activity={activity} />
         </div>
         <ExecutionTime activity={activity} />
-        {activity.state === 'error' && !onAcknowledge && (
+        {(activity.state === 'error' || activity.stale) && !onAcknowledge && (
           <button
             type="button"
             className="close"

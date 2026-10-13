@@ -11,7 +11,9 @@ export const cursorPlugin: AgentPlugin = {
   sessionIdFrom: (file) => path.basename(file).replace(/\.jsonl$/, ''),
   parse: parseCursor,
   createParser: () => parseCursor,
-  executables: ['cursor-agent', 'agent'],
+  // Desktop presence permits recovery, but is not a per-session heartbeat.
+  executables: ['cursor', 'cursor-agent', 'agent'],
+  uncertainWhenSilent: true,
   scripts: [/\/cursor-agent\//i]
 }
 
