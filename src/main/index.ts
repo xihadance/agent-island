@@ -19,6 +19,8 @@ import { decideClaude, type Decision } from '../shared/automation'
 import { CodexAutomation } from './codex-automation'
 import { hasClaudeIntegration, setClaudeIntegration } from './claude-integration'
 import { remoteSettings, saveRemoteSettings } from './remote-settings'
+import { ManagedCodexServer } from './codex-server'
+import { remoteIntegrationStatus, setRemoteIntegration, writeHookLauncher, type HookAgent } from './remote-integration'
 
 const WINDOW_WIDTH = 460
 const WINDOW_HEIGHT = 560
@@ -38,6 +40,8 @@ let islandMode: IslandMode = 'focus'
 let preferences = normalizePreferences(undefined)
 let codex: CodexAutomation | undefined
 let claudeInstalled = false
+let hostedCodex: ManagedCodexServer | undefined
+let quitting = false
 let historySequence = 0
 const history: AutomationEntry[] = []
 const recentHooks = new Set<string>()
@@ -56,13 +60,10 @@ if (process.env.CUTE_ISLAND_NO_SANDBOX === '1') {
   app.commandLine.appendSwitch('no-sandbox')
 }
 
-const gotLock = app.requestSingleInstanceLock()
-if (!gotLock) {
+if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
-    openSettings()
-  })
+  app.on('second-instance', () => openSettings())
   app.whenReady().then(boot).catch((error: unknown) => {
     console.error(error)
     app.exit(1)
@@ -84,6 +85,7 @@ async function boot(): Promise<void> {
   const firstLaunch = !existsSync(preferencesFile())
   preferences = readPreferences(preferencesFile())
   islandMode = preferences.mode
+  hostedCodex = new ManagedCodexServer(() => { codex?.update(); notifySettings() })
   codex = new CodexAutomation(automationPreferences, notifySettings, decision => reportDecision('Codex', decision))
   let config: RemoteConfig | undefined
   try { config = readRemoteConfig(remoteConfigFile()) }
@@ -119,9 +121,15 @@ async function boot(): Promise<void> {
   tray = createTray()
   wireIpc(store)
   if (config) { try { loadControl() } catch { /* Reported in settings and tray. */ } }
+  void hostedCodex.configure(preferences.codexServer)
   codex.update()
   if (firstLaunch || process.argv.includes('--settings')) openSettings()
-  app.on('before-quit', () => {
+  app.on('before-quit', event => {
+    if (!quitting && hostedCodex) {
+      event.preventDefault(); quitting = true
+      void hostedCodex.close().finally(() => app.quit())
+      return
+    }
     watcher?.stop()
     codex?.stop()
     control?.close()
@@ -281,11 +289,20 @@ function claudeSettingsFile(): string {
 }
 
 function automationPreferences() {
-  return control?.status().enabled ? { ...preferences, automation: { ...preferences.automation, enabled: false } } : preferences
+  return { ...preferences, automation: { ...preferences.automation, enabled: preferences.automation.enabled && !control?.status().enabled && !quitting,
+    codexUrl: preferences.codexServer.enabled ? hostedCodex?.state.status === 'running' ? hostedCodex.state.url : '' : preferences.automation.codexUrl } }
+}
+
+function remoteHookOptions(agent: HookAgent) {
+  const file = agent === 'claude' ? claudeSettingsFile() : agent === 'cursor' ? path.join(process.env.CURSOR_HOME ?? path.join(os.homedir(), '.cursor'), 'hooks.json')
+    : path.join(process.env.GEMINI_CLI_HOME ?? path.join(os.homedir(), '.gemini'), 'settings.json')
+  return { file, agent, config: remoteConfigFile(), runner: [path.join(app.getPath('userData'), 'hooks', `cute-island-remote-hook.${process.platform === 'win32' ? 'cmd' : 'sh'}`)] }
 }
 
 function settingsSnapshot(): SettingsSnapshot {
-  return { remote: remoteSettings(remoteConfigFile(), control?.status(), controlLoadError), preferences, version: app.getVersion(), port: server?.port ?? readPort(),
+  return { codexServer: hostedCodex?.state ?? { status: 'stopped', url: '', detail: '' },
+    remoteHooks: { claude: remoteIntegrationStatus(remoteHookOptions('claude')), cursor: remoteIntegrationStatus(remoteHookOptions('cursor')), gemini: remoteIntegrationStatus(remoteHookOptions('gemini')) },
+    remote: remoteSettings(remoteConfigFile(), control?.status(), controlLoadError), preferences, version: app.getVersion(), port: server?.port ?? readPort(),
     watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled,
     codexStatus: codex?.status ?? 'disabled', codexDetail: codex?.detail ?? '', history: [...history] }
 }
@@ -312,6 +329,7 @@ function updatePreferences(patch: unknown): SettingsSnapshot {
   preferences = next
   islandMode = next.mode
   syncWatcher()
+  void hostedCodex?.configure(next.codexServer)
   codex?.update()
   if (tray) updateTrayMenu(tray)
   notifyBehavior()
@@ -584,6 +602,16 @@ function wireIpc(activityStore: ActivityStore): void {
     const runtime = loadControl()
     if (!runtime) throw new Error('请先添加并保存远程渠道')
     runtime.setEnabled(enabled)
+    return settingsSnapshot()
+  })
+  ipcMain.handle('island:remote-integration', (event, agent: unknown, installed: unknown) => {
+    if (event.sender !== settingsWindow?.webContents || !['claude', 'cursor', 'gemini'].includes(String(agent)) || typeof installed !== 'boolean') throw new Error('无效的接管安装操作')
+    if (installed && !existsSync(remoteConfigFile())) initRemoteConfig(remoteConfigFile(), server?.port ?? readPort())
+    const options = remoteHookOptions(agent as HookAgent)
+    if (installed) writeHookLauncher(options.runner[0], process.execPath, path.join(app.getAppPath(), 'out', 'cli.cjs'))
+    setRemoteIntegration(options, installed)
+    if (tray) updateTrayMenu(tray)
+    notifySettings()
     return settingsSnapshot()
   })
   ipcMain.handle('island:claude-integration', (event, installed: unknown) => {

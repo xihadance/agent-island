@@ -52,7 +52,11 @@ Hook 调用本机 `POST /v1/hooks/claude`，沿用 `CUTE_ISLAND_PORT` / `CUTE_IS
 
 ### Codex app-server
 
-在「Agent 接入」填写**与你的 Codex 客户端共用**的本机 WebSocket 服务地址，例如 `ws://127.0.0.1:4500`，保存后开启自动审批。服务端可以使用以下命令启动，使用它的客户端也必须连接到同一服务：
+在「Agent 接入 → Codex app-server」点击「启动托管服务」，灵动岛会检测已安装的原生 Codex CLI 并在本机启动服务。启动设置会保留，下次随应用恢复；停止服务或退出灵动岛会关闭自己启动的进程。默认端口为 4500，可展开设置修改端口和程序路径。端口被占用时会提示，不接管占用端口的其他进程。
+
+服务启动后复制页面中的 `codex --remote ws://127.0.0.1:4500`，在新终端运行，然后开启自动审批。沿用本机 Codex 登录；只对连接到此服务的会话生效，现有独立 CLI、Codex 桌面应用及 IDE 插件的会话不会自动迁入。
+
+若已有服务，展开「连接已有的 app-server」，填写**与你的 Codex 客户端共用**的本机 WebSocket 服务地址，例如 `ws://127.0.0.1:4500`，保存后开启自动审批。服务端可以使用以下命令启动，使用它的客户端也必须连接到同一服务：
 
 ```bash
 codex app-server --listen ws://127.0.0.1:4500
@@ -63,6 +67,12 @@ codex app-server --listen ws://127.0.0.1:4500
 仅支持本机无认证的 `ws://` 服务。独立运行的普通 Codex CLI、桌面应用、VS Code 插件不会因被日志识别而自动接入。远程接管可配置已加载线程和认证环境变量，支持本机 ws 或远程 wss；Claude、Cursor、Gemini 的远程 Hook 接入见[远程接管说明](REMOTE_CONTROL.md)。未接入会话仍由原客户端处理。
 
 浏览器预览点击底部「打开配置」或访问 `http://127.0.0.1:5174/#settings` 可查看配置界面；预览只保存浏览器设置，不执行本机审批或修改 Agent 配置。
+
+### Gemini、Cursor 的接管安装
+
+在「远程接管 → Agent Hook 接管」点击「安装 Gemini CLI 接管」或「安装 Cursor 接管」，重新打开对应客户端或会话，再配置消息渠道并开启远程接管。也支持安装 Claude Code 远程 Hook。安装前备份原配置，保留其他 Hook，可随时移除；同一远程配置的旧版 CLI Hook 会迁移，避免重复请求。
+
+Gemini 支持 `BeforeTool` 确认及上下文指导，Cursor 支持 Shell / MCP 执行前确认及后续指导。它们只通过本次 Hook 门禁，不替代客户端原生权限策略；任意原生选择题尚不能统一回填。完整步骤见 [远程接管说明](REMOTE_CONTROL.md)。
 
 ## 开发
 
@@ -194,11 +204,11 @@ node scripts/smoke-interaction.cjs
 
 它验证实际窗口移动、点击与拖动区分、命令选择、透明度、四边收纳与点击展开、托管模式鼠标穿透与提醒、子任务状态与执行时间、子会话审批、重启恢复和托盘重置，截图保存在 `output/playwright/`。
 
-发布前同步更新 `package.json`、`package-lock.json` 和 `RELEASE_NOTES.md`。推送版本标签，或在 Actions 里手动运行 Release，都会在三端打包成功后发布到这个仓库的 [Releases](https://github.com/xihadance/cute-island/releases)，并附上版本说明。手动运行时，标签取 `package.json` 里的版本号，例如当前是 `v0.1.11`。
+发布前同步更新 `package.json`、`package-lock.json` 和 `RELEASE_NOTES.md`。推送版本标签，或在 Actions 里手动运行 Release，都会在三端打包成功后发布到这个仓库的 [Releases](https://github.com/xihadance/cute-island/releases)，并附上版本说明。手动运行时，标签取 `package.json` 里的版本号，例如当前是 `v0.1.12`。
 
 ```bash
-git tag v0.1.11
-git push origin v0.1.11
+git tag v0.1.12
+git push origin v0.1.12
 ```
 
 ## 图标

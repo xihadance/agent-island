@@ -9,6 +9,7 @@ const island = {
   openSettings(): Promise<void> { return ipcRenderer.invoke('island:open-settings') },
   saveRemote(draft: RemoteDraft, revision: string): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:save-remote', draft, revision) },
   setRemoteEnabled(enabled: boolean): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:remote-enabled', enabled) },
+  setRemoteIntegration(agent: 'claude' | 'cursor' | 'gemini', installed: boolean): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:remote-integration', agent, installed) },
   getSettings(): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:get-settings') },
   updateSettings(patch: PreferencesPatch): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:update-settings', patch) },
   setClaudeIntegration(installed: boolean): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:claude-integration', installed) },

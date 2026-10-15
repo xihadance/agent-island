@@ -25,6 +25,7 @@ export interface IslandApi {
   openSettings: () => Promise<void>
   saveRemote: (draft: RemoteDraft, revision: string) => Promise<SettingsSnapshot>
   setRemoteEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
+  setRemoteIntegration: (agent: 'claude' | 'cursor' | 'gemini', installed: boolean) => Promise<SettingsSnapshot>
   getSettings: () => Promise<SettingsSnapshot>
   updateSettings: (patch: PreferencesPatch) => Promise<SettingsSnapshot>
   onSettings: (callback: (snapshot: SettingsSnapshot) => void) => () => void

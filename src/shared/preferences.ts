@@ -2,6 +2,7 @@ import { isIslandMode, type IslandMode } from './island-behavior'
 import type { RemoteSettings } from './remote-settings'
 
 export interface Preferences {
+  codexServer: { enabled: boolean; port: number; executable: string }
   mode: IslandMode
   watchSessions: boolean
   automation: {
@@ -14,6 +15,7 @@ export interface Preferences {
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
+  codexServer: { enabled: false, port: 4500, executable: '' },
   mode: 'focus',
   watchSessions: true,
   automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' }
@@ -36,7 +38,10 @@ export function isLocalCodexUrl(value: string): boolean {
 export function normalizePreferences(value: unknown): Preferences {
   const source = record(value)
   const automation = record(source.automation)
+  const server = record(source.codexServer)
   return {
+    codexServer: { enabled: server.enabled === true, port: Number.isInteger(server.port) && Number(server.port) > 0 && Number(server.port) <= 65535 ? Number(server.port) : 4500,
+      executable: typeof server.executable === 'string' ? server.executable.trim() : '' },
     mode: isIslandMode(source.mode) ? source.mode : 'focus',
     watchSessions: typeof source.watchSessions === 'boolean' ? source.watchSessions : true,
     automation: {
@@ -49,12 +54,18 @@ export function normalizePreferences(value: unknown): Preferences {
   }
 }
 
-export type PreferencesPatch = Partial<Omit<Preferences, 'automation'>> & { automation?: Partial<Preferences['automation']> }
+export type PreferencesPatch = Partial<Omit<Preferences, 'automation' | 'codexServer'>> & { automation?: Partial<Preferences['automation']>; codexServer?: Partial<Preferences['codexServer']> }
 
 export function patchPreferences(current: Preferences, value: unknown): Preferences {
   const patch = record(value)
   if (value === null || typeof value !== 'object' || Array.isArray(value) ||
-      Object.keys(patch).some(key => !['mode', 'watchSessions', 'automation'].includes(key))) throw new Error('无效的配置')
+      Object.keys(patch).some(key => !['mode', 'watchSessions', 'automation', 'codexServer'].includes(key))) throw new Error('无效的配置')
+  const server = record(patch.codexServer)
+  if ('codexServer' in patch && (patch.codexServer === null || typeof patch.codexServer !== 'object' || Array.isArray(patch.codexServer) ||
+      Object.keys(server).some(key => !['enabled', 'port', 'executable'].includes(key)))) throw new Error('无效的 Codex 服务配置')
+  if ('enabled' in server && typeof server.enabled !== 'boolean') throw new Error('无效的 Codex 服务开关')
+  if ('port' in server && (!Number.isInteger(server.port) || Number(server.port) < 1 || Number(server.port) > 65535)) throw new Error('Codex 服务端口必须为 1–65535')
+  if ('executable' in server && (typeof server.executable !== 'string' || /[\r\n\0]/.test(server.executable))) throw new Error('无效的 Codex 程序路径')
   if ('mode' in patch && !isIslandMode(patch.mode)) throw new Error('无效的显示模式')
   if ('watchSessions' in patch && typeof patch.watchSessions !== 'boolean') throw new Error('无效的会话识别设置')
   const auto = record(patch.automation)
@@ -65,7 +76,7 @@ export function patchPreferences(current: Preferences, value: unknown): Preferen
   }
   if ('fallback' in auto && auto.fallback !== 'manual' && auto.fallback !== 'first') throw new Error('无效的问题回答规则')
   if ('codexUrl' in auto && (typeof auto.codexUrl !== 'string' || !isLocalCodexUrl(auto.codexUrl))) throw new Error('请填写本机 WebSocket 地址，例如 ws://127.0.0.1:4500')
-  return normalizePreferences({ ...current, ...patch, automation: { ...current.automation, ...auto } })
+  return normalizePreferences({ ...current, ...patch, automation: { ...current.automation, ...auto }, codexServer: { ...current.codexServer, ...server } })
 }
 
 export interface AutomationEntry {
@@ -77,6 +88,8 @@ export interface AutomationEntry {
 }
 
 export interface SettingsSnapshot {
+  codexServer: { status: 'stopped' | 'starting' | 'running' | 'error'; url: string; detail: string }
+  remoteHooks: Record<'claude' | 'cursor' | 'gemini', { installed: boolean; file: string; error?: string }>
   remote: RemoteSettings
   preferences: Preferences
   version: string

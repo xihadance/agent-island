@@ -118,10 +118,10 @@ async function readStdin(): Promise<string> {
   for await (const chunk of process.stdin) { text += chunk.toString(); check(text.length <= 1000000, 'Hook 输入过大') }
   return text
 }
-export function hookConfig(agent: string, config: string, cli: string): unknown {
+export function hookConfig(agent: string, config: string, cli: string, runner = [process.execPath, path.resolve(cli), 'remote', 'hook']): unknown {
   check(['claude', 'cursor', 'gemini'].includes(agent), '请选择 claude、cursor 或 gemini')
-  check(!/[\r\n"`$%]/.test(config + cli + process.execPath), '路径含有不支持的 Shell 字符')
-  const command = `"${process.execPath}" "${path.resolve(cli)}" remote hook --agent ${agent} --config "${config}"`
+  check(!/[\r\n"`$%!]/.test(config + runner.join('')), '路径含有不支持的 Shell 字符')
+  const command = `${runner.map(value => `"${value}"`).join(' ')} --agent ${agent} --config "${config}"`
   const names = agent === 'claude' ? ['SessionStart', 'UserPromptSubmit', 'PermissionRequest', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'StopFailure', 'Elicitation', 'SessionEnd']
     : agent === 'cursor' ? ['sessionStart', 'beforeShellExecution', 'beforeMCPExecution', 'postToolUse', 'postToolUseFailure', 'stop', 'sessionEnd']
       : ['SessionStart', 'BeforeTool', 'BeforeAgent', 'AfterTool', 'Notification', 'SessionEnd']

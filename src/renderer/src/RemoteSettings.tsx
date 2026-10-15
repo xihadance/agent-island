@@ -14,8 +14,8 @@ function Field({ label, value, onChange, placeholder, optional = false }: {
     placeholder={placeholder} required={!optional} spellCheck={false} autoComplete="off" /></div>
 }
 
-export function RemoteSettings({ remote, preview, onSnapshot, onDirty }: {
-  remote: RemoteState; preview?: boolean; onSnapshot: (snapshot: SettingsSnapshot) => void; onDirty: (dirty: boolean) => void
+export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: {
+  remote: RemoteState; hooks: SettingsSnapshot['remoteHooks']; preview?: boolean; onSnapshot: (snapshot: SettingsSnapshot) => void; onDirty: (dirty: boolean) => void
 }) {
   const bridge = getBridge()
   const [draft, setDraft] = useState<RemoteDraft>({ channels: remote.channels, codex: remote.codex })
@@ -51,6 +51,22 @@ export function RemoteSettings({ remote, preview, onSnapshot, onDirty }: {
     <p className="settings-help">开启服务不代表所有渠道已经连通。先在渠道中发送 /sessions 验证；旧配置会自动读取。编辑连接前请关闭远程接管。</p>
     {(error || remote.error) && <p className="settings-error" role="alert">{error || remote.error}</p>}
     {remote.missingCredentials.length > 0 && <p className="connection-detail">当前进程未读取到凭据：{remote.missingCredentials.join('、')}。请设置这些环境变量后重启应用。</p>}
+    <section className="settings-section" aria-labelledby="remote-hooks-title"><h2 id="remote-hooks-title">Agent Hook 接管</h2>
+      <p className="settings-description">安装后重新打开对应客户端或会话，再配置消息渠道并开启上方远程接管。安装和移除均会备份文件，保留其他 Hook。</p>
+      {(['claude', 'cursor', 'gemini'] as const).map(agent => {
+        const label = { claude: 'Claude Code', cursor: 'Cursor', gemini: 'Gemini CLI' }[agent]
+        const hook = hooks[agent]
+        return <div className="hook-integration" key={agent}><div className="setting-row"><div className="setting-copy"><strong>{label}</strong>
+          <p>{agent === 'claude' ? '权限审批、选择题回答与补充指令。' : agent === 'cursor' ? 'Shell / MCP 执行前确认与后续指导；原生问答仍在 Cursor 中处理。' : 'BeforeTool 执行前确认与上下文指导；原生问答仍在 Gemini 中处理。'}</p>
+          <p>{hook.installed ? '已安装接管' : '尚未安装接管'}</p></div>
+          <button className="settings-button" disabled={busy || preview || dirty} onClick={() => void run(async () => {
+            onSnapshot(await bridge.setRemoteIntegration(agent, !hook.installed)); setNotice(hook.installed ? `${label} 接管已移除` : `${label} 接管已安装，请重新打开会话`)
+          })}>{hook.installed ? '移除' : '安装'} {label} 接管</button></div>
+          {hook.error && <p className="connection-detail" role="alert">{hook.error}</p>}
+          <p className="settings-help">配置文件：{hook.file}</p></div>
+      })}
+      <p className="settings-help">Cursor 与 Gemini 的批准仅通过本次 Hook 门禁，各客户端原有的权限检查仍然生效。</p>
+    </section>
     <form onSubmit={event => { event.preventDefault(); void run(async () => {
       const normalized = { channels: draft.channels.map(c => ({ ...c, id: c.id.trim(), destination: c.destination.trim(), allowedUsers: split(c.allowedUsers.join(',')) })),
         codex: draft.codex.map(c => ({ ...c, id: c.id.trim(), url: c.url.trim(), threads: split(c.threads.join(',')) })) }

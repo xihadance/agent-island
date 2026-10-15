@@ -64,7 +64,9 @@ node bin/cute-island.js remote status
 
 ## 接管 Claude、Cursor、Gemini 现有会话
 
-生成配置片段，**合并**到已有 Agent 配置的 `hooks` 中，不要覆盖已有规则：
+桌面应用可在「远程接管 → Agent Hook 接管」直接安装或移除 Claude Code、Cursor、Gemini CLI 接管。配置分别写入 `~/.claude/settings.json`、`~/.cursor/hooks.json`、`~/.gemini/settings.json`（对应环境变量重定向仍生效）。每次修改前备份，保留其他规则；安装后重新打开客户端或会话。应用生成的启动脚本使用内附 Node 运行时，不需要额外安装 Node 来执行 Hook。
+
+若使用仓库中的 CLI，也可生成配置片段，**合并**到已有 Agent 配置的 `hooks` 中，不要覆盖已有规则：
 
 ```powershell
 node bin/cute-island.js remote hook-config --agent claude
@@ -95,6 +97,8 @@ Cursor、Gemini 的“批准”只通过本次 Hook 门禁，保留 Agent 自己
 补充指令在下一个支持的 Hook 处理点消费。它不会凭空唤醒已经空闲、没有 Hook 正在运行的会话；`submitted` 只表示已返回给 Hook，不能当作模型已经执行。Claude 官方 Channels 可作为独立的预览方案获得推送消息能力，但需要提前启用、满足官方允许列表，并使用另一只 Bot，不能与本服务争抢 Telegram 更新。
 
 ## 接管 Codex
+
+可以先在「Agent 接入 → Codex app-server」启动应用托管的本机服务，再用页面给出的 `codex --remote` 命令连接终端客户端。服务使用已安装的 Codex 原生程序，沿用本机登录；启动它并不会接管另一个实例正在运行的会话。
 
 只连接已经承载目标会话的 App-server。配置显式指定原生 thread ID：
 

@@ -133,4 +133,11 @@ body[data-surface='settings'] { scrollbar-color: #525259 #151516; scrollbar-widt
 .remote-save { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 24px 0; margin-top: 24px; border-top: 1px solid var(--settings-line); }
 .remote-save [role='status'] { color: var(--settings-muted); font-size: 12px; }
 .remote-settings .settings-note { overflow-wrap: anywhere; }
+.codex-service-options { margin-top: 20px; }
+.codex-service-options summary { color: #c2c2ca; cursor: pointer; padding-block: 8px; }
+.codex-service-options[open] summary { margin-bottom: 12px; }
+.codex-client-command { margin-top: 22px; }
+.hook-integration { margin-bottom: 20px; }
+.hook-integration .setting-row { gap: 16px; }
+@media (max-width: 760px) { .hosted-codex .setting-row, .hook-integration .setting-row { flex-wrap: wrap; } }
 @media (max-width: 760px) { .remote-grid { grid-template-columns: minmax(0, 1fr); } }

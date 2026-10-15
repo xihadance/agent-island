@@ -3,6 +3,7 @@ import type { PreferencesPatch, SettingsSnapshot } from '../../shared/preference
 import { getBridge } from './bridge'
 import './settings.css'
 import { RemoteSettings } from './RemoteSettings'
+import { CodexServerSettings } from './CodexServerSettings'
 
 type Section = 'general' | 'automation' | 'connections' | 'remote' | 'history'
 const sections: { id: Section; label: string; icon: ReactNode }[] = [
@@ -117,13 +118,16 @@ export function Settings() {
           </section>
           <section className="settings-section" aria-labelledby="codex-title"><div className="section-heading"><h2 id="codex-title">Codex app-server</h2><span className="connection-state"><span className="connection-dot" data-active={snapshot.codexStatus === 'connected'} />{({ disabled: '未连接', connecting: '连接中', connected: '已连接', error: '连接失败' })[snapshot.codexStatus]}</span></div>
             <p className="settings-description">连接与你的 Codex 客户端共用的本机 app-server，处理命令、文件、权限审批和选择题。</p>
-            <label className="settings-field-label" htmlFor="codex-url">WebSocket 地址</label><form className="connection-form" onSubmit={event => { event.preventDefault(); update({ automation: { codexUrl: codexUrl.trim() } }) }}><input id="codex-url" type="text" spellCheck={false} autoComplete="off" placeholder="ws://127.0.0.1:4500" value={codexUrl} onChange={event => setCodexUrl(event.target.value)} disabled={busy || snapshot.preview} aria-describedby="codex-help" /><button className="settings-button" type="submit" disabled={busy || snapshot.preview || codexUrl.trim() === auto.codexUrl}>保存地址</button></form>
+            <CodexServerSettings snapshot={snapshot} busy={busy} update={update} />
+            <details className="codex-service-options"><summary>连接已有的 app-server</summary>
+            <label className="settings-field-label" htmlFor="codex-url">WebSocket 地址</label><form className="connection-form" onSubmit={event => { event.preventDefault(); update({ automation: { codexUrl: codexUrl.trim() } }) }}><input id="codex-url" type="text" spellCheck={false} autoComplete="off" placeholder="ws://127.0.0.1:4500" value={codexUrl} onChange={event => setCodexUrl(event.target.value)} disabled={busy || snapshot.preview || snapshot.preferences.codexServer.enabled} aria-describedby="codex-help" /><button className="settings-button" type="submit" disabled={busy || snapshot.preview || snapshot.preferences.codexServer.enabled || codexUrl.trim() === auto.codexUrl}>保存地址</button></form>
             <p className="settings-help" id="codex-help">开启自动审批后连接，清空地址可移除。仅支持本机无认证的 WebSocket 服务；普通 CLI、桌面应用和插件的日志不会自动建立此连接。</p>
+            </details>
             {snapshot.codexDetail && <p className="connection-detail" role="status">{snapshot.codexDetail}</p>}
           </section>
           <div className="settings-note"><Icon><path d="M12 8h.01M11 12h1v4" /><circle cx="12" cy="12" r="9" /></Icon><p>Claude、Cursor、Gemini 的远程 Hook 和 Telegram、飞书、企业微信、Discord 渠道请在“远程接管”中配置。未接入的会话仍由原客户端处理。</p></div>
         </>}
-        <div hidden={section !== 'remote'}><RemoteSettings remote={snapshot.remote} preview={snapshot.preview} onSnapshot={setSnapshot} onDirty={setRemoteDirty} /></div>
+        <div hidden={section !== 'remote'}><RemoteSettings remote={snapshot.remote} hooks={snapshot.remoteHooks} preview={snapshot.preview} onSnapshot={setSnapshot} onDirty={setRemoteDirty} /></div>
         {section === 'history' && <>
           <div className="history-toolbar"><p>保留最近 50 条，退出应用后清空。</p><button className="settings-button" disabled={busy || !snapshot.history.length} onClick={() => void run(() => bridge.settingsAction('clear-history'), '记录已清空')}>清空记录</button></div>
           {snapshot.history.length ? <ol className="automation-history">{snapshot.history.map(entry => <li key={entry.id} data-action={entry.action}><div><span className="history-action">{entry.action === 'approved' ? '已批准' : entry.action === 'answered' ? '已回答' : '交给你处理'}</span><span className="history-agent">{entry.agent}</span><time dateTime={new Date(entry.at).toISOString()}>{new Date(entry.at).toLocaleTimeString('zh-CN', { hour12: false })}</time></div><p>{entry.summary}</p></li>)}</ol> : <div className="settings-empty"><Icon><path d="M8 3h8l4 4v14H4V3zm0 8h8m-8 4h5" /></Icon><h2>还没有处理记录</h2><p>开启自动审批并接入 Agent 后，新的请求处理结果会出现在这里。</p><button className="settings-button" onClick={() => setSection('connections')}>设置 Agent 接入</button></div>}
