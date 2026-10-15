@@ -8,4 +8,5 @@ dist
 .*/skills/
 .agents-use/
 output/playwright/
+.impeccable/review/
 docs/

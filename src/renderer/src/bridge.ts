@@ -2,6 +2,7 @@ import { ActivityStore } from '../../shared/activity'
 import { DEMO_ID, demoFrames, playDemoFrames } from '../../shared/demo'
 import type { IslandApi } from './env'
 import { AttentionTracker, isIslandMode, type IslandBehavior, type IslandMode } from '../../shared/island-behavior'
+import { normalizePreferences, patchPreferences, type SettingsSnapshot } from '../../shared/preferences'
 
 let mock: IslandApi | undefined
 
@@ -19,6 +20,24 @@ function createMockBridge(): IslandApi {
     const saved = localStorage.getItem('cute-island-mode')
     if (isIslandMode(saved)) mode = saved
   } catch { /* Storage may be unavailable in previews. */ }
+  let preferences = normalizePreferences({ mode })
+  try {
+    const saved = localStorage.getItem('cute-island-preferences')
+    if (saved) preferences = normalizePreferences(JSON.parse(saved))
+  } catch { /* Keep valid defaults when preview storage is damaged. */ }
+  mode = preferences.mode
+  const settingsListeners = new Set<(snapshot: SettingsSnapshot) => void>()
+  const snapshot = (): SettingsSnapshot => ({ preferences, version: '预览', port: 17321, watchDisabledByEnvironment: false,
+    claudeInstalled: false, codexStatus: 'disabled', codexDetail: '', history: [], preview: true })
+  const save = (): SettingsSnapshot => {
+    mode = preferences.mode
+    try { localStorage.setItem('cute-island-preferences', JSON.stringify(preferences)); localStorage.setItem('cute-island-mode', mode) }
+    catch { /* Optional preview persistence. */ }
+    notifyBehavior()
+    const next = snapshot()
+    for (const listener of settingsListeners) listener(next)
+    return next
+  }
   const behaviorListeners = new Set<(behavior: IslandBehavior) => void>()
   const behavior = (): IslandBehavior => ({ mode, attentionIds: attention.pendingIds() })
   const notifyBehavior = (): void => {
@@ -33,6 +52,15 @@ function createMockBridge(): IslandApi {
     for (const listener of listeners) listener(activities)
   })
   return {
+    openSettings: async () => { window.location.hash = 'settings' },
+    getSettings: async () => snapshot(),
+    updateSettings: async patch => { preferences = patchPreferences(preferences, patch); return save() },
+    onSettings(callback) { settingsListeners.add(callback); return () => { settingsListeners.delete(callback) } },
+    setClaudeIntegration: async () => { throw new Error('请在桌面应用中设置 Agent 接入') },
+    settingsAction: async action => {
+      if (action === 'clear-history') return
+      throw new Error('窗口操作请在桌面应用中使用')
+    },
     getBehavior: async () => behavior(),
     onBehavior(callback) {
       behaviorListeners.add(callback)
@@ -40,9 +68,8 @@ function createMockBridge(): IslandApi {
     },
     setMode(next) {
       if (!isIslandMode(next)) return
-      mode = next
-      try { localStorage.setItem('cute-island-mode', mode) } catch { /* Optional preview persistence. */ }
-      notifyBehavior()
+      preferences = { ...preferences, mode: next }
+      save()
     },
     acknowledge(id) { attention.acknowledge(id); notifyBehavior() },
     setIgnoreMouse() {},

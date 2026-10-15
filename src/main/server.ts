@@ -10,12 +10,12 @@ export interface StatusServer {
 
 export function startStatusServer(
   store: ActivityStore,
-  options: { port: number; token?: string }
+  options: { port: number; token?: string; claudeHook?: (payload: unknown) => unknown }
 ): Promise<StatusServer> {
   const token = options.token?.trim() || undefined
   const sockets = new Set<WebSocket>()
   const httpServer = createServer((req, res) => {
-    void handleRequest(req, res, store, token).catch((error: unknown) => {
+    void handleRequest(req, res, store, token, options.claudeHook).catch((error: unknown) => {
       if (res.headersSent) return
       const status = error instanceof ActivityError ? error.status : 500
       sendJson(res, status, { error: error instanceof Error ? error.message : '内部错误' })
@@ -80,7 +80,8 @@ async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
   store: ActivityStore,
-  token: string | undefined
+  token: string | undefined,
+  claudeHook?: (payload: unknown) => unknown
 ): Promise<void> {
   if (!authorized(req, token)) {
     sendJson(res, 401, { error: '未授权' })
@@ -88,6 +89,15 @@ async function handleRequest(
   }
   const url = new URL(req.url ?? '/', 'http://127.0.0.1')
   const parts = url.pathname.split('/').filter(Boolean)
+  if (req.method === 'POST' && url.pathname === '/v1/hooks/claude' && claudeHook) {
+    // Browser pages cannot submit permission requests to the local hook endpoint.
+    if (req.headers.origin || !req.headers['content-type']?.startsWith('application/json')) {
+      sendJson(res, 403, { error: 'Hook 仅接受本机 Agent 的 JSON 请求' })
+      return
+    }
+    sendJson(res, 200, claudeHook(await readJson(req)))
+    return
+  }
   if (req.method === 'GET' && url.pathname === '/v1/activities') {
     sendJson(res, 200, { activities: store.list() })
     return

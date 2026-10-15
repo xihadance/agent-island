@@ -3,6 +3,7 @@
 import type { Activity } from '../../shared/activity'
 import type { DockState } from '../../shared/window-position'
 import type { IslandBehavior, IslandMode } from '../../shared/island-behavior'
+import type { PreferencesPatch, SettingsSnapshot } from '../../shared/preferences'
 
 export interface PointerSample {
   x: number
@@ -20,6 +21,12 @@ export interface IslandHit {
 }
 
 export interface IslandApi {
+  openSettings: () => Promise<void>
+  getSettings: () => Promise<SettingsSnapshot>
+  updateSettings: (patch: PreferencesPatch) => Promise<SettingsSnapshot>
+  onSettings: (callback: (snapshot: SettingsSnapshot) => void) => () => void
+  setClaudeIntegration: (installed: boolean) => Promise<SettingsSnapshot>
+  settingsAction: (action: 'show' | 'hide' | 'reset-position' | 'clear-history') => Promise<void>
   getBehavior: () => Promise<IslandBehavior>
   onBehavior: (callback: (behavior: IslandBehavior) => void) => () => void
   setMode: (mode: IslandMode) => void

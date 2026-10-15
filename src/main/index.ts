@@ -1,5 +1,8 @@
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen } from 'electron'
 import path from 'node:path'
+import os from 'node:os'
+import { existsSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { SessionWatcher } from '../agents/watch'
 import { ActivityStore } from '../shared/activity'
 import { DEMO_ID, demoFrames, playDemoFrames } from '../shared/demo'
@@ -8,12 +11,17 @@ import { TRAY_ICON } from './tray-icon'
 import { constrainPosition, dockAfterDrag, dockedPosition, positionAfterDrag, type DockState, type Point, type WindowPosition } from '../shared/window-position'
 import { readWindowPosition, saveWindowPosition } from './window-position'
 import { AttentionTracker, isIslandMode, isPassive, managedAttention, shouldIgnoreMouse, type IslandBehavior, type IslandMode } from '../shared/island-behavior'
-import { readIslandMode, saveIslandMode } from './preferences'
+import { readPreferences, savePreferences } from './preferences'
+import { normalizePreferences, patchPreferences, type AutomationEntry, type SettingsSnapshot } from '../shared/preferences'
+import { decideClaude, type Decision } from '../shared/automation'
+import { CodexAutomation } from './codex-automation'
+import { hasClaudeIntegration, setClaudeIntegration } from './claude-integration'
 
 const WINDOW_WIDTH = 460
 const WINDOW_HEIGHT = 560
 
 let mainWindow: BrowserWindow | null = null
+let settingsWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let server: StatusServer | null = null
 let store: ActivityStore | null = null
@@ -22,6 +30,12 @@ let demoToken = 0
 let preferredPosition: WindowPosition | undefined
 let dockCollapsed = true
 let islandMode: IslandMode = 'focus'
+let preferences = normalizePreferences(undefined)
+let codex: CodexAutomation | undefined
+let claudeInstalled = false
+let historySequence = 0
+const history: AutomationEntry[] = []
+const recentHooks = new Set<string>()
 const attention = new AttentionTracker()
 const behaviorListeners = new Set<() => void>()
 let lastBehavior = ''
@@ -42,7 +56,7 @@ if (!gotLock) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    reveal()
+    openSettings()
   })
   app.whenReady().then(boot).catch((error: unknown) => {
     console.error(error)
@@ -62,11 +76,25 @@ function readPort(): number {
 async function boot(): Promise<void> {
   if (process.platform === 'win32') app.setAppUserModelId('com.cuteisland.app')
   store = new ActivityStore()
+  const firstLaunch = !existsSync(preferencesFile())
+  preferences = readPreferences(preferencesFile())
+  islandMode = preferences.mode
+  codex = new CodexAutomation(() => preferences, notifySettings, decision => reportDecision('Codex', decision))
   const port = readPort()
   try {
     server = await startStatusServer(store, {
       port,
-      token: process.env.CUTE_ISLAND_TOKEN
+      token: process.env.CUTE_ISLAND_TOKEN,
+      claudeHook: payload => {
+        const decision = decideClaude(payload, preferences)
+        const key = createHash('sha256').update(JSON.stringify([payload, decision.action, decision.summary])).digest('hex')
+        if (!recentHooks.has(key)) {
+          recentHooks.add(key)
+          if (recentHooks.size > 256) recentHooks.delete(recentHooks.values().next().value!)
+          reportDecision('Claude Code', decision)
+        }
+        return decision.response ?? {}
+      }
     })
   } catch (error) {
     dialog.showErrorBox('Cute Island', `状态服务启动失败（端口 ${port}）。\n${errorText(error)}`)
@@ -74,23 +102,23 @@ async function boot(): Promise<void> {
     return
   }
   console.log(`Cute Island 正在监听 http://127.0.0.1:${server.port}`)
-  if (process.env.CUTE_ISLAND_WATCH !== '0') {
-    watcher = new SessionWatcher(store)
-    watcher.start()
-  }
+  syncWatcher()
   preferredPosition = readWindowPosition(positionFile())
-  islandMode = readIslandMode(preferencesFile())
+  claudeInstalled = hasClaudeIntegration(claudeSettingsFile(), server.port)
   attention.update(store.list())
   mainWindow = createWindow(store)
   tray = createTray()
   wireIpc(store)
+  codex.update()
+  if (firstLaunch || process.argv.includes('--settings')) openSettings()
   app.on('before-quit', () => {
     watcher?.stop()
+    codex?.stop()
     tray?.destroy()
     store?.dispose()
     void server?.close()
   })
-  app.on('activate', () => reveal())
+  app.on('activate', () => openSettings())
   app.on('window-all-closed', () => {
     app.quit()
   })
@@ -140,6 +168,9 @@ function createWindow(activityStore: ActivityStore): BrowserWindow {
   win.once('ready-to-show', () => {
     if (!win.isDestroyed()) win.showInactive()
   })
+  win.webContents.on('context-menu', () => {
+    Menu.buildFromTemplate([{ label: '打开配置…', accelerator: 'CmdOrCtrl+,', click: openSettings }]).popup({ window: win })
+  })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(path.join(__dirname, '../renderer/index.html'))
   return win
@@ -176,10 +207,83 @@ function notifyBehavior(): void {
 
 function setIslandMode(mode: IslandMode): void {
   if (islandMode === mode) return
-  islandMode = mode
-  saveIslandMode(preferencesFile(), mode)
+  try { updatePreferences({ mode }) }
+  catch (error) { dialog.showErrorBox('无法保存配置', errorText(error)) }
+}
+
+function claudeSettingsFile(): string {
+  return path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), 'settings.json')
+}
+
+function settingsSnapshot(): SettingsSnapshot {
+  return { preferences, version: app.getVersion(), port: server?.port ?? readPort(),
+    watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled,
+    codexStatus: codex?.status ?? 'disabled', codexDetail: codex?.detail ?? '', history: [...history] }
+}
+
+function notifySettings(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('island:settings', settingsSnapshot())
+}
+
+function reportDecision(agent: string, decision: Decision): void {
+  history.unshift({ id: ++historySequence, at: Date.now(), agent, action: decision.action, summary: decision.summary.slice(0, 300) })
+  history.splice(50)
+  notifySettings()
+}
+
+function syncWatcher(): void {
+  const enabled = preferences.watchSessions && process.env.CUTE_ISLAND_WATCH !== '0'
+  if (enabled && !watcher && store) { watcher = new SessionWatcher(store); watcher.start() }
+  else if (!enabled && watcher) { watcher.stop(); watcher = null }
+}
+
+function updatePreferences(patch: unknown): SettingsSnapshot {
+  const next = patchPreferences(preferences, patch)
+  savePreferences(preferencesFile(), next)
+  preferences = next
+  islandMode = next.mode
+  syncWatcher()
+  codex?.update()
   if (tray) updateTrayMenu(tray)
   notifyBehavior()
+  notifySettings()
+  return settingsSnapshot()
+}
+
+function resetPosition(): void {
+  preferredPosition = defaultPosition()
+  saveWindowPosition(positionFile(), preferredPosition)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('island:dock', currentDock())
+    placeWindow(mainWindow)
+  }
+  reveal()
+}
+
+function openSettings(): void {
+  if (!app.isReady()) return
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    if (settingsWindow.isMinimized()) settingsWindow.restore()
+    settingsWindow.show()
+    settingsWindow.focus()
+    claudeInstalled = hasClaudeIntegration(claudeSettingsFile(), server?.port ?? readPort())
+    notifySettings()
+    return
+  }
+  const win = new BrowserWindow({
+    title: 'Cute Island · 配置', width: 920, height: 740, minWidth: 640, minHeight: 540,
+    show: false, backgroundColor: '#151516', autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: true, nodeIntegration: false }
+  })
+  settingsWindow = win
+  win.setMenuBarVisibility(false)
+  win.on('closed', () => { if (settingsWindow === win) settingsWindow = null })
+  win.once('ready-to-show', () => win.show())
+  if (process.env.ELECTRON_RENDERER_URL) {
+    const url = new URL(process.env.ELECTRON_RENDERER_URL)
+    url.hash = 'settings'
+    void win.loadURL(url.toString())
+  } else void win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: 'settings' })
 }
 
 function placeWindow(win: BrowserWindow, content = { x: 167, y: 8, width: 126, height: 36 }): void {
@@ -197,26 +301,26 @@ function createTray(): Tray {
   const next = new Tray(icon)
   updateTrayMenu(next)
   next.on('click', () => reveal())
+  next.on('double-click', () => openSettings())
   return next
 }
 
 function updateTrayMenu(next: Tray): void {
-  next.setToolTip(`Cute Island · ${islandMode === 'managed' ? '托管模式' : '关注模式'}`)
+  next.setToolTip(`Cute Island · ${islandMode === 'managed' ? '托管模式' : '关注模式'}${preferences.automation.enabled ? ' · 自动审批' : ''}`)
   const menu = Menu.buildFromTemplate([
+    { label: '打开配置…', accelerator: 'CmdOrCtrl+,', click: openSettings },
+    { type: 'separator' },
     { label: '关注模式', type: 'radio', checked: islandMode === 'focus', click: () => setIslandMode('focus') },
     { label: '托管模式', type: 'radio', checked: islandMode === 'managed', click: () => setIslandMode('managed') },
     { type: 'separator' },
+    { label: '自动审批', type: 'checkbox', checked: preferences.automation.enabled, click: item => {
+      try { updatePreferences({ automation: { enabled: item.checked } }) }
+      catch (error) { dialog.showErrorBox('无法保存配置', errorText(error)) }
+    } },
+    { type: 'separator' },
     { label: '显示灵动岛', click: () => reveal() },
     { label: '隐藏灵动岛', click: () => mainWindow?.hide() },
-    { label: '恢复顶部居中', click: () => {
-      preferredPosition = defaultPosition()
-      saveWindowPosition(positionFile(), preferredPosition)
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('island:dock', currentDock())
-        placeWindow(mainWindow)
-      }
-      reveal()
-    } },
+    { label: '恢复顶部居中', click: resetPosition },
     { label: '播放演示', click: () => void playDemo() },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() }
@@ -377,6 +481,27 @@ function isInteraction(value: unknown): value is Interaction {
 }
 
 function wireIpc(activityStore: ActivityStore): void {
+  ipcMain.handle('island:open-settings', openSettings)
+  ipcMain.handle('island:get-settings', () => settingsSnapshot())
+  ipcMain.handle('island:update-settings', (event, patch: unknown) => {
+    if (event.sender !== settingsWindow?.webContents) throw new Error('请从配置窗口修改设置')
+    return updatePreferences(patch)
+  })
+  ipcMain.handle('island:claude-integration', (event, installed: unknown) => {
+    if (event.sender !== settingsWindow?.webContents || typeof installed !== 'boolean') throw new Error('无效的接入操作')
+    setClaudeIntegration(claudeSettingsFile(), installed, server?.port ?? readPort(), process.env.CUTE_ISLAND_TOKEN)
+    claudeInstalled = hasClaudeIntegration(claudeSettingsFile(), server?.port ?? readPort())
+    notifySettings()
+    return settingsSnapshot()
+  })
+  ipcMain.handle('island:settings-action', (event, action: unknown) => {
+    if (event.sender !== settingsWindow?.webContents) throw new Error('请从配置窗口操作')
+    if (action === 'show') reveal()
+    else if (action === 'hide') mainWindow?.hide()
+    else if (action === 'reset-position') resetPosition()
+    else if (action === 'clear-history') { history.length = 0; notifySettings() }
+    else throw new Error('无法识别的操作')
+  })
   ipcMain.handle('island:get-behavior', () => currentBehavior())
   ipcMain.on('island:set-mode', (event, mode: unknown) => {
     if (event.sender === mainWindow?.webContents && isIslandMode(mode)) setIslandMode(mode)
@@ -389,7 +514,7 @@ function wireIpc(activityStore: ActivityStore): void {
   ipcMain.handle('island:get-dock', () => currentDock())
   ipcMain.on('island:set-ignore-mouse', (event, ignore: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (!win || win.isDestroyed()) return
+    if (!win || win.isDestroyed() || win !== mainWindow) return
     if (ignore === true || ignore === false) ignoreMouse(win, ignore)
   })
   ipcMain.handle('island:get-activities', () => activityStore.list())

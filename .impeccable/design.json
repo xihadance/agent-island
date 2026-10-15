@@ -1,0 +1,593 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T17:54:05.335Z",
+  "title": "Design System: Cute Island",
+  "extensions": {
+    "colorMeta": {
+      "island": {
+        "role": "neutral",
+        "displayName": "Island",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00)",
+          "oklch(26.43% 0.0000 0.00)",
+          "oklch(37.86% 0.0000 0.00)",
+          "oklch(49.29% 0.0000 0.00)",
+          "oklch(60.71% 0.0000 0.00)",
+          "oklch(72.14% 0.0000 0.00)",
+          "oklch(83.57% 0.0000 0.00)",
+          "oklch(95.00% 0.0000 0.00)"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00)",
+          "oklch(26.43% 0.0000 0.00)",
+          "oklch(37.86% 0.0000 0.00)",
+          "oklch(49.29% 0.0000 0.00)",
+          "oklch(60.71% 0.0000 0.00)",
+          "oklch(72.14% 0.0000 0.00)",
+          "oklch(83.57% 0.0000 0.00)",
+          "oklch(95.00% 0.0000 0.00)"
+        ]
+      },
+      "settings-background": {
+        "role": "neutral",
+        "displayName": "Settings Background",
+        "tonalRamp": [
+          "oklch(15.00% 0.0020 286.22)",
+          "oklch(26.43% 0.0020 286.22)",
+          "oklch(37.86% 0.0020 286.22)",
+          "oklch(49.29% 0.0020 286.22)",
+          "oklch(60.71% 0.0020 286.22)",
+          "oklch(72.14% 0.0020 286.22)",
+          "oklch(83.57% 0.0020 286.22)",
+          "oklch(95.00% 0.0020 286.22)"
+        ]
+      },
+      "settings-sidebar": {
+        "role": "neutral",
+        "displayName": "Settings Sidebar",
+        "tonalRamp": [
+          "oklch(15.00% 0.0020 286.18)",
+          "oklch(26.43% 0.0020 286.18)",
+          "oklch(37.86% 0.0020 286.18)",
+          "oklch(49.29% 0.0020 286.18)",
+          "oklch(60.71% 0.0020 286.18)",
+          "oklch(72.14% 0.0020 286.18)",
+          "oklch(83.57% 0.0020 286.18)",
+          "oklch(95.00% 0.0020 286.18)"
+        ]
+      },
+      "settings-text": {
+        "role": "neutral",
+        "displayName": "Settings Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0027 286.35)",
+          "oklch(26.43% 0.0027 286.35)",
+          "oklch(37.86% 0.0027 286.35)",
+          "oklch(49.29% 0.0027 286.35)",
+          "oklch(60.71% 0.0027 286.35)",
+          "oklch(72.14% 0.0027 286.35)",
+          "oklch(83.57% 0.0027 286.35)",
+          "oklch(95.00% 0.0027 286.35)"
+        ]
+      },
+      "settings-muted": {
+        "role": "neutral",
+        "displayName": "Settings Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.0128 286.08)",
+          "oklch(26.43% 0.0128 286.08)",
+          "oklch(37.86% 0.0128 286.08)",
+          "oklch(49.29% 0.0128 286.08)",
+          "oklch(60.71% 0.0128 286.08)",
+          "oklch(72.14% 0.0128 286.08)",
+          "oklch(83.57% 0.0128 286.08)",
+          "oklch(95.00% 0.0128 286.08)"
+        ]
+      },
+      "settings-line": {
+        "role": "neutral",
+        "displayName": "Settings Line",
+        "tonalRamp": [
+          "oklch(15.00% 0.0089 285.87)",
+          "oklch(26.43% 0.0089 285.87)",
+          "oklch(37.86% 0.0089 285.87)",
+          "oklch(49.29% 0.0089 285.87)",
+          "oklch(60.71% 0.0089 285.87)",
+          "oklch(72.14% 0.0089 285.87)",
+          "oklch(83.57% 0.0089 285.87)",
+          "oklch(95.00% 0.0089 285.87)"
+        ]
+      },
+      "state-running": {
+        "role": "secondary",
+        "displayName": "State Running",
+        "tonalRamp": [
+          "oklch(15.00% 0.1211 251.32)",
+          "oklch(26.43% 0.1211 251.32)",
+          "oklch(37.86% 0.1211 251.32)",
+          "oklch(49.29% 0.1211 251.32)",
+          "oklch(60.71% 0.1211 251.32)",
+          "oklch(72.14% 0.1211 251.32)",
+          "oklch(83.57% 0.1211 251.32)",
+          "oklch(95.00% 0.1211 251.32)"
+        ]
+      },
+      "state-thinking": {
+        "role": "secondary",
+        "displayName": "State Thinking",
+        "tonalRamp": [
+          "oklch(15.00% 0.1130 294.61)",
+          "oklch(26.43% 0.1130 294.61)",
+          "oklch(37.86% 0.1130 294.61)",
+          "oklch(49.29% 0.1130 294.61)",
+          "oklch(60.71% 0.1130 294.61)",
+          "oklch(72.14% 0.1130 294.61)",
+          "oklch(83.57% 0.1130 294.61)",
+          "oklch(95.00% 0.1130 294.61)"
+        ]
+      },
+      "state-approval": {
+        "role": "secondary",
+        "displayName": "State Approval",
+        "tonalRamp": [
+          "oklch(15.00% 0.1222 84.34)",
+          "oklch(26.43% 0.1222 84.34)",
+          "oklch(37.86% 0.1222 84.34)",
+          "oklch(49.29% 0.1222 84.34)",
+          "oklch(60.71% 0.1222 84.34)",
+          "oklch(72.14% 0.1222 84.34)",
+          "oklch(83.57% 0.1222 84.34)",
+          "oklch(95.00% 0.1222 84.34)"
+        ]
+      },
+      "state-success": {
+        "role": "secondary",
+        "displayName": "State Success",
+        "tonalRamp": [
+          "oklch(15.00% 0.1302 154.40)",
+          "oklch(26.43% 0.1302 154.40)",
+          "oklch(37.86% 0.1302 154.40)",
+          "oklch(49.29% 0.1302 154.40)",
+          "oklch(60.71% 0.1302 154.40)",
+          "oklch(72.14% 0.1302 154.40)",
+          "oklch(83.57% 0.1302 154.40)",
+          "oklch(95.00% 0.1302 154.40)"
+        ]
+      },
+      "state-error": {
+        "role": "secondary",
+        "displayName": "State Error",
+        "tonalRamp": [
+          "oklch(15.00% 0.1456 24.60)",
+          "oklch(26.43% 0.1456 24.60)",
+          "oklch(37.86% 0.1456 24.60)",
+          "oklch(49.29% 0.1456 24.60)",
+          "oklch(60.71% 0.1456 24.60)",
+          "oklch(72.14% 0.1456 24.60)",
+          "oklch(83.57% 0.1456 24.60)",
+          "oklch(95.00% 0.1456 24.60)"
+        ]
+      },
+      "island-error-emphasis": {
+        "role": "secondary",
+        "displayName": "Island Error Emphasis",
+        "tonalRamp": [
+          "oklch(15.00% 0.1847 25.94)",
+          "oklch(26.43% 0.1847 25.94)",
+          "oklch(37.86% 0.1847 25.94)",
+          "oklch(49.29% 0.1847 25.94)",
+          "oklch(60.71% 0.1847 25.94)",
+          "oklch(72.14% 0.1847 25.94)",
+          "oklch(83.57% 0.1847 25.94)",
+          "oklch(95.00% 0.1847 25.94)"
+        ]
+      },
+      "settings-accent": {
+        "role": "primary",
+        "displayName": "Settings Accent",
+        "tonalRamp": [
+          "oklch(15.00% 0.1302 154.40)",
+          "oklch(26.43% 0.1302 154.40)",
+          "oklch(37.86% 0.1302 154.40)",
+          "oklch(49.29% 0.1302 154.40)",
+          "oklch(60.71% 0.1302 154.40)",
+          "oklch(72.14% 0.1302 154.40)",
+          "oklch(83.57% 0.1302 154.40)",
+          "oklch(95.00% 0.1302 154.40)"
+        ]
+      },
+      "settings-accent-hover": {
+        "role": "neutral",
+        "displayName": "Settings Accent Hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.1112 154.82)",
+          "oklch(26.43% 0.1112 154.82)",
+          "oklch(37.86% 0.1112 154.82)",
+          "oklch(49.29% 0.1112 154.82)",
+          "oklch(60.71% 0.1112 154.82)",
+          "oklch(72.14% 0.1112 154.82)",
+          "oklch(83.57% 0.1112 154.82)",
+          "oklch(95.00% 0.1112 154.82)"
+        ]
+      },
+      "settings-accent-ink": {
+        "role": "neutral",
+        "displayName": "Settings Accent Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.0330 157.34)",
+          "oklch(26.43% 0.0330 157.34)",
+          "oklch(37.86% 0.0330 157.34)",
+          "oklch(49.29% 0.0330 157.34)",
+          "oklch(60.71% 0.0330 157.34)",
+          "oklch(72.14% 0.0330 157.34)",
+          "oklch(83.57% 0.0330 157.34)",
+          "oklch(95.00% 0.0330 157.34)"
+        ]
+      },
+      "settings-button": {
+        "role": "neutral",
+        "displayName": "Settings Button",
+        "tonalRamp": [
+          "oklch(15.00% 0.0074 285.89)",
+          "oklch(26.43% 0.0074 285.89)",
+          "oklch(37.86% 0.0074 285.89)",
+          "oklch(49.29% 0.0074 285.89)",
+          "oklch(60.71% 0.0074 285.89)",
+          "oklch(72.14% 0.0074 285.89)",
+          "oklch(83.57% 0.0074 285.89)",
+          "oklch(95.00% 0.0074 285.89)"
+        ]
+      },
+      "settings-button-hover": {
+        "role": "neutral",
+        "displayName": "Settings Button Hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.0105 285.80)",
+          "oklch(26.43% 0.0105 285.80)",
+          "oklch(37.86% 0.0105 285.80)",
+          "oklch(49.29% 0.0105 285.80)",
+          "oklch(60.71% 0.0105 285.80)",
+          "oklch(72.14% 0.0105 285.80)",
+          "oklch(83.57% 0.0105 285.80)",
+          "oklch(95.00% 0.0105 285.80)"
+        ]
+      },
+      "settings-button-text": {
+        "role": "neutral",
+        "displayName": "Settings Button Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0040 286.32)",
+          "oklch(26.43% 0.0040 286.32)",
+          "oklch(37.86% 0.0040 286.32)",
+          "oklch(49.29% 0.0040 286.32)",
+          "oklch(60.71% 0.0040 286.32)",
+          "oklch(72.14% 0.0040 286.32)",
+          "oklch(83.57% 0.0040 286.32)",
+          "oklch(95.00% 0.0040 286.32)"
+        ]
+      },
+      "settings-input": {
+        "role": "neutral",
+        "displayName": "Settings Input",
+        "tonalRamp": [
+          "oklch(15.00% 0.0041 285.97)",
+          "oklch(26.43% 0.0041 285.97)",
+          "oklch(37.86% 0.0041 285.97)",
+          "oklch(49.29% 0.0041 285.97)",
+          "oklch(60.71% 0.0041 285.97)",
+          "oklch(72.14% 0.0041 285.97)",
+          "oklch(83.57% 0.0041 285.97)",
+          "oklch(95.00% 0.0041 285.97)"
+        ]
+      },
+      "settings-navigation-text": {
+        "role": "neutral",
+        "displayName": "Settings Navigation Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0126 286.10)",
+          "oklch(26.43% 0.0126 286.10)",
+          "oklch(37.86% 0.0126 286.10)",
+          "oklch(49.29% 0.0126 286.10)",
+          "oklch(60.71% 0.0126 286.10)",
+          "oklch(72.14% 0.0126 286.10)",
+          "oklch(83.57% 0.0126 286.10)",
+          "oklch(95.00% 0.0126 286.10)"
+        ]
+      },
+      "settings-navigation-hover": {
+        "role": "neutral",
+        "displayName": "Settings Navigation Hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.0038 286.12)",
+          "oklch(26.43% 0.0038 286.12)",
+          "oklch(37.86% 0.0038 286.12)",
+          "oklch(49.29% 0.0038 286.12)",
+          "oklch(60.71% 0.0038 286.12)",
+          "oklch(72.14% 0.0038 286.12)",
+          "oklch(83.57% 0.0038 286.12)",
+          "oklch(95.00% 0.0038 286.12)"
+        ]
+      },
+      "settings-navigation-current": {
+        "role": "neutral",
+        "displayName": "Settings Navigation Current",
+        "tonalRamp": [
+          "oklch(15.00% 0.0073 285.93)",
+          "oklch(26.43% 0.0073 285.93)",
+          "oklch(37.86% 0.0073 285.93)",
+          "oklch(49.29% 0.0073 285.93)",
+          "oklch(60.71% 0.0073 285.93)",
+          "oklch(72.14% 0.0073 285.93)",
+          "oklch(83.57% 0.0073 285.93)",
+          "oklch(95.00% 0.0073 285.93)"
+        ]
+      },
+      "settings-card": {
+        "role": "neutral",
+        "displayName": "Settings Card",
+        "tonalRamp": [
+          "oklch(15.00% 0.0057 285.96)",
+          "oklch(26.43% 0.0057 285.96)",
+          "oklch(37.86% 0.0057 285.96)",
+          "oklch(49.29% 0.0057 285.96)",
+          "oklch(60.71% 0.0057 285.96)",
+          "oklch(72.14% 0.0057 285.96)",
+          "oklch(83.57% 0.0057 285.96)",
+          "oklch(95.00% 0.0057 285.96)"
+        ]
+      },
+      "settings-card-enabled": {
+        "role": "neutral",
+        "displayName": "Settings Card Enabled",
+        "tonalRamp": [
+          "oklch(15.00% 0.0233 157.34)",
+          "oklch(26.43% 0.0233 157.34)",
+          "oklch(37.86% 0.0233 157.34)",
+          "oklch(49.29% 0.0233 157.34)",
+          "oklch(60.71% 0.0233 157.34)",
+          "oklch(72.14% 0.0233 157.34)",
+          "oklch(83.57% 0.0233 157.34)",
+          "oklch(95.00% 0.0233 157.34)"
+        ]
+      },
+      "island-secondary-text": {
+        "role": "neutral",
+        "displayName": "Island Secondary Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00 / 0.78)",
+          "oklch(26.43% 0.0000 0.00 / 0.78)",
+          "oklch(37.86% 0.0000 0.00 / 0.78)",
+          "oklch(49.29% 0.0000 0.00 / 0.78)",
+          "oklch(60.71% 0.0000 0.00 / 0.78)",
+          "oklch(72.14% 0.0000 0.00 / 0.78)",
+          "oklch(83.57% 0.0000 0.00 / 0.78)",
+          "oklch(95.00% 0.0000 0.00 / 0.78)"
+        ]
+      },
+      "island-button": {
+        "role": "neutral",
+        "displayName": "Island Button",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00 / 0.14)",
+          "oklch(26.43% 0.0000 0.00 / 0.14)",
+          "oklch(37.86% 0.0000 0.00 / 0.14)",
+          "oklch(49.29% 0.0000 0.00 / 0.14)",
+          "oklch(60.71% 0.0000 0.00 / 0.14)",
+          "oklch(72.14% 0.0000 0.00 / 0.14)",
+          "oklch(83.57% 0.0000 0.00 / 0.14)",
+          "oklch(95.00% 0.0000 0.00 / 0.14)"
+        ]
+      },
+      "island-button-hover": {
+        "role": "neutral",
+        "displayName": "Island Button Hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00 / 0.24)",
+          "oklch(26.43% 0.0000 0.00 / 0.24)",
+          "oklch(37.86% 0.0000 0.00 / 0.24)",
+          "oklch(49.29% 0.0000 0.00 / 0.24)",
+          "oklch(60.71% 0.0000 0.00 / 0.24)",
+          "oklch(72.14% 0.0000 0.00 / 0.24)",
+          "oklch(83.57% 0.0000 0.00 / 0.24)",
+          "oklch(95.00% 0.0000 0.00 / 0.24)"
+        ]
+      },
+      "task-badge": {
+        "role": "neutral",
+        "displayName": "Task Badge",
+        "tonalRamp": [
+          "oklch(15.00% 0.1211 251.32 / 0.14)",
+          "oklch(26.43% 0.1211 251.32 / 0.14)",
+          "oklch(37.86% 0.1211 251.32 / 0.14)",
+          "oklch(49.29% 0.1211 251.32 / 0.14)",
+          "oklch(60.71% 0.1211 251.32 / 0.14)",
+          "oklch(72.14% 0.1211 251.32 / 0.14)",
+          "oklch(83.57% 0.1211 251.32 / 0.14)",
+          "oklch(95.00% 0.1211 251.32 / 0.14)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Settings body",
+        "purpose": "Inherited system/CJK stack and the settings base text."
+      },
+      "headline": {
+        "displayName": "Settings headline",
+        "purpose": "Current settings section heading."
+      },
+      "island-title": {
+        "displayName": "Compact island title",
+        "purpose": "Truncated compact activity title."
+      },
+      "command": {
+        "displayName": "Command content",
+        "purpose": "Selectable operation command text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "island-rest",
+        "value": "0 16px 40px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.08)",
+        "purpose": "Default floating island."
+      },
+      {
+        "name": "island-highlight",
+        "value": "inset 0 1px 0 rgba(255, 255, 255, 0.16)",
+        "purpose": "Top-edge pseudo-element highlight."
+      },
+      {
+        "name": "island-approval",
+        "value": "0 18px 36px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(243, 199, 106, 0.5)",
+        "purpose": "Approval attention."
+      },
+      {
+        "name": "island-error",
+        "value": "0 18px 36px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 105, 97, 0.7)",
+        "purpose": "Error attention."
+      },
+      {
+        "name": "island-focus",
+        "value": "0 18px 36px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.55)",
+        "purpose": "Keyboard focus."
+      }
+    ],
+    "motion": [
+      {
+        "name": "island-geometry",
+        "value": "spring: stiffness 520, damping 38, mass 0.72",
+        "purpose": "Geometry transition in Island.tsx; reduced-motion duration is 0.01s."
+      },
+      {
+        "name": "island-opacity",
+        "value": "0.18s",
+        "purpose": "Island opacity changes; reduced-motion duration is 0.01s."
+      },
+      {
+        "name": "settings-switch",
+        "value": "150ms ease-out",
+        "purpose": "Switch background and thumb transform; disabled by prefers-reduced-motion."
+      },
+      {
+        "name": "progress-width",
+        "value": "220ms ease",
+        "purpose": "Progress fill; disabled by prefers-reduced-motion."
+      },
+      {
+        "name": "status-spin",
+        "value": "1s linear infinite",
+        "purpose": "Running spinner; disabled by prefers-reduced-motion."
+      },
+      {
+        "name": "thought-breathe",
+        "value": "1.5s ease-in-out infinite",
+        "purpose": "Thinking dots with 150ms and 300ms delays; disabled by prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "settings-narrow-sidebar",
+        "value": "760px"
+      },
+      {
+        "name": "settings-top-navigation",
+        "value": "560px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary settings button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Green integration action; its label changes with connection state.",
+      "html": "<div class=\"ds-preview\"><button class=\"ds-button ds-primary\" type=\"button\">安装接入</button></div>",
+      "css": ".ds-preview{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.55;color:#f1f1f3}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--state-running,#78b9ff);outline-offset:4px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid #484850;border-radius:7px;padding:8px 13px;min-height:36px;background:#252529;color:#eeeef1;white-space:nowrap}.ds-button:hover:not(:disabled){background:#333339;border-color:#65656e}.ds-primary{background:#78db9c;border-color:#78db9c;color:#112419;font-weight:600}.ds-primary:hover:not(:disabled){background:#93e6b0;border-color:#93e6b0}"
+    },
+    {
+      "name": "Secondary settings button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral settings action.",
+      "html": "<div class=\"ds-preview\"><button class=\"ds-button\" type=\"button\">保存地址</button></div>",
+      "css": ".ds-preview{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.55;color:#f1f1f3}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--state-running,#78b9ff);outline-offset:4px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid #484850;border-radius:7px;padding:8px 13px;min-height:36px;background:#252529;color:#eeeef1;white-space:nowrap}.ds-button:hover:not(:disabled){background:#333339;border-color:#65656e}"
+    },
+    {
+      "name": "Island dismissal button",
+      "kind": "button",
+      "refersTo": "button-island",
+      "description": "Translucent pill on the black island.",
+      "html": "<div class=\"ds-island-preview\"><button class=\"ds-close\" type=\"button\">收起</button></div>",
+      "css": ".ds-island-preview{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;background:#000;padding:16px}.ds-close{font:inherit;font-size:12px;cursor:pointer;border:0;border-radius:999px;min-height:32px;padding:6px 12px;background:rgba(255,255,255,.14);color:white}.ds-close:hover{background:rgba(255,255,255,.24)}.ds-close:focus-visible{outline:2px solid #fff;outline-offset:2px}"
+    },
+    {
+      "name": "Connection address",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labeled address input with the shared settings focus outline.",
+      "html": "<div class=\"ds-preview\"><label class=\"ds-label\" for=\"ds-codex-url\">WebSocket 地址</label><input class=\"ds-input\" id=\"ds-codex-url\" type=\"text\" spellcheck=\"false\" autocomplete=\"off\" placeholder=\"ws://127.0.0.1:4500\"></div>",
+      "css": ".ds-preview{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.55;color:#f1f1f3}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--state-running,#78b9ff);outline-offset:4px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-label{display:block;font-size:12px;color:#c2c2ca;margin:0 0 7px}.ds-input{font:inherit;font-size:13px;min-width:0;padding:9px 12px;border:1px solid #46464e;border-radius:7px;background:#101012;color:#f1f1f3;caret-color:#78db9c}.ds-input::placeholder{color:#90909b}"
+    },
+    {
+      "name": "Settings navigation",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Current location is indicated by a neutral fill, white label and green icon.",
+      "html": "<div class=\"ds-preview\"><nav class=\"ds-nav\" aria-label=\"配置分类\"><button type=\"button\" aria-current=\"page\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m13 3-8 11h6l-1 7 9-12h-6z\"/></svg><span>自动审批</span></button></nav></div>",
+      "css": ".ds-preview{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.55;color:#f1f1f3}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--state-running,#78b9ff);outline-offset:4px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-nav{display:flex;flex-direction:column;gap:7px}.ds-nav button{font:inherit;cursor:pointer;border:0;display:flex;align-items:center;gap:11px;text-align:left;min-height:44px;padding:10px 13px;border-radius:8px;color:#b7b7c0;background:transparent}.ds-nav button:hover{background:#202022;color:#fff}.ds-nav button[aria-current=\"page\"]{background:#29292d;color:#fff}.ds-nav button[aria-current=\"page\"] svg{color:#78db9c}"
+    },
+    {
+      "name": "Task count badge",
+      "kind": "chip",
+      "refersTo": "task-badge",
+      "description": "Compact noninteractive count from the island.",
+      "html": "<span class=\"ds-task-badge\">2</span>",
+      "css": ".ds-task-badge{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;display:inline-flex;flex:none;align-items:center;gap:2px;padding:0 5px 0 3px;height:18px;border-radius:9px;background:rgba(120,185,255,.14);color:var(--state-running,#78b9ff);font-size:11px;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Automation card",
+      "kind": "card",
+      "refersTo": "automation-card",
+      "description": "Paused automation surface with a separate status footer; enabled variants are driven by data-enabled.",
+      "html": "<div class=\"ds-preview\"><div class=\"ds-master\" data-enabled=\"false\"><div class=\"ds-master-row\"><div><label id=\"ds-master-label\">自动审批模式</label><p id=\"ds-master-description\">当前已暂停，所有请求由你在原 Agent 中处理。</p></div><button class=\"ds-switch\" role=\"switch\" type=\"button\" aria-checked=\"false\" aria-labelledby=\"ds-master-label\" aria-describedby=\"ds-master-description\"><span></span></button></div><div class=\"ds-master-foot\"><span class=\"ds-dot\" aria-hidden=\"true\"></span>需要时可随时开启<button type=\"button\">管理接入 →</button></div></div></div>",
+      "css": ".ds-preview{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.55;color:#f1f1f3}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--state-running,#78b9ff);outline-offset:4px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-switch{flex:none;cursor:pointer;width:42px;height:25px;border:1px solid #62626b;border-radius:99px;padding:3px;background:#3c3c44;transition:background-color 150ms ease-out}.ds-switch span{width:17px;height:17px;border-radius:50%;background:#e7e7eb;display:block;transition:transform 150ms ease-out}.ds-switch[aria-checked=\"true\"]{border-color:#78db9c;background:#78db9c}.ds-switch[aria-checked=\"true\"] span{transform:translateX(16px);background:#112419}.ds-switch:hover:not(:disabled){filter:brightness(1.13)}@media(prefers-reduced-motion:reduce){.ds-switch,.ds-switch span{transition:none}}.ds-master{border:1px solid #37373c;border-radius:12px;overflow:hidden;background:#1e1e21}.ds-master[data-enabled=\"true\"]{border-color:#456d51;background:#1b2820}.ds-master-row{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:24px 22px}.ds-master label{font-size:17px;font-weight:600}.ds-master p{margin:5px 0 0;color:#aaaab3;font-size:13px;max-width:52ch}.ds-master-foot{display:flex;align-items:center;gap:8px;min-height:42px;padding:9px 22px;border-top:1px solid #ffffff12;color:#b7b7c0;font-size:12px}.ds-master[data-enabled=\"true\"] p,.ds-master[data-enabled=\"true\"] .ds-master-foot{color:#bbcebf}.ds-dot{width:6px;height:6px;display:inline-block;border-radius:50%;background:#888891;flex:none}.ds-master[data-enabled=\"true\"] .ds-dot{background:#78db9c}.ds-master-foot button{font:inherit;cursor:pointer;margin-left:auto;color:inherit;background:none;border:0;padding:3px 0 3px 12px}.ds-master-foot button:hover{text-decoration:underline;text-underline-offset:3px}"
+    },
+    {
+      "name": "Enabled switch",
+      "kind": "custom",
+      "refersTo": "switch-enabled",
+      "description": "Checked switch presentation; production state and saving are owned by React.",
+      "html": "<div class=\"ds-preview\"><button class=\"ds-switch\" type=\"button\" role=\"switch\" aria-checked=\"true\" aria-label=\"自动批准权限请求\"><span></span></button></div>",
+      "css": ".ds-preview{font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.55;color:#f1f1f3}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--state-running,#78b9ff);outline-offset:4px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-switch{flex:none;cursor:pointer;width:42px;height:25px;border:1px solid #62626b;border-radius:99px;padding:3px;background:#3c3c44;transition:background-color 150ms ease-out}.ds-switch span{width:17px;height:17px;border-radius:50%;background:#e7e7eb;display:block;transition:transform 150ms ease-out}.ds-switch[aria-checked=\"true\"]{border-color:#78db9c;background:#78db9c}.ds-switch[aria-checked=\"true\"] span{transform:translateX(16px);background:#112419}.ds-switch:hover:not(:disabled){filter:brightness(1.13)}@media(prefers-reduced-motion:reduce){.ds-switch,.ds-switch span{transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "",
+    "overview": "Cute Island is a compact black desktop surface for following local Agent activity. Its visual identity comes from the changing island silhouette, system typography, drawn icons, and restrained state colors. The companion settings window extends that identity into a readable dark form interface.\n\nThis document records the implemented system; it does not establish a replacement visual world or a new creative metaphor. Preserve the existing focus and managed behaviors, the island's transparent host window, and its compact, expanded, stacked and docked forms when extending the product.",
+    "keyCharacteristics": [
+      "A black floating island paired with a charcoal settings window.",
+      "System sans typography with Chinese font fallbacks and compact metadata.",
+      "Color attached to activity state, enabled controls and selected navigation.",
+      "Rounded island silhouettes; quieter corners and dividing lines in settings.",
+      "Drawn SVG icons and a small three-dot island mark."
+    ],
+    "rules": [],
+    "dos": [
+      "Do preserve the black island silhouette, dark settings surfaces and existing system font stack.",
+      "Do keep state colors attached to their existing meanings and pair status color with text or an icon.",
+      "Do retain visible keyboard focus, linked control labels, disabled feedback and reduced-motion behavior.",
+      "Do preserve focus, managed, attention and docking behaviors when extending island presentation.",
+      "Do reuse the existing drawn icon and Agent badge sources."
+    ],
+    "donts": [
+      "Don't treat automatic approval as a display mode or imply that observing logs establishes an approval connection.",
+      "Don't describe an approved permission or submitted answer as successful tool execution.",
+      "Don't replace the existing visual identity as part of an ordinary settings extension.",
+      "Don't promote synthetic preview data, review screenshots or sidecar tonal ramps into product content or new visual tokens."
+    ]
+  }
+}

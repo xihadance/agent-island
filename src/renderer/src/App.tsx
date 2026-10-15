@@ -192,6 +192,7 @@ export function App() {
       </div>
       {bridge.simulateError && bridge.clear && (
         <div className="dev-panel">
+          <button type="button" data-testid="open-settings" onClick={() => void bridge.openSettings()}>打开配置</button>
           <div className="mode-switch" role="group" aria-label="灵动岛模式">
             <button type="button" data-testid="mode-focus" aria-pressed={!managed} onClick={() => bridge.setMode('focus')}>关注模式</button>
             <button type="button" data-testid="mode-managed" aria-pressed={managed} onClick={() => bridge.setMode('managed')}>托管模式</button>

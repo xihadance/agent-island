@@ -84,7 +84,7 @@ async function main() {
   try {
     const page = await until(async () => {
       const pages = await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()
-      return pages.find((item) => item.type === 'page' && item.webSocketDebuggerUrl)
+      return pages.find((item) => item.type === 'page' && item.webSocketDebuggerUrl && item.url.includes('index.html') && !item.url.endsWith('#settings'))
     })
     cdp = connect(page.webSocketDebuggerUrl)
     await cdp.send('Runtime.enable')
@@ -94,6 +94,28 @@ async function main() {
       return result.result.value
     }
     await until(() => evaluate('!!window.island && !!document.querySelector("[data-testid=island]")'))
+    if (!baseline) {
+      const settingsPage = await until(async () => {
+        const pages = await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()
+        return pages.find(item => item.type === 'page' && item.url.endsWith('#settings') && item.webSocketDebuggerUrl)
+      })
+      const settings = connect(settingsPage.webSocketDebuggerUrl)
+      try {
+        await settings.send('Runtime.enable')
+        const settingsEvaluate = async expression => {
+          const result = await settings.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
+          if (result.exceptionDetails) throw new Error(result.exceptionDetails.text)
+          return result.result.value
+        }
+        await until(() => settingsEvaluate('!!window.island && !!document.querySelector(".automation-master")'))
+        const snapshot = await settingsEvaluate('window.island.getSettings()')
+        assert.equal(snapshot.version, require('../package.json').version, 'Packaged settings shows the release version')
+        assert.equal(snapshot.preferences.automation.enabled, false, 'Automation starts disabled in a fresh profile')
+        assert.deepEqual(settings.errors, [])
+        await settingsEvaluate('setTimeout(() => window.close(), 0); true')
+        await delay(150)
+      } finally { settings.socket.terminate() }
+    }
     const list = async () => (await (await fetch(`http://127.0.0.1:${port}/v1/activities`)).json()).activities
     const post = async (pathname, body) => {
       const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
@@ -162,7 +184,7 @@ async function main() {
     await until(async () => (await list()).length === 0)
     assert.deepEqual(cdp.errors, [])
     if (!baseline) assert.equal(idleLayoutReads, 0, 'Idle UI should not poll layout')
-    console.log(JSON.stringify({ baseline, recoveredBeforeStartup: recovered, claudeLifecycle: !baseline, idleLayoutReadsIn1500ms: idleLayoutReads, api: 'passed', preload: 'passed', interactions: 'passed', rendererErrors: cdp.errors }))
+    console.log(JSON.stringify({ baseline, recoveredBeforeStartup: recovered, claudeLifecycle: !baseline, settings: !baseline, idleLayoutReadsIn1500ms: idleLayoutReads, api: 'passed', preload: 'passed', interactions: 'passed', rendererErrors: cdp.errors }))
   } catch (error) {
     console.error(logs.slice(-3000))
     throw error

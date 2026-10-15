@@ -80,6 +80,8 @@ async function until(check) {
 
 async function smoke() {
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'island-interaction-'))
+  // This suite exercises an existing user's island; first-run settings has its own smoke suite.
+  await fs.writeFile(path.join(profile, 'preferences.json'), JSON.stringify({ mode: 'focus' }))
   const executable = require('electron')
   const [port, debugPort, fixturePort] = await Promise.all([freePort(), freePort(), freePort()])
   let child, socket, logs = ''
@@ -459,7 +461,10 @@ async function smoke() {
     await setMode('focus')
     await evaluate('window.island.setDockExpanded(false)')
     await setMode('managed')
-    assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile, 'preferences.json'), 'utf8')), { mode: 'managed' })
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile, 'preferences.json'), 'utf8')), {
+      mode: 'managed', watchSessions: true,
+      automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' }
+    })
     await send('Page.reload')
     await until(async () => (await mode()) === 'docked')
     await delay(500)

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 import { ActivityStore } from '../shared/activity'
 import { startStatusServer, type StatusServer } from './server'
+import { decideClaude } from '../shared/automation'
+import { normalizePreferences, patchPreferences } from '../shared/preferences'
 
 const servers: StatusServer[] = []
 
@@ -10,6 +12,21 @@ afterEach(async () => {
 })
 
 describe('status server', () => {
+  it('serves native Claude decisions, honors changing rules, and rejects browser or unauthorized calls', async () => {
+    let preferences = patchPreferences(normalizePreferences(undefined), { automation: { enabled: true } })
+    const server = await startStatusServer(new ActivityStore(), { port: 0, token: 'secret', claudeHook: payload => decideClaude(payload, preferences).response ?? {} })
+    servers.push(server)
+    const body = { hook_event_name: 'PermissionRequest', tool_name: 'Bash' }
+    expect((await post(server.port, '/v1/hooks/claude', body)).status).toBe(401)
+    const approved = await post(server.port, '/v1/hooks/claude', body, 'secret')
+    expect(approved.json).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } })
+    preferences = patchPreferences(preferences, { automation: { enabled: false } })
+    expect((await post(server.port, '/v1/hooks/claude', body, 'secret')).json).toEqual({})
+    const browser = await fetch(`http://127.0.0.1:${server.port}/v1/hooks/claude`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer secret', origin: 'https://example.com' }, body: JSON.stringify(body)
+    })
+    expect(browser.status).toBe(403)
+  })
   it('creates, updates, and ends an activity', async () => {
     const store = new ActivityStore(() => ({ cancel() {} }))
     const server = await startStatusServer(store, { port: 0 })
