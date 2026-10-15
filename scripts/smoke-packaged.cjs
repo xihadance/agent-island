@@ -111,6 +111,12 @@ async function main() {
         const snapshot = await settingsEvaluate('window.island.getSettings()')
         assert.equal(snapshot.version, require('../package.json').version, 'Packaged settings shows the release version')
         assert.equal(snapshot.preferences.automation.enabled, false, 'Automation starts disabled in a fresh profile')
+        assert.equal(snapshot.preferences.theme, 'system', 'Fresh profiles follow the system theme')
+        for (const theme of ['light', 'dark']) {
+          await settingsEvaluate(`document.querySelector('[data-testid=theme-quick-${theme}]').click()`)
+          await until(() => settingsEvaluate(`document.body.dataset.theme === '${theme}'`))
+          assert.equal((await settingsEvaluate('window.island.getSettings()')).preferences.theme, theme)
+        }
         assert.deepEqual(settings.errors, [])
         await settingsEvaluate('setTimeout(() => window.close(), 0); true')
         await delay(150)

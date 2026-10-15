@@ -1,0 +1,37 @@
+import { useId, useLayoutEffect, type ReactNode } from 'react'
+import type { Theme } from '../../shared/preferences'
+
+const choices: { value: Theme; label: string; icon: ReactNode }[] = [
+  { value: 'light', label: '浅色', icon: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></> },
+  { value: 'dark', label: '深色', icon: <path d="M20.5 13.3A8.7 8.7 0 0 1 10.7 3.5a8.7 8.7 0 1 0 9.8 9.8Z" /> },
+  { value: 'system', label: '跟随系统', icon: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></> }
+]
+
+export function useSettingsTheme(theme: Theme = 'system'): void {
+  useLayoutEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const sync = () => {
+      const resolved = theme === 'system' ? media.matches ? 'dark' : 'light' : theme
+      document.body.dataset.theme = resolved
+      document.documentElement.style.colorScheme = resolved
+    }
+    sync()
+    media.addEventListener('change', sync)
+    return () => { media.removeEventListener('change', sync); delete document.body.dataset.theme; document.documentElement.style.removeProperty('color-scheme') }
+  }, [theme])
+}
+
+export function ThemePicker({ value, disabled, onChange, compact = false }: {
+  value: Theme; disabled?: boolean; onChange: (theme: Theme) => void; compact?: boolean
+}) {
+  const name = useId()
+  return <div className={compact ? 'theme-quick' : 'theme-options'} role="radiogroup" aria-label={compact ? '快捷切换主题' : '颜色主题'}>
+    {choices.map(choice => <label key={choice.value} className="theme-choice" data-selected={value === choice.value} title={compact ? choice.label : undefined}>
+      <input className="sr-only" type="radio" name={name} value={choice.value} checked={value === choice.value} disabled={disabled}
+        data-testid={`theme-${compact ? 'quick-' : ''}${choice.value}`} onChange={() => onChange(choice.value)} />
+      {!compact && <span className="theme-preview" data-preview-theme={choice.value} aria-hidden="true"><span className="theme-preview-sidebar"><i /><i /><i /></span><span className="theme-preview-content"><i /><i /><b /></span></span>}
+      <span className="theme-choice-label"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{choice.icon}</svg><span className={compact ? 'sr-only' : undefined}>{choice.label}</span>
+        {!compact && <svg className="theme-choice-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>}</span>
+    </label>)}
+  </div>
+}

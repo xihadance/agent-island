@@ -29,8 +29,8 @@ it('migrates old files and preserves automation when the tray switches modes', (
   try {
     const file = path.join(directory, 'preferences.json')
     writeFileSync(file, '{"mode":"managed"}')
-    expect(readPreferences(file)).toMatchObject({ mode: 'managed', automation: { enabled: false, fallback: 'manual' } })
-    const preferences = patchPreferences(readPreferences(file), { automation: { enabled: true, fallback: 'first', codexUrl: 'ws://127.0.0.1:4500' } })
+    expect(readPreferences(file)).toMatchObject({ theme: 'system', mode: 'managed', automation: { enabled: false, fallback: 'manual' } })
+    const preferences = patchPreferences(readPreferences(file), { theme: 'light', automation: { enabled: true, fallback: 'first', codexUrl: 'ws://127.0.0.1:4500' } })
     savePreferences(file, preferences)
     saveIslandMode(file, 'focus')
     expect(readPreferences(file)).toEqual({ ...preferences, mode: 'focus' })
@@ -43,7 +43,7 @@ it('migrates old files and preserves automation when the tray switches modes', (
 
 it('rejects malformed IPC patches without accepting remote or credential-bearing URLs', () => {
   const preferences = normalizePreferences(undefined)
-  for (const patch of [null, [], { mode: 'auto' }, { arbitrary: true }, { automation: null }, { automation: { enabled: 'true' } },
+  for (const patch of [null, [], { mode: 'auto' }, { theme: 'sepia' }, { theme: null }, { arbitrary: true }, { automation: null }, { automation: { enabled: 'true' } },
     { automation: { fallback: 'random' } }, { automation: { extra: true } }, { watchSessions: 1 }]) {
     expect(() => patchPreferences(preferences, patch)).toThrow()
   }

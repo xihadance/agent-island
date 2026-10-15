@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, shell } from 'electron'
+import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, nativeTheme, screen, shell } from 'electron'
 import path from 'node:path'
 import os from 'node:os'
 import { existsSync } from 'node:fs'
@@ -84,6 +84,8 @@ async function boot(): Promise<void> {
   store = new ActivityStore()
   const firstLaunch = !existsSync(preferencesFile())
   preferences = readPreferences(preferencesFile())
+  nativeTheme.themeSource = preferences.theme
+  nativeTheme.on('updated', syncSettingsBackground)
   islandMode = preferences.mode
   hostedCodex = new ManagedCodexServer(() => { codex?.update(); notifySettings() })
   codex = new CodexAutomation(automationPreferences, notifySettings, decision => reportDecision('Codex', decision))
@@ -327,6 +329,8 @@ function updatePreferences(patch: unknown): SettingsSnapshot {
   const next = patchPreferences(preferences, patch)
   savePreferences(preferencesFile(), next)
   preferences = next
+  nativeTheme.themeSource = next.theme
+  syncSettingsBackground()
   islandMode = next.mode
   syncWatcher()
   void hostedCodex?.configure(next.codexServer)
@@ -355,6 +359,11 @@ function openRemoteSettings(): void {
   else navigate()
 }
 
+function settingsBackground(): string { return nativeTheme.shouldUseDarkColors ? '#151516' : '#ffffff' }
+function syncSettingsBackground(): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.setBackgroundColor(settingsBackground())
+}
+
 function openSettings(): void {
   if (!app.isReady()) return
   if (settingsWindow && !settingsWindow.isDestroyed()) {
@@ -366,8 +375,8 @@ function openSettings(): void {
     return
   }
   const win = new BrowserWindow({
-    title: 'Cute Island · 配置', width: 920, height: 740, minWidth: 640, minHeight: 540,
-    show: false, backgroundColor: '#151516', autoHideMenuBar: true,
+    title: 'Cute Island · 配置', width: 1040, height: 800, minWidth: 640, minHeight: 540,
+    show: false, backgroundColor: settingsBackground(), autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: true, nodeIntegration: false }
   })
   settingsWindow = win

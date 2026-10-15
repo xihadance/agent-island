@@ -15,7 +15,7 @@ export function CodexServerSettings({ snapshot, busy, update }: { snapshot: Sett
     <div className="setting-row"><div className="setting-copy"><strong>应用内托管服务</strong><p>自动查找已安装的 Codex CLI，随灵动岛启动服务并填写连接地址。沿用本机 Codex 登录。</p></div>
       <button className="settings-button settings-button-primary" disabled={disabled || (!configured.enabled && dirty)} onClick={() => update({ codexServer: { enabled: !configured.enabled } })}>
         {configured.enabled ? '停止托管服务' : '启动托管服务'}</button></div>
-    <p className="connection-detail" role="status">{server.detail || '服务尚未启动。首次使用请先安装并登录 Codex CLI。'}</p>
+    <p className="connection-detail" data-status={server.status} role="status">{server.detail || '服务尚未启动。首次使用请先安装并登录 Codex CLI。'}</p>
     <p className="settings-help">仅连接到这个服务的会话可被接管。已有的 Codex 桌面应用、IDE 插件或独立 CLI 会话不会自动迁入。停止服务或退出灵动岛会断开相关客户端。</p>
     <form onSubmit={event => { event.preventDefault(); update({ codexServer: { port: Number(port), executable: executable.trim() } }) }}>
       <details className="codex-service-options"><summary>服务端口与程序路径</summary><div className="remote-grid">

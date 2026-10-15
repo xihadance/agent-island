@@ -1,7 +1,11 @@
 import { isIslandMode, type IslandMode } from './island-behavior'
 import type { RemoteSettings } from './remote-settings'
 
+export type Theme = 'system' | 'light' | 'dark'
+export function isTheme(value: unknown): value is Theme { return value === 'system' || value === 'light' || value === 'dark' }
+
 export interface Preferences {
+  theme: Theme
   codexServer: { enabled: boolean; port: number; executable: string }
   mode: IslandMode
   watchSessions: boolean
@@ -15,6 +19,7 @@ export interface Preferences {
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
+  theme: 'system',
   codexServer: { enabled: false, port: 4500, executable: '' },
   mode: 'focus',
   watchSessions: true,
@@ -40,6 +45,7 @@ export function normalizePreferences(value: unknown): Preferences {
   const automation = record(source.automation)
   const server = record(source.codexServer)
   return {
+    theme: isTheme(source.theme) ? source.theme : 'system',
     codexServer: { enabled: server.enabled === true, port: Number.isInteger(server.port) && Number(server.port) > 0 && Number(server.port) <= 65535 ? Number(server.port) : 4500,
       executable: typeof server.executable === 'string' ? server.executable.trim() : '' },
     mode: isIslandMode(source.mode) ? source.mode : 'focus',
@@ -59,7 +65,8 @@ export type PreferencesPatch = Partial<Omit<Preferences, 'automation' | 'codexSe
 export function patchPreferences(current: Preferences, value: unknown): Preferences {
   const patch = record(value)
   if (value === null || typeof value !== 'object' || Array.isArray(value) ||
-      Object.keys(patch).some(key => !['mode', 'watchSessions', 'automation', 'codexServer'].includes(key))) throw new Error('无效的配置')
+      Object.keys(patch).some(key => !['mode', 'theme', 'watchSessions', 'automation', 'codexServer'].includes(key))) throw new Error('无效的配置')
+  if ('theme' in patch && !isTheme(patch.theme)) throw new Error('无效的外观主题')
   const server = record(patch.codexServer)
   if ('codexServer' in patch && (patch.codexServer === null || typeof patch.codexServer !== 'object' || Array.isArray(patch.codexServer) ||
       Object.keys(server).some(key => !['enabled', 'port', 'executable'].includes(key)))) throw new Error('无效的 Codex 服务配置')

@@ -4,6 +4,7 @@ import { getBridge } from './bridge'
 import './settings.css'
 import { RemoteSettings } from './RemoteSettings'
 import { CodexServerSettings } from './CodexServerSettings'
+import { ThemePicker, useSettingsTheme } from './ThemePicker'
 
 type Section = 'general' | 'automation' | 'connections' | 'remote' | 'history'
 const sections: { id: Section; label: string; icon: ReactNode }[] = [
@@ -31,7 +32,10 @@ function Switch({ title, description, checked, disabled, onChange, prominent }: 
 
 export function Settings() {
   const bridge = getBridge()
-  const [section, setSection] = useState<Section>(window.location.hash === '#settings/remote' ? 'remote' : 'automation')
+  const [section, setSection] = useState<Section>(() => {
+    const initial = window.location.hash.slice('#settings/'.length)
+    return sections.some(item => item.id === initial) ? initial as Section : 'automation'
+  })
   const [remoteDirty, setRemoteDirty] = useState(false)
   useEffect(() => {
     const navigate = () => { const section = window.location.hash.slice('#settings/'.length); if (sections.some(item => item.id === section)) setSection(section as Section) }
@@ -39,6 +43,7 @@ export function Settings() {
     return () => window.removeEventListener('hashchange', navigate)
   }, [])
   const [snapshot, setSnapshot] = useState<SettingsSnapshot>()
+  useSettingsTheme(snapshot?.preferences.theme)
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const [message, setMessage] = useState('设置自动保存')
@@ -74,12 +79,15 @@ export function Settings() {
       <div className="settings-brand"><span className="settings-brand-mark" aria-hidden="true"><i /><i /><i /></span><strong>Cute Island</strong></div>
       <nav aria-label="配置分类">{sections.map(item => <button type="button" key={item.id} aria-current={section === item.id ? 'page' : undefined}
         onClick={() => { setSection(item.id); window.location.hash = `settings/${item.id}`; setError('') }}><Icon>{item.icon}</Icon><span>{item.label}</span></button>)}</nav>
+      <div className="settings-sidebar-bottom">
+        <ThemePicker compact value={snapshot?.preferences.theme ?? 'system'} disabled={busy || !snapshot} onChange={theme => update({ theme })} />
       <div className="settings-sidebar-foot"><span className="settings-version">Cute Island {snapshot?.version}</span><span>你的 Agent，就在身边。</span>
         {snapshot?.preview && <a href="#">返回灵动岛预览</a>}</div>
+      </div>
     </aside>
     <main className="settings-main" id="settings-main">
       <header className="settings-header"><div><h1>{title}</h1><p>{section === 'automation' ? '把重复确认交给灵动岛。' : section === 'general' ? '让灵动岛按你的习惯工作。' : section === 'connections' ? '连接可以接收审批和回答的 Agent。' : section === 'remote' ? '把已有会话接到你的消息渠道。' : '查看本次启动后的自动处理结果。'}</p></div>
-        <span className="settings-save-status" role="status">{remoteDirty ? '远程配置有未保存修改' : section === 'remote' ? '渠道配置需点击保存' : message}</span></header>
+        <span className="settings-save-status" data-dirty={remoteDirty || !!error} role="status"><span className="save-status-dot" aria-hidden="true" />{remoteDirty ? '远程配置有未保存修改' : section === 'remote' ? '渠道配置需点击保存' : message}</span></header>
       {error && <div className="settings-error" role="alert">{error}<button type="button" onClick={() => { void run(async () => setSnapshot(await bridge.getSettings()), '设置已重新加载') }}>重新读取设置</button></div>}
       {!snapshot || !auto ? <p role="status">正在读取配置…</p> : <>
         {snapshot.preview && <p className="settings-preview">浏览器预览 · 设置仅保存在此浏览器，实际审批与 Agent 接入请使用桌面应用。</p>}
@@ -98,7 +106,11 @@ export function Settings() {
           <div className="settings-note"><Icon><path d="M12 8h.01M11 12h1v4" /><circle cx="12" cy="12" r="9" /></Icon><p>自由输入、密码问题和无法确定答案的问题仍交给你处理。显示模式不影响自动审批规则。</p></div>
         </>}
         {section === 'general' && <>
-          <section className="settings-section settings-section-first" aria-labelledby="mode-title"><h2 id="mode-title">灵动岛显示</h2>
+          <section className="settings-section settings-section-first" aria-labelledby="appearance-title"><h2 id="appearance-title">外观</h2>
+            <p className="settings-description">选择配置页面的颜色主题，跟随系统可自动切换。</p>
+            <ThemePicker value={snapshot.preferences.theme} disabled={busy} onChange={theme => update({ theme })} />
+          </section>
+          <section className="settings-section" aria-labelledby="mode-title"><h2 id="mode-title">灵动岛显示</h2>
             <div className="mode-options" role="radiogroup" aria-label="显示模式">{(['focus', 'managed'] as const).map(mode => <label key={mode} className="mode-option" data-selected={snapshot.preferences.mode === mode}>
               <input type="radio" name="island-mode" checked={snapshot.preferences.mode === mode} disabled={busy} onChange={() => update({ mode })} /><span><strong>{mode === 'focus' ? '关注模式' : '托管模式'}</strong><small>{mode === 'focus' ? '悬浮查看、点击展开，随时关注进展。' : '平时淡显并穿透鼠标，需要你时再提醒。'}</small></span></label>)}</div>
             <Switch title="自动识别本机会话" description={snapshot.watchDisabledByEnvironment ? '启动环境已关闭会话识别；修改启动环境后重启应用生效。' : '持续跟踪 Claude Code、Codex、Gemini 和 Cursor 的会话日志。'} checked={snapshot.preferences.watchSessions && !snapshot.watchDisabledByEnvironment}

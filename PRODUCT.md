@@ -12,9 +12,11 @@ web
 
 ## Operating Context
 
-已有实现使用 React、TypeScript 和 Electron，支持 Windows、macOS、Linux。托盘管理常驻灵动岛，日志识别覆盖 Claude Code、Codex、Gemini 和 Cursor。独立配置窗口包含常规、自动审批、Agent 接入、远程接管和处理记录，在现有深色界面中管理自动审批、本机 Codex 服务、Agent Hook 与消息渠道。
+已有实现使用 React、TypeScript 和 Electron，支持 Windows、macOS、Linux。托盘管理常驻灵动岛，日志识别覆盖 Claude Code、Codex、Gemini 和 Cursor。独立配置窗口包含常规、自动审批、Agent 接入、远程接管和处理记录，以简洁的表单界面管理自动审批、本机 Codex 服务、Agent Hook 与消息渠道。
 
 ## Capabilities and Constraints
+
+配置页面支持浅色、深色和跟随系统主题，默认跟随系统。常规页提供外观预览，侧栏提供快捷切换；窄屏预览时快捷切换移至品牌旁。选择自动保存并在重启后恢复，跟随系统会响应系统外观变化；手动选择的主题优先。主题仅改变配置页面，保留黑色灵动岛及既有显示模式。原生配置窗口默认大小为 1040 × 800，最小为 640 × 540；更窄布局用于浏览器预览。
 
 关注模式和托管模式决定灵动岛的展示及鼠标穿透行为。自动审批是独立的配置，只能通过已接入的真实交互通道回传结果；读取日志本身不能批准请求。保留既有会话、拖动和贴边行为。
 

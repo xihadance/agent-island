@@ -2,7 +2,7 @@
 version: 1
 slug: "src-renderer-src-settings-tsx"
 primary_target: "src/renderer/src/Settings.tsx"
-related_targets: ["src/renderer/src/CodexServerSettings.tsx", "src/renderer/src/RemoteSettings.tsx", "src/renderer/src/settings.css"]
+related_targets: ["src/renderer/src/CodexServerSettings.tsx", "src/renderer/src/RemoteSettings.tsx", "src/renderer/src/settings.css", "src/renderer/src/ThemePicker.tsx", "src/shared/preferences.ts", "src/main/index.ts"]
 ---
 
 # Settings extension
@@ -11,19 +11,19 @@ Mode: Operate. Seed key: incumbent-settings-extension (precisely scoped feature;
 
 ## Direction contract
 
-WORLD: Preserve the existing dark Electron island, system sans typography, restrained state colors and drawn SVG icons. Extend it into a normal focusable settings window.
+WORLD: Preserve the existing black Electron island, system/CJK typography, restrained state colors and drawn SVG icons. The user-requested theme expansion gives the focusable settings window a professional, simple Operate treatment: flat charcoal dark and white/light-gray palettes, clear dividers and restrained semantic green. This is an incumbent-settings-extension, not a replacement visual world.
 
-FIRST VIEWPORT: Show automatic approval's master switch, permission and question rules, fallback selection, and the route to native Agent integration. Automation is the initial section; a stable sidebar connects general settings, integrations, remote takeover and recent decisions. Agent 接入 presents Claude integration followed by the managed Codex service. Opening `#settings/remote` selects 远程接管 directly, with the takeover switch, service status, connection guidance and Agent Hook setup before channel configuration.
+FIRST VIEWPORT: Show automatic approval's master switch, permission and question rules, fallback selection, and the route to native Agent integration. Automation is the initial section; a stable sidebar connects general settings, integrations, remote takeover and recent decisions. General begins with three labeled theme previews, followed by island display settings. A compact theme selector remains reachable from every section. Agent 接入 presents Claude integration followed by the managed Codex service. Opening `#settings/remote` selects 远程接管 directly, with the takeover switch, service status, connection guidance and Agent Hook setup before channel configuration.
 
-LAYOUT: Desktop sidebar with a readable, bounded form column; narrow browser preview becomes a compact top navigation. Native window minimum width is 640px. Remote channel and Codex fields use two columns on desktop and one at the existing 760px breakpoint. Managed-service and Hook actions also wrap at that breakpoint. Port/program settings and existing-server connection use native disclosures. Save/reload actions wrap, and long configuration paths can break within the column. No modal or marketing composition.
+LAYOUT: Desktop sidebar with a readable, bounded form column; narrow browser preview becomes a compact top navigation. Native window default size is 1040 × 800px, with a 640 × 540px minimum. The desktop sidebar is 210px, narrowing to 165px at 760px; the main column is centered and capped at 920px. At 560px, navigation becomes a top row and the compact theme selector moves beside the brand. Remote channel and Codex fields use two columns on desktop and one at the existing 760px breakpoint. Managed-service and Hook actions also wrap at that breakpoint. Port/program settings and existing-server connection use native disclosures. Save/reload actions wrap, and long configuration paths can break within the column. No modal or marketing composition.
 
-INTERACTION: Switching automation changes the master status immediately after durable save. Tray and configuration share the same state. Pausing stops native replies. Hook installation/removal, errors, disabled controls, loading, history and empty states are real. Remote takeover reads existing configuration and takes precedence over automatic replies while retaining the saved automation preference. Channel/connection drafts require explicit 保存渠道配置; 重新读取 replaces the draft with the current saved configuration. A dirty draft blocks enabling takeover, and active takeover disables connection editing. Save, reload and toggle outcomes have inline status feedback.
+INTERACTION: Theme defaults to system and persists light/dark/system choices through the shared preferences. Both labeled radio previews and the compact native radio group save the same choice; their accessible names, arrow-key behavior and visible focus are retained. System mode responds to appearance changes, explicit choices take precedence, and Electron nativeTheme synchronizes the native settings background. This setting applies to the configuration page; island appearance remains black. Switching automation changes the master status immediately after durable save. Tray and configuration share the same state. Pausing stops native replies. Hook installation/removal, errors, disabled controls, loading, history and empty states are real. Remote takeover reads existing configuration and takes precedence over automatic replies while retaining the saved automation preference. Channel/connection drafts require explicit 保存渠道配置; 重新读取 replaces the draft with the current saved configuration. A dirty draft blocks enabling takeover, and active takeover disables connection editing. Save, reload and toggle outcomes have inline status feedback.
 
 Managed Codex configuration is saved separately; unsaved port/program changes block starting, and those fields are disabled while hosting is enabled. Starting persists the enabled setting, launches the local service and supplies its approval address; stopping or quitting disconnects its clients. Running state exposes a selectable CLI connection command with copy feedback. Remote Hook rows show each client's installed state, configuration path and install/remove action. Unsaved remote drafts block Hook changes; installation/removal backs up existing files, preserves unrelated configuration and replaces legacy hooks for the same remote config. Installed hooks use the bundled Electron Node launcher with stdin forwarding.
 
 CONTENT: Chinese product labels. Distinguish logged sessions from connected native interaction channels. Automatic replies support Claude HTTP hooks and Codex shared app-server; unsupported clients stay manual. Managed hosting uses the installed Codex CLI and existing login; independent desktop, IDE and CLI sessions do not migrate automatically. Remote takeover adds Telegram, 飞书, 企业微信 and Discord configuration, plus Codex connection IDs, WebSocket addresses and native thread IDs. Claude, Cursor and Gemini remote Hooks can be installed in the UI, with restart guidance and linked setup instructions. Cursor/Gemini support execution gates and subsequent guidance; their original permission policies remain active and arbitrary native Q&A stays in the client. Channel fields identify the destination and allowed users; credentials are environment-variable names, with missing names shown explicitly. Existing configuration is read automatically, and service-running copy does not imply external channel connectivity. Browser preview is labeled. No approval or answer is called tool execution success.
 
-FINISH: unreviewed and undocumented is unfinished; the original settings build established DESIGN.md and its sidecar. Ordinary extensions finish with review, a verdict and updated product/surface evidence while preserving those design-system files. No new shipping raster assets are used; screenshots are review evidence only.
+FINISH: unreviewed and undocumented is unfinished; the original settings build established DESIGN.md and its sidecar. Ordinary extensions finish with review, a verdict and updated product/surface evidence. The explicitly requested light/dark expansion also merges its actual palette, type, spacing, native-size and component changes into DESIGN.md and the sidecar; unrelated island tokens are preserved. No new shipping raster assets are used; screenshots are review evidence only.
 
 ## Quality bar
 
@@ -31,7 +31,7 @@ Preserve existing island behavior; provide an independent, keyboard-usable confi
 
 ## Evidence and decisions
 
-The user requested automatic permissions/recommended answers and a configuration UI beyond the tray. Optional questions about unsupported recommendations and preferred clients received no reply during implementation; manual fallback and verified native integrations were used, and fallback is configurable. No aesthetic change was requested. Screenshots live under .impeccable/review and are synthetic smoke-test state. No approved image comp exists for this code-led extension.
+The user requested automatic permissions/recommended answers and a configuration UI beyond the tray. Optional questions about unsupported recommendations and preferred clients received no reply during implementation; manual fallback and verified native integrations were used, and fallback is configurable. The original automation extension did not request an aesthetic change; the subsequent theme request is recorded below. Screenshots live under .impeccable/review and are synthetic smoke-test state. No approved image comp exists for this code-led extension.
 
 ### Remote takeover extension — 2026-10-15
 
@@ -63,3 +63,31 @@ The finish reviewer returned the full five-section **SHIP** review with no requi
 Implementation-session validation reports **306 tests**, typecheck and build passing; real Electron smoke covered a managed fake server starting, automatically connecting and stopping, Hook install/remove, and actual remotely approved Cursor/Gemini Hook replies through the generated runtime wrapper. Original interaction and tray smokes also passed. An isolated native Codex process passed startup, initialize and shutdown without running tasks, and the v0.1.12 installer was built. This documentation pass did not rerun applications or tests. Captures use synthetic fixture state; no real bots were contacted, and external bot delivery and live Agent task execution are not established by this evidence.
 
 The detector ran once with no primary findings and 18 advisory findings for incumbent extraction gaps. Existing visual-system guidance and sidecar tokens are preserved. Port/program editing, transient errors, native disclosures, focus and clipboard fallback were checked in source where not shown in the captures.
+
+
+### Light, dark and system settings — 2026-10-15
+
+The user explicitly requested “优化配置页面样式，添加 dark light 模式，页面风格专业美观简洁”. This authorizes the narrow settings theme-system expansion and its documentation merge. The result retains the black island identity, Chinese system font stack, sidebar information architecture and working approval/remote flows. Settings gain matched dark and light semantic tokens, calmer section hierarchy, more readable spacing, a larger native opening size and persistent appearance controls. No new shipping raster asset or image comp was introduced; the miniature theme previews are drawn in CSS.
+
+The finish reviewer returned the full five-section **SHIP** disposition with no material fixes and found all 20 captures valid. Under `../review/`, the following file pairs cover both themes:
+
+| Light capture | Dark capture | Evidence |
+| --- | --- | --- |
+| `theme-light-general.png` | `theme-dark-general.png` | Appearance previews, display choices and saved/dirty feedback. |
+| `theme-light-automation.png` | `theme-dark-automation.png` | Master state, approval rules and native fallback selection. |
+| `theme-light-connections.png` | `theme-dark-connections.png` | Agent integration and managed-service hierarchy. |
+| `theme-light-remote.png` | `theme-dark-remote.png` | Takeover status, Hook actions and channel guidance. |
+| `theme-light-history.png` | `theme-dark-history.png` | History layout and readable metadata. |
+| `theme-light-general-640.png` | `theme-dark-general-640.png` | Narrow native layout and single-column display choices. |
+| `theme-light-general-mobile.png` | `theme-dark-general-mobile.png` | Top navigation, quick selector beside the brand and three theme previews. |
+| `theme-light-remote-mobile.png` | `theme-dark-remote-mobile.png` | Narrow remote content and wrapping Hook actions. |
+| `theme-light-remote-fields.png` | `theme-dark-remote-fields.png` | Intentional lower-form captures of fields, save/reload actions and configuration guidance. |
+| `theme-light-remote-fields-mobile.png` | `theme-dark-remote-fields-mobile.png` | The same lower-form content in one column with wrapping paths and actions. |
+
+The field captures are deliberately scrolled to the channel form; absence of the page header in those images is expected. The documentation pass inspected the theme component, settings/Codex sources, scoped CSS, preference and native-background logic, the detector/contrast outputs, and selected light/dark desktop, 640px and mobile captures. It did not launch applications, rerun tests or repeat the detector.
+
+The once-run pre-documentation detector in `../review/theme-detector.json` reported **0 primary findings and 9 advisory findings**: documented type and radius gaps. The source-accurate merge records the actual heading/section type, theme-preview and compact-selector shapes, paired semantic palettes and spacing without treating miniature details as a universal control scale. `../review/theme-contrast.json` records **20 text/background pairs**, with a minimum contrast of **5.01:1**. This covers the listed text pairs, not every possible state or non-text control boundary.
+
+Implementation-session validation reports **306 tests**, typecheck and build passing. Real Electron settings smoke covered light/dark/system choices, system-appearance emulation, manual override, native radio arrow keys, restart persistence and the existing approval/remote interactions; the original interaction smoke also passed. The local **v0.1.13 Windows NSIS installer** completed, and packaged smoke passed with actual packaged light/dark quick toggles, saved preferences, IPC/API and interactions, and zero renderer errors. These are reported implementation-session results, not tests rerun by the documentation pass.
+
+Captures contain synthetic smoke-test state. No real external channels or live model tasks were contacted. External delivery, live Agent task execution and visual appearance on macOS/Linux are outside this review. The 390px mobile layout is browser/Electron emulation evidence; the native window retains its 640px minimum. `PRODUCT.md`, token-bearing `DESIGN.md` and `.impeccable/design.json` are merged alongside this surface record, preserving island colors, geometry, motion and unrelated product behavior.
