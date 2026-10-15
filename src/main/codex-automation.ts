@@ -64,7 +64,7 @@ export class CodexAutomation {
     this.socket = socket
     socket.on('open', () => {
       void (async () => {
-        await this.request('initialize', { clientInfo: { name: 'cute_island', title: 'Cute Island', version: '1.0.0' }, capabilities: { experimentalApi: true } })
+        await this.request('initialize', { clientInfo: { name: 'cute_island', title: 'Cute Island', version: '0.1.11' }, capabilities: { experimentalApi: true } })
         if (this.socket !== socket) return
         socket.send(JSON.stringify({ method: 'initialized' }))
         this.setStatus('connected', '已连接，自动跟踪此服务中已加载的会话')

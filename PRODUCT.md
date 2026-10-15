@@ -8,15 +8,19 @@ web
 
 ## Product Purpose
 
-跨平台 Electron 桌面灵动岛，用来查看本机 Agent 的执行状态。用户要求增加自动权限审批、推荐问题回答和独立配置界面。
+跨平台 Electron 桌面灵动岛，用来查看本机 Agent 的执行状态，并通过已接入的交互通道处理权限审批和问题回答。独立配置界面提供自动审批规则与远程接管设置；远程接管让用户从消息渠道接收提醒、处理请求和追加指令。
 
 ## Operating Context
 
-已有实现使用 React、TypeScript 和 Electron，支持 Windows、macOS、Linux。托盘管理常驻灵动岛，日志识别覆盖 Claude Code、Codex、Gemini 和 Cursor。独立配置窗口是此次扩展。
+已有实现使用 React、TypeScript 和 Electron，支持 Windows、macOS、Linux。托盘管理常驻灵动岛，日志识别覆盖 Claude Code、Codex、Gemini 和 Cursor。独立配置窗口包含常规、自动审批、Agent 接入、远程接管和处理记录。本次扩展恢复主入口遗漏的既有远程模块，并在现有深色配置界面中提供结构化编辑。
 
 ## Capabilities and Constraints
 
 关注模式和托管模式决定灵动岛的展示及鼠标穿透行为。自动审批是独立的配置，只能通过已接入的真实交互通道回传结果；读取日志本身不能批准请求。保留既有会话、拖动和贴边行为。
+
+远程接管支持 Telegram、飞书、企业微信和 Discord 渠道，以及同一 Codex app-server 中已加载的原生线程；Claude、Cursor 和 Gemini 通过远程 Hook 接入。渠道配置包含目标会话或频道、允许操作的用户及凭据环境变量名称，不在表单中填写凭据值。缺失的环境变量会按名称显示，需设置后重启应用。
+
+已有远程配置会自动读取。渠道与 Codex 连接修改需要显式保存，也可重新读取配置或打开配置文件与接入说明；编辑连接前须关闭远程接管。远程接管开启时优先处理请求，自动审批保留用户设置但暂停响应，关闭接管后恢复。托盘与配置窗口使用同一持久化状态。接管服务运行不代表所有外部渠道已经连通，用户需在渠道中发送 `/sessions` 验证。
 
 ## Open Decisions
 

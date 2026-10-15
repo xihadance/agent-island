@@ -1,0 +1,82 @@
+import type { ControlStore } from '../store'
+import type { ChannelAdapter, InterventionRequest, RemoteMessage } from '../types'
+
+export class TelegramChannel implements ChannelAdapter {
+  private abort = new AbortController()
+  private stopped = false
+  constructor(readonly id: string, readonly destination: string, readonly allowedUsers: string[], private readonly token: string,
+    private readonly store: ControlStore, private readonly fetchImpl: typeof fetch = fetch, private readonly base = 'https://api.telegram.org') {}
+  async start(receive: (message: RemoteMessage) => Promise<string>): Promise<void> {
+    // Never silently delete an existing webhook or compete with a different application.
+    const info = await this.api('getWebhookInfo', {})
+    if (info.url) throw new Error('Telegram Bot 已设置 Webhook，请使用专用 Bot 或先明确移除 Webhook')
+    void this.poll(receive)
+  }
+  private async api(method: string, data: unknown): Promise<any> {
+    const response = await this.fetchImpl(`${this.base}/bot${this.token}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(data), signal: AbortSignal.any([this.abort.signal, AbortSignal.timeout(35000)]) })
+    const result = await response.json() as { ok: boolean; result: unknown; error_code?: number; description?: string }
+    if (!result.ok) {
+      if (method === 'editMessageText' && result.description?.includes('message is not modified')) return {}
+      // A callback acknowledgement only dismisses Telegram's spinner. Expired
+      // queries must not pin the polling offset and starve subsequent updates.
+      if (method === 'answerCallbackQuery' && result.error_code === 400 && /query is too old|query (?:id|ID) is invalid|QUERY_ID_INVALID/i.test(result.description ?? '')) return {}
+      throw new Error(`Telegram API 请求失败 (${result.error_code ?? response.status})`)
+    }
+    return result.result
+  }
+  async send(text: string, request?: InterventionRequest): Promise<string> {
+    const result = await this.api('sendMessage', { chat_id: this.destination, text: text.slice(0, 3900), reply_markup: keyboard(request), link_preview_options: { is_disabled: true } })
+    return String(result.message_id)
+  }
+  async update(messageId: string, text: string, request: InterventionRequest): Promise<void> {
+    await this.api('editMessageText', { chat_id: this.destination, message_id: Number(messageId), text: text.slice(0, 3900), reply_markup: keyboard(request) })
+  }
+  private async poll(receive: (message: RemoteMessage) => Promise<string>): Promise<void> {
+    let delay = 1000
+    while (!this.stopped) {
+      try {
+        const updates = await this.api('getUpdates', { offset: this.store.snapshot().cursors[this.id] ?? 0, timeout: 25, allowed_updates: ['message', 'callback_query'] })
+        for (const update of updates) {
+          if (this.stopped) return
+          const callback = update.callback_query
+          const message = callback?.message ?? update.message
+          const sender = String(callback?.from?.id ?? message?.from?.id ?? '')
+          const chat = String(message?.chat?.id ?? '')
+          if (callback) await this.api('answerCallbackQuery', { callback_query_id: callback.id })
+          if (this.stopped) return
+          if (sender && chat && (callback || message?.text)) {
+            let action: RemoteMessage['action']
+            if (callback?.data) {
+              const [requestId, rev, command, option] = String(callback.data).split(':')
+              const r = this.store.snapshot().requests.find(r => r.id === requestId)
+              if (r && command === 'pick' && r.questions.length === 1) action = { requestId, revision: Number(rev), decision: { action: 'answer', answers: { [r.questions[0].id]: [r.questions[0].options[Number(option)]] } } }
+              else action = { requestId, revision: Number(rev), decision: { action: command as 'approve' } }
+            }
+            const reply = await receive({ eventId: String(update.update_id), sender, chat, text: message.text, replyTo: message.reply_to_message ? String(message.reply_to_message.message_id) : undefined, action })
+            if (this.stopped) return
+            if (reply) for (let i = 0; i < reply.length; i += 3500) await this.api('sendMessage', { chat_id: chat, text: reply.slice(i, i + 3500), link_preview_options: { is_disabled: true } })
+          }
+          this.store.change(state => { state.cursors[this.id] = update.update_id + 1 })
+        }
+        delay = 1000
+      } catch {
+        if (this.stopped) return
+        await new Promise<void>(resolve => {
+          const done = () => { clearTimeout(timer); this.abort.signal.removeEventListener('abort', done); resolve() }
+          const timer = setTimeout(done, delay)
+          this.abort.signal.addEventListener('abort', done, { once: true })
+        })
+        delay = Math.min(delay * 2, 30000)
+      }
+    }
+  }
+  close(): void { this.stopped = true; this.abort.abort() }
+}
+function keyboard(request?: InterventionRequest): { inline_keyboard: unknown[][] } {
+  if (!request || request.status !== 'pending') return { inline_keyboard: [] }
+  const rows: unknown[][] = [request.actions.filter(a => a !== 'answer').map(action => ({ text: ({ approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了' })[action], callback_data: `${request.id}:${request.revision}:${action}` }))]
+  const q = request.questions[0]
+  if (request.actions.includes('answer') && request.questions.length === 1 && !q.multi) q.options.forEach((option, i) => rows.push([{ text: option.slice(0, 60), callback_data: `${request.id}:${request.revision}:pick:${i}` }]))
+  return { inline_keyboard: rows.filter(r => r.length) }
+}

@@ -1,10 +1,12 @@
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, shell } from 'electron'
 import path from 'node:path'
 import os from 'node:os'
 import { existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { initRemoteConfig, readRemoteConfig, type RemoteConfig } from '../control/config'
+import { createControlRuntime, type ControlRuntime } from '../control/runtime'
 import { SessionWatcher } from '../agents/watch'
-import { ActivityStore } from '../shared/activity'
+import { ActivityError, ActivityStore } from '../shared/activity'
 import { DEMO_ID, demoFrames, playDemoFrames } from '../shared/demo'
 import { startStatusServer, type StatusServer } from './server'
 import { TRAY_ICON } from './tray-icon'
@@ -16,6 +18,7 @@ import { normalizePreferences, patchPreferences, type AutomationEntry, type Sett
 import { decideClaude, type Decision } from '../shared/automation'
 import { CodexAutomation } from './codex-automation'
 import { hasClaudeIntegration, setClaudeIntegration } from './claude-integration'
+import { remoteSettings, saveRemoteSettings } from './remote-settings'
 
 const WINDOW_WIDTH = 460
 const WINDOW_HEIGHT = 560
@@ -26,6 +29,8 @@ let tray: Tray | null = null
 let server: StatusServer | null = null
 let store: ActivityStore | null = null
 let watcher: SessionWatcher | null = null
+let control: ControlRuntime | undefined
+let controlLoadError: string | undefined
 let demoToken = 0
 let preferredPosition: WindowPosition | undefined
 let dockCollapsed = true
@@ -79,14 +84,18 @@ async function boot(): Promise<void> {
   const firstLaunch = !existsSync(preferencesFile())
   preferences = readPreferences(preferencesFile())
   islandMode = preferences.mode
-  codex = new CodexAutomation(() => preferences, notifySettings, decision => reportDecision('Codex', decision))
-  const port = readPort()
+  codex = new CodexAutomation(automationPreferences, notifySettings, decision => reportDecision('Codex', decision))
+  let config: RemoteConfig | undefined
+  try { config = readRemoteConfig(remoteConfigFile()) }
+  catch { reportControlLoadFailure() }
+  const port = config?.port ?? readPort()
   try {
     server = await startStatusServer(store, {
       port,
       token: process.env.CUTE_ISLAND_TOKEN,
+      control: loadControl,
       claudeHook: payload => {
-        const decision = decideClaude(payload, preferences)
+        const decision = decideClaude(payload, automationPreferences())
         const key = createHash('sha256').update(JSON.stringify([payload, decision.action, decision.summary])).digest('hex')
         if (!recentHooks.has(key)) {
           recentHooks.add(key)
@@ -109,11 +118,13 @@ async function boot(): Promise<void> {
   mainWindow = createWindow(store)
   tray = createTray()
   wireIpc(store)
+  if (config) { try { loadControl() } catch { /* Reported in settings and tray. */ } }
   codex.update()
   if (firstLaunch || process.argv.includes('--settings')) openSettings()
   app.on('before-quit', () => {
     watcher?.stop()
     codex?.stop()
+    control?.close()
     tray?.destroy()
     store?.dispose()
     void server?.close()
@@ -192,6 +203,60 @@ function preferencesFile(): string {
   return path.join(app.getPath('userData'), 'preferences.json')
 }
 
+function remoteConfigFile(): string {
+  return process.env.CUTE_ISLAND_REMOTE_CONFIG ?? path.join(os.homedir(), '.cute-island', 'remote.json')
+}
+
+function loadControl(): ControlRuntime | undefined {
+  if (control || !store) return control
+  let config: RemoteConfig | undefined
+  try { config = readRemoteConfig(remoteConfigFile()) }
+  catch { throw new ActivityError(503, reportControlLoadFailure()) }
+  if (!config) {
+    controlLoadError = undefined
+    if (tray) updateTrayMenu(tray)
+    return undefined
+  }
+  if (server && config.port !== server.port) throw new ActivityError(503, reportControlLoadFailure('接管配置端口已修改，请重启应用后开启接管'))
+  try {
+    control = createControlRuntime(config, store, { configFile: remoteConfigFile(), onChange: () => { codex?.update(); if (tray) updateTrayMenu(tray); notifySettings() } })
+  } catch { throw new ActivityError(503, reportControlLoadFailure()) }
+  controlLoadError = undefined
+  void control.start().catch(() => console.error('远程接管启动失败，请检查配置'))
+  codex?.update()
+  if (tray) updateTrayMenu(tray)
+  notifySettings()
+  return control
+}
+
+function reportControlLoadFailure(message = '远程接管不可用，请检查配置文件和状态文件，修复后重新开启'): string {
+  // JSON parse errors can contain configuration fragments, including credentials.
+  if (controlLoadError !== message) console.error(message)
+  controlLoadError = message
+  if (tray) updateTrayMenu(tray)
+  return message
+}
+
+function setRemoteEnabled(enabled: boolean): void {
+  try {
+    const runtime = loadControl()
+    if (!runtime) throw new Error('请先通过托盘的“配置远程接管”创建配置')
+    runtime.setEnabled(enabled)
+  } catch (error) {
+    dialog.showErrorBox('远程接管切换失败', errorText(error))
+  } finally { if (tray) updateTrayMenu(tray) }
+}
+
+async function configureRemote(): Promise<void> {
+  try {
+    const file = remoteConfigFile()
+    if (!existsSync(file)) initRemoteConfig(file, server?.port ?? readPort())
+    if (tray) updateTrayMenu(tray)
+    const error = await shell.openPath(file)
+    if (error) throw new Error(`无法打开配置文件：${file}\n${error}`)
+  } catch (error) { dialog.showErrorBox('打开接管配置失败', errorText(error)) }
+}
+
 function currentBehavior(): IslandBehavior {
   return { mode: islandMode, attentionIds: attention.pendingIds() }
 }
@@ -215,8 +280,12 @@ function claudeSettingsFile(): string {
   return path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), 'settings.json')
 }
 
+function automationPreferences() {
+  return control?.status().enabled ? { ...preferences, automation: { ...preferences.automation, enabled: false } } : preferences
+}
+
 function settingsSnapshot(): SettingsSnapshot {
-  return { preferences, version: app.getVersion(), port: server?.port ?? readPort(),
+  return { remote: remoteSettings(remoteConfigFile(), control?.status(), controlLoadError), preferences, version: app.getVersion(), port: server?.port ?? readPort(),
     watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled,
     codexStatus: codex?.status ?? 'disabled', codexDetail: codex?.detail ?? '', history: [...history] }
 }
@@ -258,6 +327,14 @@ function resetPosition(): void {
     placeWindow(mainWindow)
   }
   reveal()
+}
+
+function openRemoteSettings(): void {
+  openSettings()
+  const contents = settingsWindow?.webContents
+  const navigate = () => { if (contents && !contents.isDestroyed()) void contents.executeJavaScript("window.location.hash = 'settings/remote'") }
+  if (contents?.isLoading()) contents.once('did-finish-load', navigate)
+  else navigate()
 }
 
 function openSettings(): void {
@@ -306,7 +383,10 @@ function createTray(): Tray {
 }
 
 function updateTrayMenu(next: Tray): void {
-  next.setToolTip(`Cute Island · ${islandMode === 'managed' ? '托管模式' : '关注模式'}${preferences.automation.enabled ? ' · 自动审批' : ''}`)
+  const remote = control?.status()
+  const configured = existsSync(remoteConfigFile())
+  const remoteLabel = controlLoadError ? '不可用，请检查配置' : remote?.error ? '启动或清理失败' : remote?.enabled ? '已开启' : configured ? '已关闭' : '请先配置'
+  next.setToolTip(`Cute Island · ${islandMode === 'managed' ? '托管模式' : '关注模式'}${preferences.automation.enabled ? ' · 自动审批' : ''} · 远程接管${remoteLabel}`)
   const menu = Menu.buildFromTemplate([
     { label: '打开配置…', accelerator: 'CmdOrCtrl+,', click: openSettings },
     { type: 'separator' },
@@ -317,6 +397,9 @@ function updateTrayMenu(next: Tray): void {
       try { updatePreferences({ automation: { enabled: item.checked } }) }
       catch (error) { dialog.showErrorBox('无法保存配置', errorText(error)) }
     } },
+    { id: 'remote-toggle', label: `远程接管（${remoteLabel}）`, type: 'checkbox', checked: remote?.enabled ?? false, enabled: configured,
+      click: item => setRemoteEnabled(item.checked) },
+    { label: '配置远程接管…', click: openRemoteSettings },
     { type: 'separator' },
     { label: '显示灵动岛', click: () => reveal() },
     { label: '隐藏灵动岛', click: () => mainWindow?.hide() },
@@ -487,6 +570,22 @@ function wireIpc(activityStore: ActivityStore): void {
     if (event.sender !== settingsWindow?.webContents) throw new Error('请从配置窗口修改设置')
     return updatePreferences(patch)
   })
+  ipcMain.handle('island:save-remote', (event, draft: unknown, revision: unknown) => {
+    if (event.sender !== settingsWindow?.webContents) throw new Error('请从配置窗口修改设置')
+    if (control?.status().enabled) throw new Error('请先关闭远程接管，再保存配置')
+    saveRemoteSettings(remoteConfigFile(), draft, revision, server?.port ?? readPort())
+    controlLoadError = undefined
+    if (tray) updateTrayMenu(tray)
+    notifySettings()
+    return settingsSnapshot()
+  })
+  ipcMain.handle('island:remote-enabled', (event, enabled: unknown) => {
+    if (event.sender !== settingsWindow?.webContents || typeof enabled !== 'boolean') throw new Error('无效的远程接管操作')
+    const runtime = loadControl()
+    if (!runtime) throw new Error('请先添加并保存远程渠道')
+    runtime.setEnabled(enabled)
+    return settingsSnapshot()
+  })
   ipcMain.handle('island:claude-integration', (event, installed: unknown) => {
     if (event.sender !== settingsWindow?.webContents || typeof installed !== 'boolean') throw new Error('无效的接入操作')
     setClaudeIntegration(claudeSettingsFile(), installed, server?.port ?? readPort(), process.env.CUTE_ISLAND_TOKEN)
@@ -499,6 +598,8 @@ function wireIpc(activityStore: ActivityStore): void {
     if (action === 'show') reveal()
     else if (action === 'hide') mainWindow?.hide()
     else if (action === 'reset-position') resetPosition()
+    else if (action === 'remote-file') return configureRemote()
+    else if (action === 'remote-docs') return shell.openExternal('https://github.com/xihadance/cute-island/blob/main/REMOTE_CONTROL.md')
     else if (action === 'clear-history') { history.length = 0; notifySettings() }
     else throw new Error('无法识别的操作')
   })

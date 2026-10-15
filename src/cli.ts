@@ -42,6 +42,10 @@ export async function runCli(argv: readonly string[], io: CliIo = {}): Promise<n
     return command ? 0 : 0
   }
   try {
+    if (command === 'remote') {
+      const { runRemoteCli } = await import('./control/cli')
+      return await runRemoteCli(rest, { stdout, stderr, env: io.env, fetchImpl: io.fetchImpl })
+    }
     if (command === 'push') {
       await push(parseArgs(rest), io, stdout, stderr)
       return 0
@@ -191,6 +195,7 @@ const USAGE = `用法
   cute-island push --agent Cursor --state running --title "正在修改登录页"
   cute-island end --id default --result success --summary "已完成"
   cute-island demo
+  cute-island remote init | serve | status | hook | hook-config
 
 push 选项
   --id        活动 id，默认 default

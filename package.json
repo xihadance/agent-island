@@ -1,6 +1,6 @@
 {
   "name": "cute-island",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "description": "跨平台 PC 灵动岛，展示 agent 执行状态",
   "author": "Cute Island <xihadance@gmail.com>",
@@ -13,7 +13,7 @@
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.ts",
     "build": "electron-vite build && npm run build:cli",
-    "build:cli": "esbuild src/cli.ts --bundle --minify --platform=node --format=cjs --outfile=out/cli.cjs",
+    "build:cli": "esbuild src/cli.ts --bundle --minify --packages=external --platform=node --format=cjs --outfile=out/cli.cjs",
     "dist": "npm run typecheck && npm test && npm run build && electron-builder --publish never",
     "pack": "npm run build && electron-builder --dir --publish never",
     "preview": "electron-vite preview",
@@ -36,6 +36,8 @@
       "out/main/**/*",
       "out/preload/**/*",
       "out/renderer/**/*",
+      "out/cli.cjs",
+      "bin/cute-island.js",
       "package.json"
     ],
     "asar": true,
@@ -71,12 +73,12 @@
     }
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.74.0",
+    "@wecom/aibot-node-sdk": "^1.0.7",
+    "discord.js": "^14.27.0",
     "ws": "^8.22.0"
   },
   "devDependencies": {
-    "framer-motion": "^14.0.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -87,6 +89,9 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "esbuild": "^0.28.2",
+    "framer-motion": "^14.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^7.3.7",

@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import type { RemoteDraft } from '../../shared/remote-settings'
 
 import type { Activity } from '../../shared/activity'
 import type { DockState } from '../../shared/window-position'
@@ -22,11 +23,13 @@ export interface IslandHit {
 
 export interface IslandApi {
   openSettings: () => Promise<void>
+  saveRemote: (draft: RemoteDraft, revision: string) => Promise<SettingsSnapshot>
+  setRemoteEnabled: (enabled: boolean) => Promise<SettingsSnapshot>
   getSettings: () => Promise<SettingsSnapshot>
   updateSettings: (patch: PreferencesPatch) => Promise<SettingsSnapshot>
   onSettings: (callback: (snapshot: SettingsSnapshot) => void) => () => void
   setClaudeIntegration: (installed: boolean) => Promise<SettingsSnapshot>
-  settingsAction: (action: 'show' | 'hide' | 'reset-position' | 'clear-history') => Promise<void>
+  settingsAction: (action: 'show' | 'hide' | 'reset-position' | 'clear-history' | 'remote-file' | 'remote-docs') => Promise<void>
   getBehavior: () => Promise<IslandBehavior>
   onBehavior: (callback: (behavior: IslandBehavior) => void) => () => void
   setMode: (mode: IslandMode) => void

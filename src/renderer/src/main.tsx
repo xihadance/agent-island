@@ -5,9 +5,9 @@ import { Settings } from './Settings'
 import './island.css'
 
 function Root() {
-  const [settings, setSettings] = useState(window.location.hash === '#settings')
+  const [settings, setSettings] = useState(window.location.hash.startsWith('#settings'))
   useEffect(() => {
-    const sync = (): void => setSettings(window.location.hash === '#settings')
+    const sync = (): void => setSettings(window.location.hash.startsWith('#settings'))
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
   }, [])

@@ -2,6 +2,10 @@ import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { ActivityError, ActivityStore, type Activity } from '../shared/activity'
+import type { ControlRuntime } from '../control/runtime'
+import { check, record, string } from '../control/store'
+import type { Decision } from '../control/types'
+import { hookPassthrough } from '../control/hooks'
 
 export interface StatusServer {
   port: number
@@ -10,12 +14,12 @@ export interface StatusServer {
 
 export function startStatusServer(
   store: ActivityStore,
-  options: { port: number; token?: string; claudeHook?: (payload: unknown) => unknown }
+  options: { port: number; token?: string; claudeHook?: (payload: unknown) => unknown; control?: ControlRuntime | (() => ControlRuntime | undefined) }
 ): Promise<StatusServer> {
   const token = options.token?.trim() || undefined
   const sockets = new Set<WebSocket>()
   const httpServer = createServer((req, res) => {
-    void handleRequest(req, res, store, token, options.claudeHook).catch((error: unknown) => {
+    void handleRequest(req, res, store, token, options.claudeHook, options.control).catch((error: unknown) => {
       if (res.headersSent) return
       const status = error instanceof ActivityError ? error.status : 500
       sendJson(res, status, { error: error instanceof Error ? error.message : '内部错误' })
@@ -81,13 +85,20 @@ async function handleRequest(
   res: ServerResponse,
   store: ActivityStore,
   token: string | undefined,
-  claudeHook?: (payload: unknown) => unknown
+  claudeHook?: (payload: unknown) => unknown,
+  control?: ControlRuntime | (() => ControlRuntime | undefined)
 ): Promise<void> {
+  const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+  if (url.pathname === '/v1/control' || url.pathname.startsWith('/v1/control/')) {
+    const runtime = typeof control === 'function' ? control() : control
+    if (!runtime || !authorized(req, runtime.token)) { sendJson(res, runtime ? 401 : 404, { error: runtime ? '接管接口需要独立令牌' : '未启用接管' }); return }
+    await handleControl(req, res, url, runtime)
+    return
+  }
   if (!authorized(req, token)) {
     sendJson(res, 401, { error: '未授权' })
     return
   }
-  const url = new URL(req.url ?? '/', 'http://127.0.0.1')
   const parts = url.pathname.split('/').filter(Boolean)
   if (req.method === 'POST' && url.pathname === '/v1/hooks/claude' && claudeHook) {
     // Browser pages cannot submit permission requests to the local hook endpoint.
@@ -119,6 +130,31 @@ async function handleRequest(
     return
   }
   sendJson(res, 404, { error: '找不到接口' })
+}
+
+async function handleControl(req: IncomingMessage, res: ServerResponse, url: URL, control: ControlRuntime): Promise<void> {
+  const parts = url.pathname.split('/').filter(Boolean)
+  let result: unknown
+  if (req.method === 'GET' && parts.length === 2) result = { ...control.hub.store.snapshot(), control: control.status() }
+  else if (req.method === 'POST' && parts[2] === 'enabled' && parts.length === 3) {
+    const body = record(await readJson(req))
+    check(typeof body.enabled === 'boolean', 'enabled 必须是布尔值')
+    result = control.setEnabled(body.enabled)
+  } else if (req.method === 'POST' && parts[2] === 'hook' && parts.length === 3) {
+    const body = record(await readJson(req))
+    check(!control.status().error, '接管不可用，请检查配置后重新开启', 503)
+    result = control.status().enabled ? control.hooks.handle(body) : { output: hookPassthrough(string(body.agent, 'agent'), record(body.event)) }
+  }
+  else if (req.method === 'GET' && parts[2] === 'requests' && parts.length === 4) result = control.hooks.poll(parts[3], url.searchParams.get('invocation') ?? '')
+  else if (req.method === 'POST' && parts[2] === 'requests' && parts[4] === 'respond' && parts.length === 5) {
+    const body = record(await readJson(req))
+    check(Number.isInteger(body.revision), 'revision 无效')
+    result = await control.hub.respond(parts[3], Number(body.revision), record(body.decision) as unknown as Decision, 'local-control')
+  } else if (req.method === 'POST' && parts[2] === 'messages' && parts.length === 3) {
+    const body = record(await readJson(req))
+    result = await control.hub.send(string(body.sessionId, 'sessionId', 300), string(body.text, '消息'), 'local-control')
+  } else throw new ActivityError(404, '找不到接管接口')
+  sendJson(res, 200, result)
 }
 
 function authorized(req: IncomingMessage, token: string | undefined): boolean {

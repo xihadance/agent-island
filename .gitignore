@@ -10,3 +10,8 @@ dist
 output/playwright/
 .impeccable/review/
 docs/
+remote.json
+remote.json.*.tmp
+remote-state.json
+remote-state.json.tmp
+codex-session-*.md

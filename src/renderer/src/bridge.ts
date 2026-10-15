@@ -28,6 +28,7 @@ function createMockBridge(): IslandApi {
   mode = preferences.mode
   const settingsListeners = new Set<(snapshot: SettingsSnapshot) => void>()
   const snapshot = (): SettingsSnapshot => ({ preferences, version: '预览', port: 17321, watchDisabledByEnvironment: false,
+    remote: { configured: false, enabled: false, running: false, configFile: '~/.cute-island/remote.json', revision: '', channels: [], codex: [], missingCredentials: [] },
     claudeInstalled: false, codexStatus: 'disabled', codexDetail: '', history: [], preview: true })
   const save = (): SettingsSnapshot => {
     mode = preferences.mode
@@ -53,6 +54,8 @@ function createMockBridge(): IslandApi {
   })
   return {
     openSettings: async () => { window.location.hash = 'settings' },
+    saveRemote: async () => { throw new Error('请在桌面应用中配置远程渠道') },
+    setRemoteEnabled: async () => { throw new Error('请在桌面应用中开启远程接管') },
     getSettings: async () => snapshot(),
     updateSettings: async patch => { preferences = patchPreferences(preferences, patch); return save() },
     onSettings(callback) { settingsListeners.add(callback); return () => { settingsListeners.delete(callback) } },

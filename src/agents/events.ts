@@ -135,11 +135,11 @@ export function endedEvent(status: unknown, message: unknown): AgentEvent {
   return { kind: 'done', title: title || '已完成' }
 }
 
-export function toolEvent(name: string, input: Record<string, unknown>, callId?: string, approval = input.sandbox_permissions === 'require_escalated'): ToolEvent {
+export function toolEvent(name: string, input: Record<string, unknown>, callId?: string, approval = input.sandbox_permissions === 'require_escalated' || input.request_smart_mode_approval === true): ToolEvent {
   const title = toolTitle(name, input)
   const operation = describeOperation(name, input)
   if (!approval) return { kind: 'tool', title, callId, operation }
-  return { kind: 'approval', title, callId, operation, reason: cleanText(textOf(input.justification) || textOf(input.reason)) }
+  return { kind: 'approval', title, callId, operation, reason: cleanText(textOf(input.justification) || textOf(input.reason) || textOf(input.smart_mode_block_reason)) }
 }
 
 export function toolTitle(name: string, input: Record<string, unknown>): string {

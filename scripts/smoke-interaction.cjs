@@ -89,7 +89,7 @@ async function smoke() {
   const start = () => {
     child = spawn(executable, [__filename, `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`], {
       windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
-        CUTE_ISLAND_PORT: String(port), ISLAND_FIXTURE_PORT: String(fixturePort), CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '', ELECTRON_RENDERER_URL: '' }
+        CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ISLAND_FIXTURE_PORT: String(fixturePort), CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '', ELECTRON_RENDERER_URL: '' }
     })
     child.stderr.on('data', data => { logs += data })
     child.stdout.on('data', data => { logs += data })

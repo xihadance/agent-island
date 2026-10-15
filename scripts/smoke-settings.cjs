@@ -28,6 +28,7 @@ async function fixture() {
   await app.whenReady()
   await until(() => BrowserWindow.getAllWindows().some(win => win.webContents.getURL().endsWith('#settings')))
   let settings = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().endsWith('#settings'))
+  settings.webContents.setBackgroundThrottling(false)
   let evaluate = script => settings.webContents.executeJavaScript(script, true)
   await until(() => evaluate('!!document.querySelector(".automation-master")'))
   const errors = []
@@ -44,7 +45,7 @@ async function fixture() {
   }
   const artifacts = path.resolve('.impeccable/review')
   await fs.mkdir(artifacts, { recursive: true })
-  const capture = async name => { await delay(220); await fs.writeFile(path.join(artifacts, `${name}.png`), (await settings.webContents.capturePage()).toPNG()) }
+  const capture = async name => { const [width, height] = settings.getContentSize(); settings.setContentSize(width + 1, height); await delay(100); settings.setContentSize(width, height); await delay(220); await fs.writeFile(path.join(artifacts, `${name}.png`), (await settings.webContents.capturePage()).toPNG()) }
   const click = text => evaluate(`Array.from(document.querySelectorAll('button')).find(el => el.textContent.trim() === ${JSON.stringify(text)}).click()`)
   const settled = () => until(() => evaluate('!document.querySelector(".settings-save-status").textContent.includes("正在")'))
   await capture('settings-paused')
@@ -83,6 +84,51 @@ async function fixture() {
   await click('清空记录')
   await until(() => evaluate('!!document.querySelector(".settings-empty")'))
   await capture('settings-history-empty')
+  await click('远程接管')
+  await capture('remote-empty')
+  await evaluate('document.querySelector(".remote-add button").click()')
+  const fill = (index, value) => evaluate(`(() => { const input = document.querySelectorAll('.remote-editor input')[${index}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(value)}); input.dispatchEvent(new Event('input', { bubbles: true })); })()`)
+  await fill(0, 'telegram-fixture')
+  await fill(1, '123456')
+  await fill(2, 'ISLAND_SMOKE_FAKE_BOT_TOKEN')
+  await fill(3, '987654,456789')
+  await click('保存渠道配置')
+  await until(async () => (await state()).remote.channels.length === 1)
+  const savedRemote = JSON.parse(await fs.readFile(process.env.CUTE_ISLAND_REMOTE_CONFIG, 'utf8'))
+  assert.deepEqual(savedRemote.channels[0].allowedUsers, ['987654', '456789'])
+  assert.equal(savedRemote.enabled, false)
+  assert.ok(!(JSON.stringify(await state())).includes(savedRemote.controlToken))
+  await capture('remote-desktop')
+  await evaluate('window.scrollTo(0, document.body.scrollHeight)')
+  await capture('remote-desktop-bottom')
+  await evaluate('window.scrollTo(0, 0)')
+  settings.setContentSize(640, 700)
+  await capture('remote-640')
+  assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false)
+  settings.setMinimumSize(360, 480)
+  settings.setContentSize(390, 844)
+  await capture('remote-mobile')
+  await evaluate('window.scrollTo(0, document.body.scrollHeight)')
+  await capture('remote-mobile-bottom')
+  await evaluate('window.scrollTo(0, 0)')
+  assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false)
+  settings.setContentSize(920, 700)
+  // Empty connections keep this fixture entirely offline when exercising takeover.
+  await click('移除 Telegram 渠道 1')
+  await click('保存渠道配置')
+  await until(async () => !(await state()).remote.channels.length)
+  await evaluate('document.querySelector("#remote-switch").click()')
+  await until(async () => (await state()).remote.enabled)
+  assert.equal(trayMenu.find(item => item.id === 'remote-toggle').checked, true)
+  assert.deepEqual(await post({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_use_id: 'during-remote' }), {}, 'Remote takeover suppresses automatic native approvals')
+  await click('自动审批')
+  await capture('remote-automation-priority')
+  trayMenu.find(item => item.id === 'remote-toggle').click({ checked: false })
+  await until(async () => !(await state()).remote.enabled)
+  assert.equal((await post({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_use_id: 'after-remote' })).hookSpecificOutput.decision.behavior, 'allow')
+  await evaluate('window.island.settingsAction("clear-history")')
+  trayMenu.find(item => item.label === '配置远程接管…').click()
+  await until(() => evaluate('document.querySelector("h1").textContent === "远程接管"'))
   await click('自动审批')
   settings.setMinimumSize(360, 480)
   settings.setContentSize(640, 620)
@@ -123,7 +169,7 @@ async function main() {
     for (const phase of ['main', 'restore']) {
       const child = spawn(require('electron'), [__filename, `--user-data-dir=${profile}`, '--settings'], {
         windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CUTE_ISLAND_DISABLE_GPU: '1', CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '',
-          CUTE_ISLAND_PORT: String(port), ELECTRON_RENDERER_URL: '', CLAUDE_CONFIG_DIR: path.join(profile, 'claude'), ISLAND_SETTINGS_PHASE: phase }
+          CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ELECTRON_RENDERER_URL: '', CLAUDE_CONFIG_DIR: path.join(profile, 'claude'), ISLAND_SETTINGS_PHASE: phase }
       })
       let logs = ''
       child.stdout.on('data', value => { logs += value })

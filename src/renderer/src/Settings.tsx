@@ -2,12 +2,14 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import type { PreferencesPatch, SettingsSnapshot } from '../../shared/preferences'
 import { getBridge } from './bridge'
 import './settings.css'
+import { RemoteSettings } from './RemoteSettings'
 
-type Section = 'general' | 'automation' | 'connections' | 'history'
+type Section = 'general' | 'automation' | 'connections' | 'remote' | 'history'
 const sections: { id: Section; label: string; icon: ReactNode }[] = [
   { id: 'general', label: '常规', icon: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></> },
   { id: 'automation', label: '自动审批', icon: <><path d="m13 3-8 11h6l-1 7 9-12h-6z" /></> },
   { id: 'connections', label: 'Agent 接入', icon: <><path d="m9 15 6-6m-7 3-2 2a4 4 0 0 0 6 6l2-2m-2-12 2-2a4 4 0 0 1 6 6l-2 2" /></> },
+  { id: 'remote', label: '远程接管', icon: <><rect x="6" y="2" width="12" height="20" rx="3" /><path d="M10 18h4m-4-12h4" /></> },
   { id: 'history', label: '处理记录', icon: <><path d="M3 11a9 9 0 1 1 2 7M3 4v7h7m2-4v5l3 2" /></> }
 ]
 
@@ -28,7 +30,13 @@ function Switch({ title, description, checked, disabled, onChange, prominent }: 
 
 export function Settings() {
   const bridge = getBridge()
-  const [section, setSection] = useState<Section>('automation')
+  const [section, setSection] = useState<Section>(window.location.hash === '#settings/remote' ? 'remote' : 'automation')
+  const [remoteDirty, setRemoteDirty] = useState(false)
+  useEffect(() => {
+    const navigate = () => { const section = window.location.hash.slice('#settings/'.length); if (sections.some(item => item.id === section)) setSection(section as Section) }
+    window.addEventListener('hashchange', navigate)
+    return () => window.removeEventListener('hashchange', navigate)
+  }, [])
   const [snapshot, setSnapshot] = useState<SettingsSnapshot>()
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
@@ -64,21 +72,21 @@ export function Settings() {
     <aside className="settings-sidebar">
       <div className="settings-brand"><span className="settings-brand-mark" aria-hidden="true"><i /><i /><i /></span><strong>Cute Island</strong></div>
       <nav aria-label="配置分类">{sections.map(item => <button type="button" key={item.id} aria-current={section === item.id ? 'page' : undefined}
-        onClick={() => { setSection(item.id); setError('') }}><Icon>{item.icon}</Icon><span>{item.label}</span></button>)}</nav>
+        onClick={() => { setSection(item.id); window.location.hash = `settings/${item.id}`; setError('') }}><Icon>{item.icon}</Icon><span>{item.label}</span></button>)}</nav>
       <div className="settings-sidebar-foot"><span className="settings-version">Cute Island {snapshot?.version}</span><span>你的 Agent，就在身边。</span>
         {snapshot?.preview && <a href="#">返回灵动岛预览</a>}</div>
     </aside>
     <main className="settings-main" id="settings-main">
-      <header className="settings-header"><div><h1>{title}</h1><p>{section === 'automation' ? '把重复确认交给灵动岛。' : section === 'general' ? '让灵动岛按你的习惯工作。' : section === 'connections' ? '连接可以接收审批和回答的 Agent。' : '查看本次启动后的自动处理结果。'}</p></div>
-        <span className="settings-save-status" role="status">{message}</span></header>
+      <header className="settings-header"><div><h1>{title}</h1><p>{section === 'automation' ? '把重复确认交给灵动岛。' : section === 'general' ? '让灵动岛按你的习惯工作。' : section === 'connections' ? '连接可以接收审批和回答的 Agent。' : section === 'remote' ? '把已有会话接到你的消息渠道。' : '查看本次启动后的自动处理结果。'}</p></div>
+        <span className="settings-save-status" role="status">{remoteDirty ? '远程配置有未保存修改' : section === 'remote' ? '渠道配置需点击保存' : message}</span></header>
       {error && <div className="settings-error" role="alert">{error}<button type="button" onClick={() => { void run(async () => setSnapshot(await bridge.getSettings()), '设置已重新加载') }}>重新读取设置</button></div>}
       {!snapshot || !auto ? <p role="status">正在读取配置…</p> : <>
         {snapshot.preview && <p className="settings-preview">浏览器预览 · 设置仅保存在此浏览器，实际审批与 Agent 接入请使用桌面应用。</p>}
         {section === 'automation' && <>
-          <div className="automation-master" data-enabled={auto.enabled}>
-            <Switch prominent title="自动审批模式" description={auto.enabled ? '已开启。按下方规则处理已接入 Agent 的请求。' : '当前已暂停，所有请求由你在原 Agent 中处理。'} checked={auto.enabled} disabled={busy}
+          <div className="automation-master" data-enabled={auto.enabled && !snapshot.remote.enabled}>
+            <Switch prominent title="自动审批模式" description={snapshot.remote.enabled ? '远程接管已开启，自动审批暂停响应；关闭接管后恢复此设置。' : auto.enabled ? '已开启。按下方规则处理已接入 Agent 的请求。' : '当前已暂停，所有请求由你在原 Agent 中处理。'} checked={auto.enabled} disabled={busy}
               onChange={enabled => update({ automation: { enabled } })} />
-            <div className="automation-master-foot"><span className="connection-dot" data-active={auto.enabled} />{auto.enabled ? (snapshot.claudeInstalled || snapshot.codexStatus === 'connected' ? '规则已生效' : '等待接入 Agent') : '需要时可随时开启'}<button type="button" onClick={() => setSection('connections')}>管理接入 <span aria-hidden="true">→</span></button></div>
+            <div className="automation-master-foot"><span className="connection-dot" data-active={auto.enabled && !snapshot.remote.enabled} />{snapshot.remote.enabled ? '远程接管优先' : auto.enabled ? (snapshot.claudeInstalled || snapshot.codexStatus === 'connected' ? '规则已生效' : '等待接入 Agent') : '需要时可随时开启'}<button type="button" onClick={() => setSection('connections')}>管理接入 <span aria-hidden="true">→</span></button></div>
           </div>
           <section className="settings-section" aria-labelledby="rules-title"><h2 id="rules-title">处理规则</h2>
             <Switch title="自动批准权限请求" description="批准命令执行、文件修改等工具权限。仅批准当前请求。" checked={auto.approvePermissions} disabled={busy} onChange={approvePermissions => update({ automation: { approvePermissions } })} />
@@ -113,8 +121,9 @@ export function Settings() {
             <p className="settings-help" id="codex-help">开启自动审批后连接，清空地址可移除。仅支持本机无认证的 WebSocket 服务；普通 CLI、桌面应用和插件的日志不会自动建立此连接。</p>
             {snapshot.codexDetail && <p className="connection-detail" role="status">{snapshot.codexDetail}</p>}
           </section>
-          <div className="settings-note"><Icon><path d="M12 8h.01M11 12h1v4" /><circle cx="12" cy="12" r="9" /></Icon><p>Gemini、Cursor 和其他未接入的会话继续显示状态与提醒，审批和回答请在原客户端完成。</p></div>
+          <div className="settings-note"><Icon><path d="M12 8h.01M11 12h1v4" /><circle cx="12" cy="12" r="9" /></Icon><p>Claude、Cursor、Gemini 的远程 Hook 和 Telegram、飞书、企业微信、Discord 渠道请在“远程接管”中配置。未接入的会话仍由原客户端处理。</p></div>
         </>}
+        <div hidden={section !== 'remote'}><RemoteSettings remote={snapshot.remote} preview={snapshot.preview} onSnapshot={setSnapshot} onDirty={setRemoteDirty} /></div>
         {section === 'history' && <>
           <div className="history-toolbar"><p>保留最近 50 条，退出应用后清空。</p><button className="settings-button" disabled={busy || !snapshot.history.length} onClick={() => void run(() => bridge.settingsAction('clear-history'), '记录已清空')}>清空记录</button></div>
           {snapshot.history.length ? <ol className="automation-history">{snapshot.history.map(entry => <li key={entry.id} data-action={entry.action}><div><span className="history-action">{entry.action === 'approved' ? '已批准' : entry.action === 'answered' ? '已回答' : '交给你处理'}</span><span className="history-agent">{entry.agent}</span><time dateTime={new Date(entry.at).toISOString()}>{new Date(entry.at).toLocaleTimeString('zh-CN', { hour12: false })}</time></div><p>{entry.summary}</p></li>)}</ol> : <div className="settings-empty"><Icon><path d="M8 3h8l4 4v14H4V3zm0 8h8m-8 4h5" /></Icon><h2>还没有处理记录</h2><p>开启自动审批并接入 Agent 后，新的请求处理结果会出现在这里。</p><button className="settings-button" onClick={() => setSection('connections')}>设置 Agent 接入</button></div>}

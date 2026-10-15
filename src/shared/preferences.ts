@@ -1,4 +1,5 @@
 import { isIslandMode, type IslandMode } from './island-behavior'
+import type { RemoteSettings } from './remote-settings'
 
 export interface Preferences {
   mode: IslandMode
@@ -76,6 +77,7 @@ export interface AutomationEntry {
 }
 
 export interface SettingsSnapshot {
+  remote: RemoteSettings
   preferences: Preferences
   version: string
   port: number

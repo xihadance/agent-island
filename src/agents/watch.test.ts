@@ -243,6 +243,31 @@ describe('SessionWatcher', () => {
     expect(store.get('cursor-ask')).toMatchObject({ state: 'running', title: '要写文档还是直接改代码？', operation: { name: 'AskQuestion' } })
   })
 
+  it('keeps Cursor approvals pending and quiet calls uncertain through silence', async () => {
+    const { roots } = tempHome()
+    const call = (input: Record<string, unknown>) => ({ role: 'assistant', message: { content: [{ type: 'tool_use', name: 'Shell', input }] } })
+    const approval = path.join(roots.cursor, 'project', 'agent-transcripts', 'approve', 'approve.jsonl')
+    const quiet = path.join(roots.cursor, 'project', 'agent-transcripts', 'quiet', 'quiet.jsonl')
+    // Cursor desktop omits tool ids and results, so the earlier call must retire
+    // for the approval behind it to be what the island reports.
+    writeJsonl(approval, [
+      call({ command: 'npm install', description: '安装依赖', required_permissions: ['all'] }),
+      call({ command: 'git push origin main', description: '推送提交', request_smart_mode_approval: true, smart_mode_block_reason: '推送到远端仓库' })
+    ])
+    writeJsonl(quiet, [call({ command: 'npm test', description: '跑测试', required_permissions: ['all'] })])
+    touch(approval, NOW)
+    touch(quiet, NOW)
+    let now = NOW
+    const store = newStore()
+    const watcher = new SessionWatcher(store, { roots, now: () => now, listProcesses: () => new Set(), processMs: 0, discoveryMs: 0 })
+    await watcher.scan()
+    expect(store.get('cursor-approve')).toMatchObject({ state: 'approval', title: '推送提交', detail: '推送到远端仓库' })
+    now += 90_000
+    await watcher.scan()
+    expect(store.get('cursor-approve')).toMatchObject({ state: 'approval', title: '推送提交', detail: '推送到远端仓库' })
+    expect(store.get('cursor-quiet')).toMatchObject({ state: 'running', stale: true, title: '跑测试' })
+  })
+
   it('keeps a pending MCP authorization through silence', async () => {
     const { roots } = tempHome()
     const file = path.join(roots.codex, 'rollout-mcp.jsonl')
