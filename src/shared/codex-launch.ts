@@ -19,7 +19,8 @@ const remoteCommands = new Set(['agents', 'queue', 'resume', 'fork', 'archive', 
 const commands = new Set([...remoteCommands, 'exec', 'e', 'review', 'login', 'logout', 'mcp', 'plugin', 'app-server', 'remote-control', 'app', 'completion', 'update', 'doctor', 'sandbox', 'debug', 'apply', 'a', 'migrate-rollouts', 'cloud', 'exec-server', 'features', 'help'])
 const valuedOptions = new Set(['-c', '--config', '--enable', '--disable', '-i', '--image', '-m', '--model', '--local-provider', '-p', '--profile', '-s', '--sandbox', '-C', '--cd', '--add-dir', '-a', '--ask-for-approval'])
 
-/** Inspect option names, never prompt text or option values. Explicit user routing always wins. */
+/** Inspect option names, never prompt text or option values. Explicit user routing always wins.
+ * Profiles stay native: app-server only loads its own base config and the protocol cannot carry a profile layer. */
 export function canAutoRouteCodex(args: readonly string[]): boolean {
   let command: string | undefined
   let positional = false
@@ -27,7 +28,7 @@ export function canAutoRouteCodex(args: readonly string[]): boolean {
     const arg = args[i]
     if (arg === '--') break
     const option = arg.split('=', 1)[0]
-    if (['--remote', '--remote-auth-token-env', '--no-daemon', '--help', '-h', '--version', '-V', '--worktree'].includes(option)) return false
+    if (['--remote', '--remote-auth-token-env', '--no-daemon', '--help', '-h', '--version', '-V', '--worktree', '-p', '--profile'].includes(option) || /^-p./.test(arg)) return false
     if (valuedOptions.has(arg)) { i++; continue }
     if (/^-(?:c|i|m|p|s|C|a).+/.test(arg) || arg.startsWith('-')) continue
     if (!positional) {

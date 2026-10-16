@@ -71,7 +71,7 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     }
   })
   shell.stderr.on('data', bytes => { diagnostic += bytes })
-  const launch = async (args = ['-p', 'agentrouter'], version = 1) => {
+  const launch = async (args = ['-m', 'gpt-5'], version = 1) => {
     const result = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => { resolveLaunch = undefined; reject(new Error(`Codex launcher timed out: ${diagnostic}`)) }, 10000)
       resolveLaunch = value => { clearTimeout(timeout); resolve(value) }
@@ -82,7 +82,7 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     assert.equal(diagnostic, '', 'Command launcher stderr')
     return result.args
   }
-  const args = ['-p', 'agentrouter', '保持空格 $() `literal 和 "引号"', '']
+  const args = ['-m', 'gpt-5', '保持空格 $() `literal 和 "引号"', '']
   try {
     assert.deepEqual(await launch(args), args)
     const hostedPort = await freePort(), hostedUrl = `ws://127.0.0.1:${hostedPort}`
@@ -103,6 +103,7 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     await evaluate('window.island.updateSettings({automation:{enabled:true}})')
     assert.deepEqual(await launch(['--remote', 'ws://127.0.0.1:1']), ['--remote', 'ws://127.0.0.1:1'])
     assert.deepEqual(await launch(['--no-daemon']), ['--no-daemon'])
+    assert.deepEqual(await launch(['-p', 'anyrouter']), ['-p', 'anyrouter'], 'Profiles launch natively')
     assert.deepEqual(await launch(['exec', 'prompt']), ['exec', 'prompt'])
     const captureDir = path.resolve('.impeccable/review'); await fs.mkdir(captureDir, { recursive: true })
     const capture = async (name, width, height) => {

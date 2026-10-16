@@ -18,9 +18,9 @@ it('routes automation and takeover independently and restores default launch whe
 })
 
 it.each([
-  { args: [] }, { args: ['-p', 'agentrouter', '修复包含空格的文件'] }, { args: ['resume', '--last'] },
-  { args: ['--profile=agentrouter', 'fork', 'thread-1'] }, { args: ['-c', 'model="login"', 'agents'] },
-  { args: ['--', '--remote is literal prompt text'] }, { args: ['-p', '--no-daemon'] }
+  { args: [] }, { args: ['修复包含空格的文件'] }, { args: ['resume', '--last'] },
+  { args: ['fork', 'thread-1'] }, { args: ['-c', 'model="login"', 'agents'] }, { args: ['-m', '-pmodel'] },
+  { args: ['--', '--remote is literal prompt text'] }, { args: ['--', '-p', 'luna'] }
 ])('preserves native argument values while routing $args', ({ args }) => {
   expect(canAutoRouteCodex(args)).toBe(true)
   expect(codexLaunchArguments(args, { enabled: true, url })).toEqual(['--remote', url, ...args])
@@ -30,7 +30,10 @@ it.each([
 it.each([
   { args: ['exec', '修复问题'] }, { args: ['-p', 'agentrouter', 'login'] }, { args: ['review'] }, { args: ['app-server', '--listen', url] },
   { args: ['--remote', 'wss://user.test'] }, { args: ['hello', '--remote=wss://user.test'] },
-  { args: ['--no-daemon'] }, { args: ['--help'] }, { args: ['-V'] }, { args: ['--worktree'] }, { args: ['resume', '--help'] }
+  { args: ['--no-daemon'] }, { args: ['--help'] }, { args: ['-V'] }, { args: ['--worktree'] }, { args: ['resume', '--help'] },
+  // app-server cannot apply a client-side profile layer, so profiles must launch natively.
+  { args: ['-p', 'luna', '修复包含空格的文件'] }, { args: ['--profile=agentrouter', 'fork', 'thread-1'] },
+  { args: ['--profile', 'luna', 'resume', '--last'] }, { args: ['-pluna'] }, { args: ['-p', '--no-daemon'] }
 ])('leaves explicit routes and unsupported modes unchanged: $args', ({ args }) => {
   expect(canAutoRouteCodex(args)).toBe(false)
   expect(codexLaunchArguments(args, { enabled: true, url })).toEqual(args)

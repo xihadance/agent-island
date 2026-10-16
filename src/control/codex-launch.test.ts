@@ -38,7 +38,7 @@ async function fixture() {
 }
 
 it('uses live switches for every launch, falls back after exit, and never creates or resumes a thread', async () => {
-  const f = await fixture(); const args = ['-p', 'agentrouter', '保持 "引号" 和空格']
+  const f = await fixture(); const args = ['-m', 'gpt-5', '保持 "引号" 和空格']
   const routed = await resolveCodexLaunch(args, f.file)
   expect(routed.slice(2)).toEqual(args)
   expect(routed[0]).toBe('--remote')
@@ -66,13 +66,14 @@ it('keeps explicit choices and unsupported commands without contacting the app',
   const f = await fixture(); const args = ['--remote', 'wss://user.test']
   expect(await resolveCodexLaunch(args, f.file)).toEqual(args)
   expect(await resolveCodexLaunch(['exec', 'hello'], f.file)).toEqual(['exec', 'hello'])
+  expect(await resolveCodexLaunch(['-p', 'luna'], f.file)).toEqual(['-p', 'luna'])
   expect(await resolveCodexLaunch([], f.file, { CUTE_ISLAND_CODEX_BYPASS: '1' })).toEqual([])
   expect(f.methods).toEqual([])
 })
 
 it('decodes PowerShell argument arrays without losing quotes, Unicode or empty values', async () => {
   const f = await fixture()
-  for (const args of [[], ['-p', 'agentrouter', '保持 "引号" $() `literal', '']]) {
+  for (const args of [[], ['-m', 'gpt-5', '保持 "引号" $() `literal', '']]) {
     const output: string[] = []
     const encoded = Buffer.from(JSON.stringify(args)).toString('base64')
     expect(await runCodexLaunch(['plan', '--config', f.file, '--args-base64', encoded], line => output.push(line))).toBe(0)
@@ -87,7 +88,7 @@ it('decodes PowerShell argument arrays without losing quotes, Unicode or empty v
 it('restores native startup for missing credentials, dead services and malformed state', async () => {
   const f = await fixture()
   f.setRoute({ enabled: true, url: 'ws://127.0.0.1:1', tokenEnv: 'TEST_CODEX_TOKEN' })
-  expect(await resolveCodexLaunch(['-p', 'agentrouter'], f.file, {})).toEqual(['-p', 'agentrouter'])
+  expect(await resolveCodexLaunch(['-m', 'gpt-5'], f.file, {})).toEqual(['-m', 'gpt-5'])
   f.setRoute({ enabled: true, url: 'ws://127.0.0.1:1' })
   expect(await resolveCodexLaunch([], f.file)).toEqual([])
   writeFileSync(f.file, 'broken')
