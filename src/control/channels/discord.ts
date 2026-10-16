@@ -1,9 +1,23 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, GatewayIntentBits, Partials } from 'discord.js'
+import { SimpleShardingStrategy } from '@discordjs/ws'
+import type { ChannelTransport } from '../proxy'
+import type { RESTOptions } from 'discord.js'
 import type { ChannelAdapter, InterventionRequest, RemoteMessage } from '../types'
 
 export class DiscordChannel implements ChannelAdapter {
-  private client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel] })
-  constructor(readonly id: string, readonly destination: string, readonly allowedUsers: string[], private readonly token: string) {}
+  private client: Client
+  constructor(readonly id: string, readonly destination: string, readonly allowedUsers: string[], private readonly token: string, transport?: ChannelTransport) {
+    this.client = new Client({
+      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent], partials: [Partials.Channel],
+      rest: transport ? { makeRequest: transport.nodeRequest as unknown as RESTOptions['makeRequest'] } : undefined,
+      ws: transport ? { buildStrategy: manager => {
+        // patches/@discordjs+ws+1.2.3.patch forwards this per-manager agent to every
+        // handshake, including resumed sessions. No global WebSocket mutation.
+        Object.assign(manager.options, { islandAgent: transport.agent })
+        return new SimpleShardingStrategy(manager)
+      } } : undefined
+    })
+  }
   async start(receive: (message: RemoteMessage) => Promise<string>): Promise<void> {
     this.client.on('error', () => {})
     this.client.on('messageCreate', message => {

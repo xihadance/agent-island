@@ -1,10 +1,11 @@
+import type { ChannelTransport } from '../proxy'
 import AiBot from '@wecom/aibot-node-sdk'
 import type { ChannelAdapter, InterventionRequest, RemoteMessage } from '../types'
 
 export class WecomChannel implements ChannelAdapter {
   private ws: InstanceType<typeof AiBot.WSClient>
-  constructor(readonly id: string, readonly destination: string, readonly allowedUsers: string[], botId: string, secret: string) {
-    this.ws = new AiBot.WSClient({ botId, secret, maxReconnectAttempts: -1, logger: { debug() {}, info() {}, warn() {}, error() {} } })
+  constructor(readonly id: string, readonly destination: string, readonly allowedUsers: string[], botId: string, secret: string, transport?: ChannelTransport) {
+    this.ws = new AiBot.WSClient({ botId, secret, wsOptions: { agent: transport?.agent }, maxReconnectAttempts: -1, logger: { debug() {}, info() {}, warn() {}, error() {} } })
   }
   async start(receive: (message: RemoteMessage) => Promise<string>): Promise<void> {
     this.ws.on('error', () => {})

@@ -36,7 +36,7 @@ async function fixture() {
   BrowserWindow.prototype.show = BrowserWindow.prototype.showInactive = function () { this.setPosition(-10000, -10000); showInactive.call(this) }
   const calls = []
   let holdTelegram = true, releaseTelegram
-  global.fetch = async (url, options) => {
+  const fetchFixture = async (url, options) => {
     const target = String(url), data = JSON.parse(options.body)
     calls.push({ url: target.replace(process.env.TEST_TELEGRAM_TOKEN, '[fixture-token]'), data })
     const reply = value => new Response(JSON.stringify(value), { status: 200 })
@@ -50,6 +50,11 @@ async function fixture() {
     if (target.startsWith('https://discord.com/api/v10/')) return reply({ id: 'synthetic-discord-message' })
     throw new Error('Unexpected external API in isolated smoke test')
   }
+  // Replace the production fetch dependency before the main bundle loads. Every
+  // synthetic request stays in-process, even after proxy transport changes.
+  const fetchModule = require.resolve('node-fetch')
+  require(fetchModule)
+  require.cache[fetchModule].exports = fetchFixture
   const codexMessages = []
   const codexServer = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   const codexReady = once(codexServer, 'listening')
@@ -114,6 +119,23 @@ async function fixture() {
   await fill(2, '机器人 Bot ID', 'bot')
   await fill(4, 'WebSocket 地址', codexUrl)
   await fill(4, '会话 ID（可选，逗号分隔）', 'missing-thread')
+  const selectProxy = (index, mode) => evaluate(`(() => {
+    const scope = ${index < 0 ? 'document.querySelector("#remote-proxy-title").parentElement' : 'document.querySelectorAll(".remote-editor")['+index+']'};
+    const select = scope.querySelector('select');
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(mode)});
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`)
+  const fillGlobalProxy = value => evaluate(`(() => {
+    const input=document.querySelector('#remote-proxy-title').parentElement.querySelector('input');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+  })()`)
+  assert.equal(await evaluate('document.querySelectorAll(".remote-editor select").length'), 5)
+  await selectProxy(-1, 'custom'); await fillGlobalProxy('invalid-proxy')
+  await test(0); await settled(0); assert.equal(await outcome(0), 'error')
+  assert.equal(calls.length, 0, 'Invalid proxy must be rejected before contacting APIs')
+  await fillGlobalProxy('http://127.0.0.1:7890')
+  await selectProxy(1, 'direct'); await selectProxy(3, 'custom'); await fill(3, '代理地址', 'socks5://127.0.0.1:1080')
   await test(0)
   await until(() => outcome(0).then(state => state === 'testing'))
   assert.equal(trayMenu.getMenuItemById('remote-toggle').enabled, false)
@@ -146,6 +168,15 @@ async function fixture() {
   assert.equal(codexMessages.some(message => /thread\/(start|resume)|turn\//.test(message.method)), false)
   const island = BrowserWindow.getAllWindows().find(win => win !== settings)
   await assert.rejects(island.webContents.executeJavaScript(`window.island.testRemoteConnection({kind:'codex',config:{id:'wrong-window',url:${JSON.stringify(codexUrl)},threads:['live-thread']}})`))
+  await click('保存渠道配置')
+  await until(() => evaluate('document.body.textContent.includes("渠道配置已保存")'))
+  const saved=JSON.parse(await fs.readFile(process.env.CUTE_ISLAND_REMOTE_CONFIG,'utf8'))
+  assert.equal(saved.proxy.mode,'custom'); assert.equal(saved.channels[1].proxy.mode,'direct')
+  assert.equal(saved.channels[3].proxy.url,'socks5://127.0.0.1:1080')
+  await selectProxy(3,'inherit'); await selectProxy(-1,'system')
+  await click('重新读取')
+  await until(() => evaluate('document.querySelector("#remote-proxy-title").parentElement.querySelector("select").value === "custom"'))
+  assert.equal(await evaluate('document.querySelectorAll(".remote-editor")[3].querySelector("select").value'),'custom')
   assert.deepEqual(errors, [])
   assert.equal(calls.some(call => call.url.includes('getUpdates')), false)
   console.log('Connectivity UI passed: five editors, unsaved drafts, real IPC, success/failure/reset/loading, sender and concurrency guards, and both themes at 1040/640/390px. No real external messages sent.')

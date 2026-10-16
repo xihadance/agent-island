@@ -1,11 +1,12 @@
 import WebSocket from 'ws'
+import type { Agent } from 'node:http'
 import { createHash } from 'node:crypto'
 import { check, uid } from './store'
 import type { ControlHub } from './hub'
 import { ACTIVE_STATUSES, type AgentControlAdapter, type ControlSession, type Guidance, type InterventionRequest, type Question } from './types'
 import { formAnswers, formQuestions } from './forms'
 
-export interface CodexConnection { id: string; url: string; threads: string[]; token?: string }
+export interface CodexConnection { id: string; url: string; threads: string[]; token?: string; agent?: Agent }
 interface NativeRequest { method: string; params: Record<string, any> }
 export class CodexAdapter implements AgentControlAdapter {
   private socket?: WebSocket
@@ -25,7 +26,7 @@ export class CodexAdapter implements AgentControlAdapter {
   }
   start(): void {
     if (this.closed || this.socket) return
-    const socket = new WebSocket(this.config.url, { headers: this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}, handshakeTimeout: 10000, maxPayload: 8 * 1024 * 1024 })
+    const socket = new WebSocket(this.config.url, { agent: this.config.agent, headers: this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}, handshakeTimeout: 10000, maxPayload: 8 * 1024 * 1024 })
     this.socket = socket
     this.generation = uid()
     socket.on('error', () => {})

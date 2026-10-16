@@ -60,3 +60,18 @@ it('rejects an invalid automatic connection before saving', () => {
   expect(() => saveRemoteSettings(file, { channels: [], codex: [{ id: 'codex-auto', url: 'ws://127.0.0.1:4500', threads: 't' }] }, snapshot.revision, 17321)).toThrow('threads 必须是数组')
   expect(remoteSettings(file).revision).toBe(snapshot.revision)
 })
+
+it('round trips global and per-channel proxy settings, including resetting an override', () => {
+  const file = fixture()
+  const proxy = { mode: 'custom', url: 'http://127.0.0.1:7890' }
+  saveRemoteSettings(file, { proxy, channels: [{ ...channel, proxy: { mode: 'direct' } }], codex: [] }, remoteSettings(file).revision, 17321)
+  expect(remoteSettings(file)).toMatchObject({ proxy: { ...proxy, url: proxy.url + '/' }, channels: [{ proxy: { mode: 'direct' } }] })
+  saveRemoteSettings(file, { proxy: { mode: 'system' }, channels: [{ ...channel, proxy: { mode: 'inherit' } }], codex: [] }, remoteSettings(file).revision, 17321)
+  expect(remoteSettings(file)).toMatchObject({ proxy: { mode: 'system' }, channels: [{ proxy: { mode: 'inherit' } }] })
+  const saved = readFileSync(file, 'utf8')
+  for (const draft of [
+    { proxy: { mode: 'custom', url: 'bad' }, channels: [channel], codex: [] },
+    { channels: [{ ...channel, proxy: { mode: 'custom', url: 'bad' } }], codex: [] }
+  ]) expect(() => saveRemoteSettings(file, draft, remoteSettings(file).revision, 17321)).toThrow('代理地址')
+  expect(readFileSync(file, 'utf8')).toBe(saved)
+})

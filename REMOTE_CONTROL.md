@@ -64,6 +64,24 @@ node bin/cute-island.js remote status
 
 配置中的 `mode` 固定为 `takeover`。修改渠道或 Codex 连接后，关闭再开启即可重新读取；修改端口、令牌、状态文件路径或进程环境变量后需重启服务。再次开启时，Hook 会话在下一次事件到来时重新注册，Codex 重新连接已配置的原会话，不会新建替代会话。
 
+## 代理设置
+
+在「打开配置… → 远程接管 → 灵动岛全局代理」选择跟随系统代理、直连或自定义代理。Telegram、飞书、企业微信、Discord 以及远程 Codex 连接默认继承全局设置，每个连接也可独立选择跟随系统、直连或自定义代理。HTTP 请求、消息接收长连接、重连与连通性测试使用同一规则。
+
+桌面应用默认读取操作系统的代理（含 PAC），无需开启代理软件的 TUN 模式。已开启系统代理时，可保持全局「跟随系统代理」、渠道「继承全局代理」，再测试 Telegram。自定义地址支持 `http://127.0.0.1:7890`、`https://proxy.example:443`、`socks5://127.0.0.1:1080`；请填写代理软件实际监听的协议和端口。SOCKS5 由代理解析目标域名。
+
+关闭远程接管后编辑，点击「保存渠道配置」并重新开启即可生效。测试使用当前草稿，修改全局或单个连接代理后旧测试结果会清除。`localhost`、`127.0.0.1`、`::1` 的本机连接始终直连。
+
+配置保存在 `remote.json` 根级 `proxy` 和各个 `channels[]` / `codex[]` 的 `proxy` 字段中。例如：
+
+```json
+{
+  "proxy": { "mode": "custom", "url": "http://127.0.0.1:7890" }
+}
+```
+
+这是需合并到现有配置的字段片段。全局 `mode` 可取 `system`、`direct`、`custom`；连接级还可取 `inherit`。`custom` 需要 `url`，其他模式无需地址。旧配置省略这些字段时，默认跟随系统。独立运行的 Node CLI `remote serve` 在 `system` 模式下使用 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 和 `NO_PROXY` 等环境变量；也可直接使用配置中的自定义代理。
+
 ## 接管 Claude、Cursor、Gemini 现有会话
 
 桌面应用可在「远程接管 → Agent Hook 接管」直接安装或移除 Claude Code、Cursor、Gemini CLI 接管。配置分别写入 `~/.claude/settings.json`、`~/.cursor/hooks.json`、`~/.gemini/settings.json`（对应环境变量重定向仍生效）。每次修改前备份，保留其他规则；安装后重新打开客户端或会话。应用生成的启动脚本使用内附 Node 运行时，不需要额外安装 Node 来执行 Hook。

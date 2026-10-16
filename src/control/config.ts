@@ -1,9 +1,11 @@
+import { parseProxy, type ProxySettings, type ProxyOverride } from '../shared/proxy'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { check, record, string } from './store'
 
 export interface ChannelConfig {
+  proxy?: ProxyOverride
   id: string
   type: 'telegram' | 'feishu' | 'wecom' | 'discord'
   destination: string
@@ -13,13 +15,14 @@ export interface ChannelConfig {
   secretEnv?: string
 }
 export interface RemoteConfig {
+  proxy?: ProxySettings
   mode: 'takeover'
   enabled?: boolean
   controlToken: string
   port: number
   stateFile: string
   channels: ChannelConfig[]
-  codex: { id: string; url: string; threads: string[]; tokenEnv?: string }[]
+  codex: { id: string; url: string; threads: string[]; tokenEnv?: string; proxy?: ProxyOverride }[]
 }
 export function readRemoteConfig(file: string): RemoteConfig | undefined {
   if (!existsSync(file)) return undefined
@@ -48,7 +51,7 @@ export function parseRemoteConfig(input: unknown, file: string): RemoteConfig {
     if (c.type === 'feishu' || c.type === 'wecom') string(c.appId, 'appId / botId', 200)
     string(c.type === 'feishu' || c.type === 'wecom' ? c.secretEnv : c.tokenEnv, '凭据环境变量', 100)
     check(Array.isArray(c.allowedUsers) && c.allowedUsers.length > 0, '请配置允许操作的用户 ID')
-    return { id, type: c.type as ChannelConfig['type'], destination: string(c.destination, '目标会话', 160),
+    return { id, proxy: parseProxy(c.proxy, true), type: c.type as ChannelConfig['type'], destination: string(c.destination, '目标会话', 160),
       allowedUsers: c.allowedUsers.map(v => string(v, '用户 ID', 160)),
       tokenEnv: c.tokenEnv === undefined ? undefined : string(c.tokenEnv, 'tokenEnv', 100),
       appId: c.appId === undefined ? undefined : string(c.appId, 'appId', 200),
@@ -60,9 +63,9 @@ export function parseRemoteConfig(input: unknown, file: string): RemoteConfig {
     check(c.threads === undefined || Array.isArray(c.threads), 'Codex threads 必须是数组，留空可自动接管已加载会话')
     const id = string(c.id, 'Codex 连接 ID', 80)
     check(!ids.has(id), '连接 ID 重复'); ids.add(id)
-    return { id, url: string(c.url, 'Codex URL', 1000), threads: ((c.threads ?? []) as unknown[]).map(t => string(t, 'thread ID', 250)), tokenEnv: c.tokenEnv === undefined ? undefined : string(c.tokenEnv, 'tokenEnv', 100) }
+    return { id, proxy: parseProxy(c.proxy, true), url: string(c.url, 'Codex URL', 1000), threads: ((c.threads ?? []) as unknown[]).map(t => string(t, 'thread ID', 250)), tokenEnv: c.tokenEnv === undefined ? undefined : string(c.tokenEnv, 'tokenEnv', 100) }
   })
-  return { mode: 'takeover', enabled: value.enabled !== false, controlToken: token, port: Number(port), stateFile: path.resolve(path.dirname(file), typeof value.stateFile === 'string' ? value.stateFile : 'remote-state.json'), channels, codex }
+  return { mode: 'takeover', proxy: parseProxy(value.proxy) as ProxySettings | undefined, enabled: value.enabled !== false, controlToken: token, port: Number(port), stateFile: path.resolve(path.dirname(file), typeof value.stateFile === 'string' ? value.stateFile : 'remote-state.json'), channels, codex }
 }
 export function initRemoteConfig(file: string, port = 17321): void {
   mkdirSync(path.dirname(file), { recursive: true })

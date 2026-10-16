@@ -2,24 +2,36 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { FeishuChannel } from './feishu'
 import { WecomChannel } from './wecom'
 import { ControlStore } from '../store'
+import { createChannelTransport } from '../proxy'
 
 const mocks = vi.hoisted(() => ({
   feishuHandlers: {} as Record<string, (data: any) => Promise<any>>,
   wecomHandlers: {} as Record<string, (frame: any) => void>,
-  create: vi.fn(), patch: vi.fn(), push: vi.fn(), updateCard: vi.fn()
+  create: vi.fn(), patch: vi.fn(), push: vi.fn(), updateCard: vi.fn(), larkHttp: vi.fn(), larkWs: vi.fn(), wecomWs: vi.fn()
 }))
 vi.mock('@larksuiteoapi/node-sdk', () => ({
   LoggerLevel: { error: 'error' },
-  Client: class { im = { message: { create: mocks.create, patch: mocks.patch } } },
-  WSClient: class { async start() {} close() {} },
+  Client: class { constructor(options: unknown) { mocks.larkHttp(options) } im = { message: { create: mocks.create, patch: mocks.patch } } },
+  WSClient: class { constructor(options: unknown) { mocks.larkWs(options) } async start() {} close() {} },
   EventDispatcher: class { register(handlers: typeof mocks.feishuHandlers) { mocks.feishuHandlers = handlers; return this } }
 }))
 vi.mock('@wecom/aibot-node-sdk', () => ({ default: { WSClient: class {
+  constructor(options: unknown) { mocks.wecomWs(options) }
   on(name: string, callback: (frame: any) => void) { mocks.wecomHandlers[name] = callback }
   connect() {} disconnect() {}
   sendMessage = mocks.push
   updateTemplateCard = mocks.updateCard
 } } }))
+
+it('supplies the selected proxy to both Feishu clients and the WeCom WebSocket', () => {
+  const transport = createChannelTransport({ mode: 'custom', url: 'http://127.0.0.1:7890' })
+  const feishu = new FeishuChannel('fs', 'chat', ['owner'], 'app', 'secret', transport)
+  const wecom = new WecomChannel('wc', 'chat', ['owner'], 'bot', 'secret', transport)
+  expect(mocks.larkHttp).toHaveBeenCalledWith(expect.objectContaining({ httpInstance: transport.http }))
+  expect(mocks.larkWs).toHaveBeenCalledWith(expect.objectContaining({ httpInstance: transport.http, agent: transport.agent }))
+  expect(mocks.wecomWs).toHaveBeenCalledWith(expect.objectContaining({ wsOptions: { agent: transport.agent } }))
+  feishu.close(); wecom.close(); transport.close()
+})
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.create.mockResolvedValue({ code: 0, data: { message_id: 'fm' } })

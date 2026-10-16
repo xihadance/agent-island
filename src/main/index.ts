@@ -1,3 +1,4 @@
+import { resolveSystemProxy } from './proxy'
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, nativeTheme, screen, shell } from 'electron'
 import path from 'node:path'
 import os from 'node:os'
@@ -237,7 +238,7 @@ function loadControl(): ControlRuntime | undefined {
   }
   if (server && config.port !== server.port) throw new ActivityError(503, reportControlLoadFailure('接管配置端口已修改，请重启应用后开启接管'))
   try {
-    control = createControlRuntime(config, store, { configFile: remoteConfigFile(), onChange: () => { codex?.update(); if (tray) updateTrayMenu(tray); notifySettings() } })
+    control = createControlRuntime(config, store, { configFile: remoteConfigFile(), resolveSystemProxy, onChange: () => { codex?.update(); if (tray) updateTrayMenu(tray); notifySettings() } })
   } catch { throw new ActivityError(503, reportControlLoadFailure()) }
   controlLoadError = undefined
   void control.start().catch(() => console.error('远程接管启动失败，请检查配置'))
@@ -637,7 +638,7 @@ function wireIpc(activityStore: ActivityStore): void {
     if (testingRemoteConnection) throw new Error('连接测试正在进行，请稍后重试')
     testingRemoteConnection = true
     if (tray) updateTrayMenu(tray)
-    try { return await testRemoteConnection(target) }
+    try { return await testRemoteConnection(target, { resolveSystemProxy }) }
     finally { testingRemoteConnection = false; if (tray) updateTrayMenu(tray) }
   })
   ipcMain.handle('island:remote-enabled', (event, enabled: unknown) => {

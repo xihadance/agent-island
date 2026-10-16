@@ -1,3 +1,4 @@
+import { createChannelTransport, type ChannelTransport, type SystemProxyResolver } from './proxy'
 import type { ActivityStore } from '../shared/activity'
 import { check, ControlStore } from './store'
 import { ControlHub } from './hub'
@@ -8,10 +9,10 @@ import type { ChannelAdapter } from './types'
 
 export interface ControlStatus { enabled: boolean; running: boolean; error?: string }
 
-export function createControlRuntime(initial: RemoteConfig, activities: ActivityStore, options: { configFile?: string; onChange?: () => void } = {}) {
+export function createControlRuntime(initial: RemoteConfig, activities: ActivityStore, options: { configFile?: string; resolveSystemProxy?: SystemProxyResolver; onChange?: () => void } = {}) {
   let config = initial
   const store = new ControlStore(config.stateFile)
-  let group = createConnections(config, activities, store)
+  let group = createConnections(config, activities, store, options.resolveSystemProxy)
   let enabled = config.enabled !== false
   let running = false
   let closed = false
@@ -61,7 +62,7 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
         store.releaseControl()
         persist(true)
         group.close()
-        group = createConnections(config, activities, store)
+        group = createConnections(config, activities, store, options.resolveSystemProxy)
         enabled = true
         start()
       }
@@ -74,36 +75,40 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
   }
 }
 
-function createConnections(config: RemoteConfig, activities: ActivityStore, store: ControlStore) {
+function createConnections(config: RemoteConfig, activities: ActivityStore, store: ControlStore, resolveSystemProxy?: SystemProxyResolver) {
   const hub = new ControlHub(store)
   const hooks = new HookController(hub)
   let stop = () => {}
   const connections: CodexAdapter[] = []
+  const transports = new Set<ChannelTransport>()
   const retries = new Set<ReturnType<typeof setTimeout>>()
   let closed = false
   let started = false
   async function connectChannel(channel: ChannelConfig): Promise<void> {
     if (closed) return
     let adapter: ChannelAdapter | undefined
+    const transport = createChannelTransport(config.proxy, channel.proxy, resolveSystemProxy)
+    transports.add(transport)
     try {
       const args = [channel.id, channel.destination, channel.allowedUsers] as const
       if (channel.type === 'telegram') {
         const { TelegramChannel } = await import('./channels/telegram')
-        adapter = new TelegramChannel(...args, secret(channel.tokenEnv), hub.store)
+        adapter = new TelegramChannel(...args, secret(channel.tokenEnv), hub.store, transport.fetch)
       } else if (channel.type === 'discord') {
         const { DiscordChannel } = await import('./channels/discord')
-        adapter = new DiscordChannel(...args, secret(channel.tokenEnv))
+        adapter = new DiscordChannel(...args, secret(channel.tokenEnv), transport)
       } else if (channel.type === 'feishu') {
         const { FeishuChannel } = await import('./channels/feishu')
-        adapter = new FeishuChannel(...args, channel.appId!, secret(channel.secretEnv))
+        adapter = new FeishuChannel(...args, channel.appId!, secret(channel.secretEnv), transport)
       } else {
         const { WecomChannel } = await import('./channels/wecom')
-        adapter = new WecomChannel(...args, channel.appId!, secret(channel.secretEnv))
+        adapter = new WecomChannel(...args, channel.appId!, secret(channel.secretEnv), transport)
       }
       if (closed) { adapter.close(); return }
       await hub.addChannel(adapter)
     } catch {
       adapter?.close()
+      transport.close(); transports.delete(transport)
       if (closed) return
       console.error(`接管渠道 ${channel.id} 启动失败，30 秒后重试；请检查凭据、网络和配置`)
       const timer = setTimeout(() => { retries.delete(timer); void connectChannel(channel) }, 30000)
@@ -115,7 +120,11 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
     start() {
       if (started || closed) return
       // Validate synchronous setup before starting any background connection.
-      for (const connection of config.codex) connections.push(new CodexAdapter(hub, { ...connection, token: connection.tokenEnv ? secret(connection.tokenEnv) : undefined }))
+      for (const connection of config.codex) {
+        const transport = createChannelTransport(config.proxy, connection.proxy, resolveSystemProxy)
+        transports.add(transport)
+        connections.push(new CodexAdapter(hub, { ...connection, agent: transport.agent, token: connection.tokenEnv ? secret(connection.tokenEnv) : undefined }))
+      }
       started = true
       stop = activities.subscribe(list => {
         try { hub.observe(list) } catch { console.error('远程介入记录失败，原状态服务继续运行') }
@@ -125,7 +134,7 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
       for (const channel of config.channels) void connectChannel(channel)
       for (const connection of connections) connection.start()
     },
-    close() { closed = true; for (const timer of retries) clearTimeout(timer); stop(); hub.close(); for (const connection of connections) connection.close() }
+    close() { closed = true; for (const timer of retries) clearTimeout(timer); stop(); hub.close(); for (const connection of connections) connection.close(); for (const transport of transports) transport.close(); transports.clear() }
   }
 }
 export type ControlRuntime = ReturnType<typeof createControlRuntime>

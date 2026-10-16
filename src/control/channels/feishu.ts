@@ -1,12 +1,13 @@
+import type { ChannelTransport } from '../proxy'
 import * as Lark from '@larksuiteoapi/node-sdk'
 import type { ChannelAdapter, InterventionRequest, RemoteMessage } from '../types'
 
 export class FeishuChannel implements ChannelAdapter {
   private client: Lark.Client
   private ws: Lark.WSClient
-  constructor(readonly id: string, readonly destination: string, readonly allowedUsers: string[], appId: string, appSecret: string) {
-    this.client = new Lark.Client({ appId, appSecret, loggerLevel: Lark.LoggerLevel.error })
-    this.ws = new Lark.WSClient({ appId, appSecret, loggerLevel: Lark.LoggerLevel.error })
+  constructor(readonly id: string, readonly destination: string, readonly allowedUsers: string[], appId: string, appSecret: string, transport?: ChannelTransport) {
+    this.client = new Lark.Client({ appId, appSecret, httpInstance: transport?.http, loggerLevel: Lark.LoggerLevel.error })
+    this.ws = new Lark.WSClient({ appId, appSecret, httpInstance: transport?.http, agent: transport?.agent, loggerLevel: Lark.LoggerLevel.error })
   }
   async start(receive: (message: RemoteMessage) => Promise<string>): Promise<void> {
     await this.ws.start({ eventDispatcher: new Lark.EventDispatcher({}).register({

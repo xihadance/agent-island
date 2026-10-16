@@ -108,6 +108,16 @@ it('aborts a stalled HTTP test within the overall deadline', async () => {
   expect(result.message).toContain('超时')
 })
 
+it('redacts proxy authentication from connection errors', async () => {
+  const fetchImpl = vi.fn<typeof fetch>(async () => { throw new Error('proxy http://private-user:private-password@localhost:7890 failed: private-password') })
+  const result = await testRemoteConnection({ kind: 'channel', config: channel(), proxy: {
+    mode: 'custom', url: 'http://private-user:private-password@localhost:7890'
+  } }, { env, fetchImpl })
+  expect(result.ok).toBe(false)
+  expect(result.message).not.toContain('private-user')
+  expect(result.message).not.toContain('private-password')
+})
+
 it('verifies a Codex handshake and loaded threads without resuming or starting a turn', async () => {
   const received: any[] = []
   const { server, url } = await websocket((message, peer) => {

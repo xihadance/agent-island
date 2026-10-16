@@ -1,3 +1,4 @@
+import type { ProxyOverride, ProxySettings } from '../../shared/proxy'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { RemoteConnectionTest, RemoteConnectionTestResult, RemoteDraft, RemoteSettings as RemoteState } from '../../shared/remote-settings'
 import type { SettingsSnapshot } from '../../shared/preferences'
@@ -50,11 +51,26 @@ function Field({ label, value, onChange, placeholder, optional = false }: {
     placeholder={placeholder} required={!optional} spellCheck={false} autoComplete="off" /></div>
 }
 
+function ProxyFields({ value, global = false, onChange }: {
+  value?: ProxyOverride; global?: boolean; onChange: (value: ProxyOverride) => void
+}) {
+  const id = useId()
+  const mode = value?.mode ?? (global ? 'system' : 'inherit')
+  return <>
+    <div className="remote-field"><label htmlFor={id}>{global ? '全局代理模式' : '连接代理'}</label>
+      <select id={id} value={mode} onChange={event => onChange({ mode: event.target.value as ProxyOverride['mode'], ...(event.target.value === 'custom' ? { url: value?.url ?? '' } : {}) })}>
+        {!global && <option value="inherit">继承全局代理</option>}
+        <option value="system">跟随系统代理</option><option value="direct">直连（不使用代理）</option><option value="custom">自定义代理</option>
+      </select></div>
+    {mode === 'custom' && <Field label="代理地址" value={value?.url ?? ''} onChange={url => onChange({ mode: 'custom', url })} placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080" />}
+  </>
+}
+
 export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: {
   remote: RemoteState; hooks: SettingsSnapshot['remoteHooks']; preview?: boolean; onSnapshot: (snapshot: SettingsSnapshot) => void; onDirty: (dirty: boolean) => void
 }) {
   const bridge = getBridge()
-  const [draft, setDraft] = useState<RemoteDraft>({ channels: remote.channels, codex: remote.codex })
+  const [draft, setDraft] = useState<RemoteDraft>({ proxy: remote.proxy, channels: remote.channels, codex: remote.codex })
   const [base, setBase] = useState(remote.revision)
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -63,7 +79,7 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
   const [notice, setNotice] = useState('渠道配置修改后，请点击保存。')
   const [type, setType] = useState<keyof typeof channelNames>('telegram')
   useEffect(() => {
-    if (!dirty) { setDraft({ channels: remote.channels, codex: remote.codex }); setBase(remote.revision) }
+    if (!dirty) { setDraft({ proxy: remote.proxy, channels: remote.channels, codex: remote.codex }); setBase(remote.revision) }
   }, [remote.revision, dirty])
   const edit = (next: RemoteDraft) => { setDraft(next); setDirty(true); onDirty(true); setNotice('有未保存的修改') }
   const run = async (action: () => Promise<void>) => {
@@ -106,11 +122,16 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
       <p className="settings-help">Cursor 与 Gemini 的批准仅通过本次 Hook 门禁，各客户端原有的权限检查仍然生效。</p>
     </section>
     <form onSubmit={event => { event.preventDefault(); void run(async () => {
-      const normalized = { channels: draft.channels.map(normalizeChannel), codex: draft.codex.map(normalizeCodex) }
+      const normalized = { proxy: draft.proxy, channels: draft.channels.map(normalizeChannel), codex: draft.codex.map(normalizeCodex) }
       const snapshot = await bridge.saveRemote(normalized, base)
       setDirty(false); onDirty(false); onSnapshot(snapshot); setNotice('渠道配置已保存，可开启远程接管')
     }) }}>
       <fieldset disabled={disabled} className="remote-fields">
+        <section className="settings-section" aria-labelledby="remote-proxy-title"><h2 id="remote-proxy-title">灵动岛全局代理</h2>
+          <p className="settings-description">默认跟随系统代理。所有消息渠道及远程 Codex 连接继承此设置，也可单独覆盖。本机连接始终直连。</p>
+          <div className="remote-grid"><ProxyFields value={draft.proxy} global onChange={proxy => edit({ ...draft, proxy: proxy as ProxySettings })} /></div>
+          <p className="settings-help">修改后保存并开启远程接管生效。连通性测试使用当前填写的代理，无需先保存。</p>
+        </section>
         <section className="settings-section" aria-labelledby="remote-channels-title"><h2 id="remote-channels-title">消息渠道</h2>
           <p className="settings-description">使用专用机器人。目标会话和允许操作的用户均填写平台 ID；凭据填写环境变量名称。测试会向目标会话发送一条测试消息，无需先保存。</p>
           {!draft.channels.length && <p className="settings-help">还没有渠道。选择平台，添加你的第一个机器人。</p>}
@@ -123,8 +144,9 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
               <Field label="凭据环境变量名" value={(channel.type === 'feishu' || channel.type === 'wecom' ? channel.secretEnv : channel.tokenEnv) ?? ''}
                 onChange={name => changeChannel(index, channel.type === 'feishu' || channel.type === 'wecom' ? { secretEnv: name } : { tokenEnv: name })} />
               <Field label="允许操作的用户 ID（逗号分隔）" value={channel.allowedUsers.join(',')} onChange={value => changeChannel(index, { allowedUsers: value.split(/[,，]/) })} />
+              <ProxyFields value={channel.proxy} onChange={proxy => changeChannel(index, { proxy })} />
             </div>
-            <ConnectionActions target={{ kind: 'channel', config: normalizeChannel(channel) }} label={`${channelNames[channel.type]} 渠道 ${index + 1}`} disabled={disabled} onTesting={setTesting}
+            <ConnectionActions target={{ kind: 'channel', proxy: draft.proxy, config: normalizeChannel(channel) }} label={`${channelNames[channel.type]} 渠道 ${index + 1}`} disabled={disabled} onTesting={setTesting}
               onRemove={() => edit({ ...draft, channels: draft.channels.filter((_, i) => i !== index) })} />
           </fieldset>)}
           <div className="settings-actions remote-add"><label htmlFor="remote-channel-type">平台</label><select id="remote-channel-type" value={type} onChange={event => setType(event.target.value as typeof type)}>
@@ -142,13 +164,14 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
             <Field label="WebSocket 地址" value={connection.url} onChange={url => changeCodex(index, { url })} placeholder="ws://127.0.0.1:4500" />
             <Field label="会话 ID（可选，逗号分隔）" optional placeholder="留空自动接管此服务的全部会话" value={connection.threads.join(',')} onChange={value => changeCodex(index, { threads: value.split(/[,，]/) })} />
             <Field label="认证环境变量名（可选）" optional value={connection.tokenEnv ?? ''} onChange={tokenEnv => changeCodex(index, { tokenEnv: tokenEnv || undefined })} />
-          </div><ConnectionActions target={{ kind: 'codex', config: normalizeCodex(connection) }} label={`Codex 连接 ${index + 1}`} disabled={disabled} onTesting={setTesting}
+            <ProxyFields value={connection.proxy} onChange={proxy => changeCodex(index, { proxy })} />
+          </div><ConnectionActions target={{ kind: 'codex', proxy: draft.proxy, config: normalizeCodex(connection) }} label={`Codex 连接 ${index + 1}`} disabled={disabled} onTesting={setTesting}
             onRemove={() => edit({ ...draft, codex: draft.codex.filter((_, i) => i !== index) })} /></fieldset>)}
           <button type="button" className="settings-button" onClick={() => edit({ ...draft, codex: [...draft.codex, { id: `codex-${Date.now().toString(36)}`, url: 'ws://127.0.0.1:4500', threads: [] }] })}>添加 Codex 连接</button>
         </section>
       </fieldset>
       <div className="remote-save"><button className="settings-button settings-button-primary" type="submit" disabled={disabled || !dirty}>保存渠道配置</button><button className="settings-button" type="button" disabled={working} onClick={() => void run(async () => {
-        const next = await bridge.getSettings(); setDraft({ channels: next.remote.channels, codex: next.remote.codex }); setBase(next.remote.revision)
+        const next = await bridge.getSettings(); setDraft({ proxy: next.remote.proxy, channels: next.remote.channels, codex: next.remote.codex }); setBase(next.remote.revision)
         setDirty(false); onDirty(false); onSnapshot(next); setNotice('已重新读取配置')
       })}>重新读取</button><span role="status">{working ? '正在处理…' : notice}</span></div>
     </form>

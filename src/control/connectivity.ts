@@ -1,3 +1,4 @@
+import { createChannelTransport, type ChannelTransport, type SystemProxyResolver } from './proxy'
 import WebSocket from 'ws'
 import AiBot from '@wecom/aibot-node-sdk'
 import { parseRemoteConfig, secret, validateCodexUrl, validateCredentialName, type ChannelConfig, type RemoteConfig } from './config'
@@ -9,6 +10,7 @@ export const CONNECTION_TEST_MESSAGE = 'Cute Island 连通性测试：这是一�
 const TIMEOUT_MESSAGE = '连接测试超时，请检查网络、代理或服务地址后重试。'
 
 interface TestOptions {
+  resolveSystemProxy?: SystemProxyResolver
   env?: NodeJS.ProcessEnv
   fetchImpl?: typeof fetch
   timeoutMs?: number
@@ -18,13 +20,24 @@ interface TestOptions {
 /** Test a single draft without persisting it or starting a message receiver. */
 export async function testRemoteConnection(input: unknown, options: TestOptions = {}): Promise<RemoteConnectionTestResult> {
   const credentials: string[] = []
+  let transport: ChannelTransport | undefined
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(new Error(TIMEOUT_MESSAGE)), options.timeoutMs ?? 15000)
   try {
     const target = record(input)
     check(target.kind === 'channel' || target.kind === 'codex', '无效的连接测试')
     const config = parseRemoteConfig({ mode: 'takeover', enabled: false, controlToken: 'connection-test-'.repeat(3),
-      channels: target.kind === 'channel' ? [target.config] : [], codex: target.kind === 'codex' ? [target.config] : [] }, 'remote.json')
+      proxy: target.proxy, channels: target.kind === 'channel' ? [target.config] : [], codex: target.kind === 'codex' ? [target.config] : [] }, 'remote.json')
+    const connection = target.kind === 'codex' ? config.codex[0] : config.channels[0]
+    transport = createChannelTransport(config.proxy, connection.proxy, options.resolveSystemProxy)
+    for (const proxy of [config.proxy, connection.proxy]) {
+      if (proxy?.url) {
+        credentials.push(proxy.url)
+        const parsed = new URL(proxy.url)
+        if (parsed.username) credentials.push(parsed.username, decodeURIComponent(parsed.username))
+        if (parsed.password) credentials.push(parsed.password, decodeURIComponent(parsed.password))
+      }
+    }
     const credential = (name: string | undefined): string => {
       validateCredentialName(name)
       const value = secret(name, options.env ?? process.env)
@@ -35,21 +48,21 @@ export async function testRemoteConnection(input: unknown, options: TestOptions 
       const connection = config.codex[0]
       validateCodexUrl(connection.url)
       const token = connection.tokenEnv ? credential(connection.tokenEnv) : undefined
-      const loaded = await testCodex(connection, token, abort.signal)
+      const loaded = await testCodex(connection, token, abort.signal, transport)
       return { ok: true, message: connection.threads.length ? `Codex 服务已连接，${connection.threads.length} 个指定线程已加载。`
         : `Codex 服务已连接，当前有 ${loaded} 个已加载会话。开启远程接管后会自动接入，新会话也会自动发现。` }
     }
     const channel = config.channels[0]
     const token = credential(channel.type === 'feishu' || channel.type === 'wecom' ? channel.secretEnv : channel.tokenEnv)
-    if (channel.type === 'wecom') await testWecom(channel, token, abort.signal, options.wecomUrl)
-    else await testHttpChannel(channel, token, abort.signal, options.fetchImpl ?? fetch, credentials)
+    if (channel.type === 'wecom') await testWecom(channel, token, abort.signal, options.wecomUrl, transport)
+    else await testHttpChannel(channel, token, abort.signal, options.fetchImpl ?? transport.fetch, credentials)
     return { ok: true, message: '测试消息已发送到目标会话。' }
   } catch (error) {
     let message = abort.signal.aborted ? TIMEOUT_MESSAGE : error instanceof TypeError ? '无法连接服务，请检查网络、代理或服务地址。'
       : error instanceof SyntaxError ? '服务返回了无效响应，请检查网络、代理或服务地址。' : error instanceof Error ? error.message : '连接测试失败，请检查配置后重试。'
     for (const value of credentials) for (const encoded of [value, encodeURIComponent(value)]) message = message.split(encoded).join('[REDACTED]')
     return { ok: false, message: redact(message).slice(0, 800) }
-  } finally { clearTimeout(timer) }
+  } finally { clearTimeout(timer); transport?.close() }
 }
 
 async function testHttpChannel(channel: ChannelConfig, token: string, signal: AbortSignal, fetchImpl: typeof fetch, credentials: string[]): Promise<void> {
@@ -82,9 +95,9 @@ async function testHttpChannel(channel: ChannelConfig, token: string, signal: Ab
   }
 }
 
-function testWecom(channel: ChannelConfig, token: string, signal: AbortSignal, wsUrl?: string): Promise<void> {
+function testWecom(channel: ChannelConfig, token: string, signal: AbortSignal, wsUrl?: string, transport?: ChannelTransport): Promise<void> {
   return new Promise((resolve, reject) => {
-    const client = new AiBot.WSClient({ botId: channel.appId!, secret: token, wsUrl, maxReconnectAttempts: 0, maxAuthFailureAttempts: 1,
+    const client = new AiBot.WSClient({ botId: channel.appId!, secret: token, wsUrl, wsOptions: { agent: transport?.agent }, maxReconnectAttempts: 0, maxAuthFailureAttempts: 1,
       logger: { debug() {}, info() {}, warn() {}, error() {} } })
     let settled = false
     const finish = (error?: unknown) => {
@@ -110,9 +123,9 @@ function testWecom(channel: ChannelConfig, token: string, signal: AbortSignal, w
   })
 }
 
-function testCodex(connection: RemoteConfig['codex'][number], token: string | undefined, signal: AbortSignal): Promise<number> {
+function testCodex(connection: RemoteConfig['codex'][number], token: string | undefined, signal: AbortSignal, transport: ChannelTransport): Promise<number> {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(connection.url, { headers: token ? { authorization: `Bearer ${token}` } : {}, handshakeTimeout: 15000, maxPayload: 8 * 1024 * 1024 })
+    const socket = new WebSocket(connection.url, { agent: transport.agent, headers: token ? { authorization: `Bearer ${token}` } : {}, handshakeTimeout: 15000, maxPayload: 8 * 1024 * 1024 })
     let settled = false
     let expectedId = 1
     const loadedThreads = new Set<string>()

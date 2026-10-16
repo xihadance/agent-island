@@ -10,6 +10,8 @@ import { runRemoteCli } from './cli'
 import { createControlRuntime } from './runtime'
 import { ControlStore } from './store'
 import { ControlHub } from './hub'
+import * as proxy from './proxy'
+import { TelegramChannel } from './channels/telegram'
 import type { ChannelAdapter, RemoteMessage } from './types'
 
 const cleanup: (() => void | Promise<void>)[] = []
@@ -43,6 +45,29 @@ async function setup(enabled = false) {
   return { file, config, activities, runtime, api, url }
 }
 const event = { session_id: 'native', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' } }
+
+it('rebuilds transports from saved global and channel proxies on re-enable', async () => {
+  const { file, runtime } = await setup()
+  const original = JSON.parse(readFileSync(file, 'utf8'))
+  const channel = { id: 'tg', type: 'telegram', tokenEnv: 'ISLAND_PROXY_TEST_TOKEN', destination: 'chat', allowedUsers: ['owner'], proxy: { mode: 'inherit' } }
+  const start = vi.spyOn(TelegramChannel.prototype, 'start').mockResolvedValue()
+  const create = vi.spyOn(proxy, 'createChannelTransport')
+  vi.stubEnv('ISLAND_PROXY_TEST_TOKEN', 'synthetic-token')
+  try {
+    writeFileSync(file, JSON.stringify({ ...original, proxy: { mode: 'custom', url: 'http://127.0.0.1:7890' }, channels: [channel] }))
+    runtime.setEnabled(true)
+    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(1))
+    const first = create.mock.results[0].value as proxy.ChannelTransport
+    const close = vi.spyOn(first, 'close')
+    runtime.setEnabled(false)
+    expect(close).toHaveBeenCalledOnce()
+    writeFileSync(file, JSON.stringify({ ...original, proxy: { mode: 'system' }, channels: [{ ...channel, proxy: { mode: 'direct' } }] }))
+    runtime.setEnabled(true)
+    await vi.waitFor(() => expect(start).toHaveBeenCalledTimes(2))
+    expect(create).toHaveBeenLastCalledWith({ mode: 'system' }, { mode: 'direct' }, undefined)
+    expect(create.mock.results[1].value).not.toBe(first)
+  } finally { runtime.close(); start.mockRestore(); create.mockRestore(); vi.unstubAllEnvs() }
+})
 
 describe('persistent takeover switch', () => {
   it('initializes off, preserves all configuration on toggle, and supports legacy opt-in files', () => {

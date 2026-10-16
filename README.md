@@ -38,6 +38,7 @@ Windows、macOS、Linux 上的 PC 灵动岛。黑胶囊贴在屏幕顶部正中�
 - **自动审批**：独立总开关，默认关闭。可分别开启权限审批、选择题回答；推荐项支持 `（推荐）`、`(Recommended)` 或原生推荐标记。无推荐时默认保留手动回答，也可选择第一项。自由输入、密码、重复问题标识、无法确定唯一答案的问题保留手动处理；多题请求必须能完整回答才提交。
 - **远程接管**：图形化添加、编辑和移除 Telegram、飞书、企业微信、Discord 渠道及 Codex 原生线程连接；读取原有 `~/.cute-island/remote.json`，保留控制令牌和自定义字段。修改渠道前先关闭接管，保存后重新开启。凭据填写环境变量名称，实际 Token / Secret 放在应用继承的环境中。开启远程接管时，自动审批暂停响应；关闭后恢复原自动审批设置，避免重复处理。
   每项连接可在保存前点击「测试连通性」：消息渠道发送测试消息，Codex 检查服务和已加载线程；失败原因显示在对应配置下方。
+  「灵动岛全局代理」默认跟随系统代理；每个渠道及远程 Codex 连接也可独立设置直连、系统代理或 HTTP / HTTPS / SOCKS5 代理。连通性测试和正式收发使用同一配置，本机连接保持直连。详见[代理设置](REMOTE_CONTROL.md#代理设置)。
 - **Agent 接入**：显示安装和连接状态。读取日志只能展示状态，自动审批必须使用下列原生交互通道。
 - **处理记录**：保留本次启动最近 50 条批准、回答或转交手动的记录，可清空；不会把提交回答伪装成工具执行成功。
 
@@ -213,11 +214,11 @@ node scripts/smoke-interaction.cjs
 
 它验证实际窗口移动、点击与拖动区分、命令选择、透明度、四边收纳与点击展开、托管模式鼠标穿透与提醒、子任务状态与执行时间、子会话审批、重启恢复和托盘重置，截图保存在 `output/playwright/`。
 
-发布前同步更新 `package.json`、`package-lock.json` 和 `RELEASE_NOTES.md`。推送版本标签，或在 Actions 里手动运行 Release，都会在三端打包成功后发布到这个仓库的 [Releases](https://github.com/xihadance/cute-island/releases)，并附上版本说明。手动运行时，标签取 `package.json` 里的版本号，例如当前是 `v0.1.14`。
+发布前同步更新 `package.json`、`package-lock.json` 和 `RELEASE_NOTES.md`。推送版本标签，或在 Actions 里手动运行 Release，都会在三端打包成功后发布到这个仓库的 [Releases](https://github.com/xihadance/cute-island/releases)，并附上版本说明。手动运行时，标签取 `package.json` 里的版本号，例如当前是 `v0.1.15`。
 
 ```bash
-git tag v0.1.14
-git push origin v0.1.14
+git tag v0.1.15
+git push origin v0.1.15
 ```
 
 ## 图标
