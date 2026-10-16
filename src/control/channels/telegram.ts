@@ -1,5 +1,6 @@
 import type { ControlStore } from '../store'
-import type { ChannelAdapter, InterventionRequest, RemoteMessage } from '../types'
+import type { ChannelAdapter, ControlSession, InterventionRequest, RemoteMessage } from '../types'
+import { telegramReply, telegramRequest } from './telegram-format'
 
 export class TelegramChannel implements ChannelAdapter {
   private abort = new AbortController()
@@ -25,12 +26,17 @@ export class TelegramChannel implements ChannelAdapter {
     }
     return result.result
   }
-  async send(text: string, request?: InterventionRequest): Promise<string> {
-    const result = await this.api('sendMessage', { chat_id: this.destination, text: text.slice(0, 3900), reply_markup: keyboard(request), link_preview_options: { is_disabled: true } })
-    return String(result.message_id)
+  async send(text: string, request?: InterventionRequest, session?: ControlSession): Promise<string> {
+    const pages = request ? [telegramRequest(request, session)] : telegramReply(text)
+    let id = ''
+    for (const page of pages) {
+      const result = await this.api('sendMessage', { chat_id: this.destination, text: page, parse_mode: 'HTML', reply_markup: keyboard(request), link_preview_options: { is_disabled: true } })
+      id ||= String(result.message_id)
+    }
+    return id
   }
-  async update(messageId: string, text: string, request: InterventionRequest): Promise<void> {
-    await this.api('editMessageText', { chat_id: this.destination, message_id: Number(messageId), text: text.slice(0, 3900), reply_markup: keyboard(request) })
+  async update(messageId: string, _text: string, request: InterventionRequest, session?: ControlSession): Promise<void> {
+    await this.api('editMessageText', { chat_id: this.destination, message_id: Number(messageId), text: telegramRequest(request, session), parse_mode: 'HTML', reply_markup: keyboard(request), link_preview_options: { is_disabled: true } })
   }
   private async poll(receive: (message: RemoteMessage) => Promise<string>): Promise<void> {
     let delay = 1000
@@ -47,15 +53,17 @@ export class TelegramChannel implements ChannelAdapter {
           if (this.stopped) return
           if (sender && chat && (callback || message?.text)) {
             let action: RemoteMessage['action']
+            let text = message.text
             if (callback?.data) {
               const [requestId, rev, command, option] = String(callback.data).split(':')
               const r = this.store.snapshot().requests.find(r => r.id === requestId)
-              if (r && command === 'pick' && r.questions.length === 1) action = { requestId, revision: Number(rev), decision: { action: 'answer', answers: { [r.questions[0].id]: [r.questions[0].options[Number(option)]] } } }
+              if (command === 'detail') text = `/detail ${requestId}`
+              else if (r && command === 'pick' && r.questions.length === 1) action = { requestId, revision: Number(rev), decision: { action: 'answer', answers: { [r.questions[0].id]: [r.questions[0].options[Number(option)]] } } }
               else action = { requestId, revision: Number(rev), decision: { action: command as 'approve' } }
             }
-            const reply = await receive({ eventId: String(update.update_id), sender, chat, text: message.text, replyTo: message.reply_to_message ? String(message.reply_to_message.message_id) : undefined, action })
+            const reply = await receive({ eventId: String(update.update_id), sender, chat, text, replyTo: message.reply_to_message ? String(message.reply_to_message.message_id) : undefined, action })
             if (this.stopped) return
-            if (reply) for (let i = 0; i < reply.length; i += 3500) await this.api('sendMessage', { chat_id: chat, text: reply.slice(i, i + 3500), link_preview_options: { is_disabled: true } })
+            if (reply) for (const page of telegramReply(reply, text)) await this.api('sendMessage', { chat_id: chat, text: page, parse_mode: 'HTML', link_preview_options: { is_disabled: true } })
           }
           this.store.change(state => { state.cursors[this.id] = update.update_id + 1 })
         }
@@ -73,10 +81,12 @@ export class TelegramChannel implements ChannelAdapter {
   }
   close(): void { this.stopped = true; this.abort.abort() }
 }
-function keyboard(request?: InterventionRequest): { inline_keyboard: unknown[][] } {
-  if (!request || request.status !== 'pending') return { inline_keyboard: [] }
+export function keyboard(request?: InterventionRequest): { inline_keyboard: unknown[][] } {
+  if (!request) return { inline_keyboard: [] }
+  const details = [{ text: '查看详情', callback_data: `${request.id}:${request.revision}:detail` }]
+  if (request.status !== 'pending') return { inline_keyboard: [details] }
   const rows: unknown[][] = [request.actions.filter(a => a !== 'answer').map(action => ({ text: ({ approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了' })[action], callback_data: `${request.id}:${request.revision}:${action}` }))]
   const q = request.questions[0]
-  if (request.actions.includes('answer') && request.questions.length === 1 && !q.multi) q.options.forEach((option, i) => rows.push([{ text: option.slice(0, 60), callback_data: `${request.id}:${request.revision}:pick:${i}` }]))
-  return { inline_keyboard: rows.filter(r => r.length) }
+  if (request.actions.includes('answer') && request.questions.length === 1 && !q.multi) q.options.forEach((option, i) => rows.push([{ text: Array.from(option).slice(0, 60).join(''), callback_data: `${request.id}:${request.revision}:pick:${i}` }]))
+  return { inline_keyboard: [...rows.filter(r => r.length), details] }
 }

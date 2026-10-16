@@ -22,7 +22,7 @@ export function formatRequest(r: InterventionRequest, session?: ControlSession):
       `/answer ${r.id} ${JSON.stringify(Object.fromEntries(r.questions.map(q => [q.id, [q.options[0] ?? '你的回答']])) )}`)
     text.push(...r.actions.filter(a => a !== 'answer').map(a => `/${a} ${r.id}`))
   }
-  text.push(`补充指导：/send ${r.sessionId} 内容`)
+  if (session?.connected && session.capabilities.includes('message')) text.push(`补充指导：/send ${r.sessionId} 内容`)
   return redact(text.filter(Boolean).join('\n'))
 }
 
@@ -121,7 +121,10 @@ export class ControlHub {
           return [...state.requests.filter(r => ACTIVE_STATUSES.includes(r.status) || r.status === 'uncertain').map(r => formatRequest(r)),
             ...state.guidance.filter(m => ['queued', 'submitted', 'uncertain'].includes(m.status)).map(m => `指导 #${m.id} · ${STATUS_LABEL[m.status]} · ${m.sessionId}`)].join('\n\n') || '暂无待办'
         }
-        if (command === 'detail') { const r = this.store.get(id); return redact(`#${r.id}\n${r.title}\n${r.detail}\n${JSON.stringify(r.questions, null, 2)}`) }
+        if (command === 'detail') {
+          const r = this.store.get(id)
+          return redact([`#${r.id}`, r.title, r.detail, ...(r.questions.length ? ['问题与选项：', JSON.stringify(r.questions, null, 2)] : [])].join('\n'))
+        }
         if (command === 'status') {
           const state = this.store.snapshot()
           const r = state.requests.find(r => r.id === id)
@@ -169,9 +172,9 @@ export class ControlHub {
         if (!delivery?.messageId && request.status !== 'pending') continue
         const text = formatRequest(request, sessions.get(request.sessionId))
         try {
-          const messageId = delivery?.messageId ?? await channel.send(text, request)
+          const messageId = delivery?.messageId ?? await channel.send(text, request, sessions.get(request.sessionId))
           if (this.closed) return
-          if (delivery?.messageId) await channel.update(messageId, text, request)
+          if (delivery?.messageId) await channel.update(messageId, text, request, sessions.get(request.sessionId))
           if (this.closed) return
           this.store.change(state => { state.deliveries[key] = { messageId, revision: request.revision, attempts: 0, retryAt: 0 } })
         } catch {

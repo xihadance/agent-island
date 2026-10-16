@@ -1,6 +1,65 @@
 import { expect, it, vi } from 'vitest'
 import { ControlStore } from '../store'
+import { ControlHub, formatRequest } from '../hub'
 import { TelegramChannel } from './telegram'
+
+it('sends and edits HTML notifications, preserving identity and removing settled decision buttons', async () => {
+  const store = new ControlStore()
+  const session = store.session({ id: 's', nativeId: 'native', agent: 'codex', adapter: 'codex', connected: true, label: 'Codex', capabilities: ['approve', 'message'] })
+  const r = store.create({ sessionId: 's', sourceKey: 'source', origin: 'codex', kind: 'approval', title: '执行命令', detail: 'echo "<test>" && pwd', actions: ['approve', 'deny'], questions: [], expiresAt: Date.now() + 60000 })
+  const bodies: any[] = []
+  const fetchImpl: typeof fetch = vi.fn(async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)))
+    return new Response(JSON.stringify({ ok: true, result: { message_id: 12 } }))
+  })
+  const channel = new TelegramChannel('tg', '99', ['42'], 'test-token', store, fetchImpl)
+  try {
+    expect(await channel.send(formatRequest(r, session), r, session)).toBe('12')
+    store.mark(r.id, 'cancelled')
+    const closed = store.get(r.id)
+    await channel.update('12', formatRequest(closed, session), closed, session)
+    expect(bodies.every(body => body.parse_mode === 'HTML' && body.link_preview_options.is_disabled)).toBe(true)
+    expect(bodies[0].text).toContain('&lt;test&gt;')
+    expect(bodies[0].reply_markup.inline_keyboard.flat().map((button: any) => button.callback_data)).toEqual([`${r.id}:1:approve`, `${r.id}:1:deny`, `${r.id}:1:detail`])
+    expect(bodies[1].message_id).toBe(12)
+    expect(bodies[1].text).toContain('已取消')
+    expect(bodies[1].reply_markup.inline_keyboard).toEqual([[{ text: '查看详情', callback_data: `${r.id}:2:detail` }]])
+  } finally { channel.close() }
+})
+
+it('routes detail buttons through hub authorization and sends complete HTML pages without making decisions', async () => {
+  const store = new ControlStore()
+  store.session({ id: 's', nativeId: 'native', agent: 'codex', adapter: 'observation', connected: false, label: 'Codex', capabilities: [] })
+  const r = store.create({ sessionId: 's', sourceKey: 'source', origin: 'observation', kind: 'approval', title: '查看命令', detail: '<test>🧪\n'.repeat(1800), actions: ['ack'], questions: [], expiresAt: Date.now() + 60000 })
+  const calls: { method: string; body: any }[] = []
+  let polls = 0
+  const fetchImpl: typeof fetch = vi.fn(async (url, init) => {
+    const method = String(url).split('/').at(-1)!
+    calls.push({ method, body: JSON.parse(String(init?.body)) })
+    let result: unknown = {}
+    if (method === 'getUpdates') {
+      if (polls++) return await new Promise<Response>((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+      result = [
+        { update_id: 7, callback_query: { id: 'unauthorized', from: { id: 10 }, message: { chat: { id: 99 } }, data: `${r.id}:1:detail` } },
+        { update_id: 8, callback_query: { id: 'details', from: { id: 42 }, message: { chat: { id: 99 } }, data: `${r.id}:1:detail` } }
+      ]
+    }
+    return new Response(JSON.stringify({ ok: true, result }))
+  })
+  const hub = new ControlHub(store)
+  const channel = new TelegramChannel('tg', '99', ['42'], 'test-token', store, fetchImpl)
+  try {
+    await channel.start(message => hub.receive(channel, message))
+    await vi.waitFor(() => expect(store.snapshot().cursors.tg).toBe(9))
+    const replies = calls.filter(call => call.method === 'sendMessage')
+    expect(replies.length).toBeGreaterThan(1)
+    expect(replies.every(call => call.body.parse_mode === 'HTML')).toBe(true)
+    expect(calls.findIndex(call => call.method === 'sendMessage')).toBeGreaterThan(calls.findIndex(call => call.method === 'answerCallbackQuery' && call.body.callback_query_id === 'details'))
+    expect(replies.map(call => call.body.text.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')).join('')).toBe(`查看命令\n请求 ${r.id}\n\n${r.detail}`)
+    expect(store.get(r.id).status).toBe('pending')
+    expect(store.get(r.id).decision).toBeUndefined()
+  } finally { channel.close(); hub.close() }
+})
 
 it('persists polling offsets, acknowledges callbacks and delivers the original request identity', async () => {
   const store = new ControlStore()

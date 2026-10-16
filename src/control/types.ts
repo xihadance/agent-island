@@ -84,8 +84,8 @@ export interface ChannelAdapter {
   destination: string
   allowedUsers: string[]
   start(receive: (message: RemoteMessage) => Promise<string>): Promise<void>
-  send(text: string, request?: InterventionRequest): Promise<string>
-  update(messageId: string, text: string, request: InterventionRequest): Promise<void>
+  send(text: string, request?: InterventionRequest, session?: ControlSession): Promise<string>
+  update(messageId: string, text: string, request: InterventionRequest, session?: ControlSession): Promise<void>
   close(): void
 }
 export const ACTIVE_STATUSES: RequestStatus[] = ['pending', 'queued', 'submitted']

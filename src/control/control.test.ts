@@ -132,7 +132,7 @@ describe('remote routing and delivery', () => {
     delivered('message'); await flush
     expect(store.snapshot().deliveries[`tg/${r.id}`].revision).toBe(1)
     await hub.flush()
-    expect(c.update).toHaveBeenCalledWith('message', expect.any(String), expect.objectContaining({ status: 'resolved', revision: 2 }))
+    expect(c.update).toHaveBeenCalledWith('message', expect.any(String), expect.objectContaining({ status: 'resolved', revision: 2 }), expect.objectContaining({ id: 's' }))
     expect(store.snapshot().deliveries[`tg/${r.id}`].revision).toBe(2)
     hub.close()
   })
