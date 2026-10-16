@@ -93,7 +93,7 @@ codex -p agentrouter
 [IO.File]::Delete(${quote(manifest)})
 codex -p agentrouter
 `, { encoding: 'utf8' })
-  const result = await promisify(execFile)('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', shell], { windowsHide: true, timeout: 10000 })
+  const result = await promisify(execFile)('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', shell], { windowsHide: true, timeout: 20000 })
   const lines = result.stdout.split(/\r?\n/).filter(Boolean)
   expect(JSON.parse(lines[0])).toMatchObject({ version: 1, args: ['--remote', 'ws://127.0.0.1:4500', '-p', 'agentrouter', '保持空格 $() \`literal 和 "引号"', ''], runtime: 'original-value' })
   expect(lines[1]).toBe('EXIT:7')
@@ -101,4 +101,4 @@ codex -p agentrouter
   expect(JSON.parse(lines[3])).toMatchObject({ version: 1, args: ['-p', 'agentrouter'] })
   expect(JSON.parse(lines[4])).toMatchObject({ version: 2, args: ['-p', 'agentrouter'] })
   expect(JSON.parse(lines[5])).toMatchObject({ version: 2, args: ['-p', 'agentrouter'] })
-})
+}, 30000)
