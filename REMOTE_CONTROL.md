@@ -58,6 +58,8 @@ node bin/cute-island.js remote status
 
 图形界面编辑渠道前需关闭接管，保存后再开启。草稿不会因切换配置分类丢失；关闭配置窗口前请保存。配置文件在外部被修改时，保存会提示重新读取，避免覆盖其他修改。
 
+每个 Telegram、飞书、企业微信、Discord 渠道及 Codex 连接都有「测试连通性」按钮，可在保存前检查当前草稿。消息渠道会验证凭据并向目标会话发送一条明确标注的测试消息；Telegram 还会检查已有 Webhook，企业微信会等待认证及发送回执。Codex 测试完成协议握手并检查所有指定 thread ID 是否已加载，不启动或恢复会话。结果显示在对应配置下方，修改配置后旧结果清除；测试最多等待 15 秒，不保存草稿，也不启动消息接收。测试期间须保持远程接管关闭，避免争抢机器人连接。投递成功后，保存配置并开启远程接管，再在消息渠道发送 `/sessions` 验证双向通信和用户权限。
+
 **与自动审批的关系：** 远程接管开启时，桌面应用的自动审批不回传决定，Codex 自动审批连接也会断开。关闭远程接管后恢复原自动审批设置。远程接管开关不会替你安装 Hook；Claude 的自动审批 HTTP Hook 与远程 Hook 是不同接入，请按下文配置需要的能力。
 
 配置中的 `mode` 固定为 `takeover`。修改渠道或 Codex 连接后，关闭再开启即可重新读取；修改端口、令牌、状态文件路径或进程环境变量后需重启服务。再次开启时，Hook 会话在下一次事件到来时重新注册，Codex 重新连接已配置的原会话，不会新建替代会话。
@@ -100,20 +102,24 @@ Cursor、Gemini 的“批准”只通过本次 Hook 门禁，保留 Agent 自己
 
 可以先在「Agent 接入 → Codex app-server」启动应用托管的本机服务，再用页面给出的 `codex --remote` 命令连接终端客户端。服务使用已安装的 Codex 原生程序，沿用本机登录；启动它并不会接管另一个实例正在运行的会话。
 
+若希望始终直接输入 `codex`，在「Agent 接入 → 直接使用 codex 命令」安装命令接入，然后重新打开终端。开启远程接管时，自动选择会话 ID 留空的 Codex 连接，优先使用本机托管服务对应的连接，否则使用配置中的第一条；全部连接均指定 ID 时不会自动添加参数。远程接管关闭后，若自动审批开启则使用审批服务地址；两者都关闭则恢复普通启动。无需在切换开关时手动增删 `--remote`，已启动会话保持原连接。
+
+命令接入支持 PowerShell、Bash / Zsh，保留显式参数；灵动岛或目标服务不可用时恢复普通启动。认证连接的 `tokenEnv` 必须也在终端环境中可用。安装器备份 Shell 配置，移除时保留其他内容；常规 Codex CLI 更新沿用原安装入口，VS Code 插件独立运行。
+
 只连接已经承载目标会话的 App-server。配置显式指定原生 thread ID：
 
 ```json
 {
   "id": "codex-local",
   "url": "ws://127.0.0.1:4500",
-  "threads": ["原生 thread ID"],
+  "threads": [],
   "tokenEnv": "CUTE_ISLAND_CODEX_WS_TOKEN"
 }
 ```
 
-将该对象加入配置的 `codex` 数组。没有认证的本机监听可省略 `tokenEnv`；非本机连接只接受 `wss://`。连接成功后，服务先检查 `thread/loaded/list`，仅对同一实例已加载的目标线程订阅。不会为普通 IDE／CLI 的日志另起执行实例，也不会恢复未加载线程来冒充接管。
+将该对象加入配置的 `codex` 数组，保存后开启远程接管。客户端通过 `codex --remote ws://127.0.0.1:4500` 连接到同一服务。`threads` 留空或省略时，自动接管该服务中全部已加载会话；填写 ID 数组可限定接管范围。启动时立即扫描，此后每 5 秒发现新会话，也会移除已关闭的会话。没有认证的本机监听可省略 `tokenEnv`；非本机连接只接受 `wss://`。服务通过 `thread/loaded/list` 分页检查会话，仅订阅同一实例已加载的线程。
 
-支持命令、文件、权限审批，原生问题回答，简单 MCP 表单，`turn/steer` 和 `turn/interrupt`。运行中追加消息携带 `expectedTurnId`；已确认空闲的线程使用 `turn/start`。权限批准仅作用于当前请求／轮次，不保存“始终允许”规则。Codex App-server／WebSocket 接口存在实验性限制，须使用支持这些方法的版本。配置启动后才加载的线程需重新连接本服务。
+支持命令、文件、权限审批，原生问题回答，简单 MCP 表单，`turn/steer` 和 `turn/interrupt`。运行中追加消息携带 `expectedTurnId`；已确认空闲的线程使用 `turn/start`。权限批准仅作用于当前请求／轮次，不保存“始终允许”规则。Codex App-server／WebSocket 接口存在实验性限制，须使用支持这些方法的版本。
 
 ## 远程操作
 
@@ -200,8 +206,12 @@ npm run typecheck
 npm test
 npm run build
 node scripts/smoke-remote-toggle.cjs
+node scripts/smoke-connectivity.cjs
+node scripts/smoke-codex-command.cjs
 ```
 
 自动测试使用本机 HTTP／WebSocket 和模拟 Bot API，验证原生 Hook 回传、Codex 关联、重复回复、失效请求、崩溃恢复、渠道授权及重试。`smoke-remote-toggle.cjs` 使用隔离配置和真实 Electron 托盘回调，验证启停、编译后的 CLI Hook 释放、旧审批失效、显示模式独立和重启持久化，不连接实际渠道。真实 Bot、飞书应用、企业微信租户、Discord 权限和实际 Agent 版本仍需在配置自己的账号后进行联调。
+
+`smoke-codex-command.cjs` 在 Windows 上使用真实 Electron、同一个 PowerShell 会话和隔离配置，验证命令接入的安装、动态切换、接管优先级、服务失联回退、CLI 更新及移除恢复，覆盖中文、引号和空参数。服务和 Codex 命令使用本机测试替身，不调用模型或真实消息渠道；同时保存浅色、深色及窄窗口截图。
 
 官方协议参考：[Claude Hooks](https://code.claude.com/docs/en/hooks)、[Claude Channels](https://code.claude.com/docs/en/channels-reference)、[Codex App-server](https://developers.openai.com/codex/app-server/)、[Gemini Hooks](https://geminicli.com/docs/hooks/reference/)、[Cursor Hooks](https://cursor.com/docs/agent/hooks)、[Telegram](https://core.telegram.org/bots/api)、[飞书](https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-callbacks)、[企业微信 SDK](https://github.com/WecomTeam/aibot-node-sdk)、[Discord](https://docs.discord.com/developers/interactions/receiving-and-responding)。

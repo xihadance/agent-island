@@ -1,0 +1,37 @@
+import { expect, it } from 'vitest'
+import { normalizePreferences, patchPreferences } from './preferences'
+import { canAutoRouteCodex, codexLaunchArguments, codexLaunchRoute } from './codex-launch'
+
+const url = 'ws://127.0.0.1:4500'
+it('routes automation and takeover independently and restores default launch when both are off', () => {
+  let preferences = patchPreferences(normalizePreferences(undefined), { automation: { enabled: true, codexUrl: url } })
+  expect(codexLaunchRoute(preferences, '')).toEqual({ enabled: true, url })
+  const remote = { codex: [{ id: 'phone', url: 'wss://example.test', threads: [], tokenEnv: 'CODEX_TOKEN' }] }
+  expect(codexLaunchRoute(preferences, '', remote, true)).toEqual({ enabled: true, url: 'wss://example.test', tokenEnv: 'CODEX_TOKEN' })
+  expect(codexLaunchRoute(preferences, '', { codex: [{ ...remote.codex[0], threads: ['pinned'] }] }, true)).toEqual({ enabled: false })
+  preferences = patchPreferences(preferences, { automation: { enabled: false } })
+  expect(codexLaunchRoute(preferences, '', remote, true).enabled).toBe(true)
+  expect(codexLaunchRoute(preferences, '', remote, false)).toEqual({ enabled: false })
+  preferences = patchPreferences(preferences, { automation: { enabled: true }, codexServer: { enabled: true } })
+  expect(codexLaunchRoute(preferences, '').enabled).toBe(false)
+  expect(codexLaunchRoute(preferences, url)).toEqual({ enabled: true, url })
+})
+
+it.each([
+  { args: [] }, { args: ['-p', 'agentrouter', '修复包含空格的文件'] }, { args: ['resume', '--last'] },
+  { args: ['--profile=agentrouter', 'fork', 'thread-1'] }, { args: ['-c', 'model="login"', 'agents'] },
+  { args: ['--', '--remote is literal prompt text'] }, { args: ['-p', '--no-daemon'] }
+])('preserves native argument values while routing $args', ({ args }) => {
+  expect(canAutoRouteCodex(args)).toBe(true)
+  expect(codexLaunchArguments(args, { enabled: true, url })).toEqual(['--remote', url, ...args])
+  expect(codexLaunchArguments(args, { enabled: false })).toEqual(args)
+})
+
+it.each([
+  { args: ['exec', '修复问题'] }, { args: ['-p', 'agentrouter', 'login'] }, { args: ['review'] }, { args: ['app-server', '--listen', url] },
+  { args: ['--remote', 'wss://user.test'] }, { args: ['hello', '--remote=wss://user.test'] },
+  { args: ['--no-daemon'] }, { args: ['--help'] }, { args: ['-V'] }, { args: ['--worktree'] }, { args: ['resume', '--help'] }
+])('leaves explicit routes and unsupported modes unchanged: $args', ({ args }) => {
+  expect(canAutoRouteCodex(args)).toBe(false)
+  expect(codexLaunchArguments(args, { enabled: true, url })).toEqual(args)
+})

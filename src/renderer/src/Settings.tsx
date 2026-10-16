@@ -4,6 +4,7 @@ import { getBridge } from './bridge'
 import './settings.css'
 import { RemoteSettings } from './RemoteSettings'
 import { CodexServerSettings } from './CodexServerSettings'
+import { CodexCommandSettings } from './CodexCommandSettings'
 import { ThemePicker, useSettingsTheme } from './ThemePicker'
 
 type Section = 'general' | 'automation' | 'connections' | 'remote' | 'history'
@@ -131,6 +132,7 @@ export function Settings() {
           <section className="settings-section" aria-labelledby="codex-title"><div className="section-heading"><h2 id="codex-title">Codex app-server</h2><span className="connection-state"><span className="connection-dot" data-active={snapshot.codexStatus === 'connected'} />{({ disabled: '未连接', connecting: '连接中', connected: '已连接', error: '连接失败' })[snapshot.codexStatus]}</span></div>
             <p className="settings-description">连接与你的 Codex 客户端共用的本机 app-server，处理命令、文件、权限审批和选择题。</p>
             <CodexServerSettings snapshot={snapshot} busy={busy} update={update} />
+            <CodexCommandSettings snapshot={snapshot} busy={busy} onSnapshot={setSnapshot} />
             <details className="codex-service-options"><summary>连接已有的 app-server</summary>
             <label className="settings-field-label" htmlFor="codex-url">WebSocket 地址</label><form className="connection-form" onSubmit={event => { event.preventDefault(); update({ automation: { codexUrl: codexUrl.trim() } }) }}><input id="codex-url" type="text" spellCheck={false} autoComplete="off" placeholder="ws://127.0.0.1:4500" value={codexUrl} onChange={event => setCodexUrl(event.target.value)} disabled={busy || snapshot.preview || snapshot.preferences.codexServer.enabled} aria-describedby="codex-help" /><button className="settings-button" type="submit" disabled={busy || snapshot.preview || snapshot.preferences.codexServer.enabled || codexUrl.trim() === auto.codexUrl}>保存地址</button></form>
             <p className="settings-help" id="codex-help">开启自动审批后连接，清空地址可移除。仅支持本机无认证的 WebSocket 服务；普通 CLI、桌面应用和插件的日志不会自动建立此连接。</p>

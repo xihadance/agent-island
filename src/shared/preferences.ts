@@ -1,5 +1,6 @@
 import { isIslandMode, type IslandMode } from './island-behavior'
 import type { RemoteSettings } from './remote-settings'
+import type { CodexCommandStatus } from './codex-launch'
 
 export type Theme = 'system' | 'light' | 'dark'
 export function isTheme(value: unknown): value is Theme { return value === 'system' || value === 'light' || value === 'dark' }
@@ -95,6 +96,7 @@ export interface AutomationEntry {
 }
 
 export interface SettingsSnapshot {
+  codexCommand: CodexCommandStatus
   codexServer: { status: 'stopped' | 'starting' | 'running' | 'error'; url: string; detail: string }
   remoteHooks: Record<'claude' | 'cursor' | 'gemini', { installed: boolean; file: string; error?: string }>
   remote: RemoteSettings

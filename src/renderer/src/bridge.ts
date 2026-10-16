@@ -28,6 +28,7 @@ function createMockBridge(): IslandApi {
   mode = preferences.mode
   const settingsListeners = new Set<(snapshot: SettingsSnapshot) => void>()
   const snapshot = (): SettingsSnapshot => ({ preferences, version: '预览', port: 17321, watchDisabledByEnvironment: false,
+    codexCommand: { installed: false, profiles: [], shell: 'PowerShell / Bash / Zsh' },
     codexServer: { status: 'stopped', url: '', detail: '' },
     remoteHooks: { claude: { installed: false, file: '~/.claude/settings.json' }, cursor: { installed: false, file: '~/.cursor/hooks.json' }, gemini: { installed: false, file: '~/.gemini/settings.json' } },
     remote: { configured: false, enabled: false, running: false, configFile: '~/.cute-island/remote.json', revision: '', channels: [], codex: [], missingCredentials: [] },
@@ -57,12 +58,14 @@ function createMockBridge(): IslandApi {
   return {
     openSettings: async () => { window.location.hash = 'settings' },
     saveRemote: async () => { throw new Error('请在桌面应用中配置远程渠道') },
+    testRemoteConnection: async () => ({ ok: false, message: '请在桌面应用中测试真实连接。' }),
     setRemoteEnabled: async () => { throw new Error('请在桌面应用中开启远程接管') },
     setRemoteIntegration: async () => { throw new Error('请在桌面应用中安装 Hook 接管') },
     getSettings: async () => snapshot(),
     updateSettings: async patch => { preferences = patchPreferences(preferences, patch); return save() },
     onSettings(callback) { settingsListeners.add(callback); return () => { settingsListeners.delete(callback) } },
     setClaudeIntegration: async () => { throw new Error('请在桌面应用中设置 Agent 接入') },
+    setCodexCommandIntegration: async () => { throw new Error('请在桌面应用中安装 Codex 命令接入') },
     settingsAction: async action => {
       if (action === 'clear-history') return
       throw new Error('窗口操作请在桌面应用中使用')

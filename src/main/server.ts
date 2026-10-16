@@ -6,6 +6,7 @@ import type { ControlRuntime } from '../control/runtime'
 import { check, record, string } from '../control/store'
 import type { Decision } from '../control/types'
 import { hookPassthrough } from '../control/hooks'
+import type { CodexLaunchRoute } from '../shared/codex-launch'
 
 export interface StatusServer {
   port: number
@@ -14,11 +15,18 @@ export interface StatusServer {
 
 export function startStatusServer(
   store: ActivityStore,
-  options: { port: number; token?: string; claudeHook?: (payload: unknown) => unknown; control?: ControlRuntime | (() => ControlRuntime | undefined) }
+  options: { port: number; token?: string; claudeHook?: (payload: unknown) => unknown; control?: ControlRuntime | (() => ControlRuntime | undefined);
+    codexLaunch?: { token: string; route: () => CodexLaunchRoute } }
 ): Promise<StatusServer> {
   const token = options.token?.trim() || undefined
   const sockets = new Set<WebSocket>()
   const httpServer = createServer((req, res) => {
+    if (new URL(req.url ?? '/', 'http://127.0.0.1').pathname === '/v1/codex/launch') {
+      if (req.method !== 'GET' || !options.codexLaunch || req.headers.origin || !authorized(req, options.codexLaunch.token)) {
+        sendJson(res, 403, { error: '命令接入需要独立令牌' }); return
+      }
+      sendJson(res, 200, options.codexLaunch.route()); return
+    }
     void handleRequest(req, res, store, token, options.claudeHook, options.control).catch((error: unknown) => {
       if (res.headersSent) return
       const status = error instanceof ActivityError ? error.status : 500

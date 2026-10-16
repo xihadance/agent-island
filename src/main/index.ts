@@ -2,7 +2,7 @@ import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, nativeThe
 import path from 'node:path'
 import os from 'node:os'
 import { existsSync } from 'node:fs'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { initRemoteConfig, readRemoteConfig, type RemoteConfig } from '../control/config'
 import { createControlRuntime, type ControlRuntime } from '../control/runtime'
 import { SessionWatcher } from '../agents/watch'
@@ -12,15 +12,18 @@ import { startStatusServer, type StatusServer } from './server'
 import { TRAY_ICON } from './tray-icon'
 import { constrainPosition, dockAfterDrag, dockedPosition, positionAfterDrag, type DockState, type Point, type WindowPosition } from '../shared/window-position'
 import { readWindowPosition, saveWindowPosition } from './window-position'
-import { AttentionTracker, isIslandMode, isPassive, managedAttention, shouldIgnoreMouse, type IslandBehavior, type IslandMode } from '../shared/island-behavior'
+import { AttentionTracker, isIslandMode, isPassive, islandAttention, shouldIgnoreMouse, type IslandBehavior, type IslandMode } from '../shared/island-behavior'
 import { readPreferences, savePreferences } from './preferences'
 import { normalizePreferences, patchPreferences, type AutomationEntry, type SettingsSnapshot } from '../shared/preferences'
 import { decideClaude, type Decision } from '../shared/automation'
 import { CodexAutomation } from './codex-automation'
 import { hasClaudeIntegration, setClaudeIntegration } from './claude-integration'
 import { remoteSettings, saveRemoteSettings } from './remote-settings'
+import { testRemoteConnection } from '../control/connectivity'
 import { ManagedCodexServer } from './codex-server'
 import { remoteIntegrationStatus, setRemoteIntegration, writeHookLauncher, type HookAgent } from './remote-integration'
+import { codexCommandStatus, setCodexCommandIntegration, writeCodexLaunchConfig, type CodexCommandOptions } from './codex-command'
+import { codexLaunchRoute } from '../shared/codex-launch'
 
 const WINDOW_WIDTH = 460
 const WINDOW_HEIGHT = 560
@@ -33,6 +36,7 @@ let store: ActivityStore | null = null
 let watcher: SessionWatcher | null = null
 let control: ControlRuntime | undefined
 let controlLoadError: string | undefined
+let testingRemoteConnection = false
 let demoToken = 0
 let preferredPosition: WindowPosition | undefined
 let dockCollapsed = true
@@ -46,6 +50,7 @@ let historySequence = 0
 const history: AutomationEntry[] = []
 const recentHooks = new Set<string>()
 const attention = new AttentionTracker()
+const codexLaunchToken = randomBytes(32).toString('hex')
 const behaviorListeners = new Set<() => void>()
 let lastBehavior = ''
 
@@ -97,6 +102,7 @@ async function boot(): Promise<void> {
     server = await startStatusServer(store, {
       port,
       token: process.env.CUTE_ISLAND_TOKEN,
+      codexLaunch: { token: codexLaunchToken, route: currentCodexLaunchRoute },
       control: loadControl,
       claudeHook: payload => {
         const decision = decideClaude(payload, automationPreferences())
@@ -115,6 +121,8 @@ async function boot(): Promise<void> {
     return
   }
   console.log(`Cute Island 正在监听 http://127.0.0.1:${server.port}`)
+  try { writeCodexLaunchConfig(codexCommandOptions(), `http://127.0.0.1:${server.port}/v1/codex/launch`, codexLaunchToken) }
+  catch { console.error('Codex 命令接入需要重新安装，请在 Agent 接入中检查') }
   syncWatcher()
   preferredPosition = readWindowPosition(positionFile())
   claudeInstalled = hasClaudeIntegration(claudeSettingsFile(), server.port)
@@ -249,6 +257,7 @@ function reportControlLoadFailure(message = '远程接管不可用，请检查�
 
 function setRemoteEnabled(enabled: boolean): void {
   try {
+    if (enabled && testingRemoteConnection) throw new Error('连接测试正在进行，请完成后再开启远程接管')
     const runtime = loadControl()
     if (!runtime) throw new Error('请先通过托盘的“配置远程接管”创建配置')
     runtime.setEnabled(enabled)
@@ -301,8 +310,24 @@ function remoteHookOptions(agent: HookAgent) {
   return { file, agent, config: remoteConfigFile(), runner: [path.join(app.getPath('userData'), 'hooks', `cute-island-remote-hook.${process.platform === 'win32' ? 'cmd' : 'sh'}`)] }
 }
 
+function codexCommandOptions(): CodexCommandOptions {
+  return { directory: path.join(app.getPath('userData'), 'codex-command'), runner: [process.execPath, path.join(app.getAppPath(), 'out', 'cli.cjs')] }
+}
+
+function currentCodexLaunchRoute() {
+  if (quitting) return { enabled: false }
+  const hostedUrl = preferences.codexServer.enabled && hostedCodex?.state.status === 'running' ? hostedCodex.state.url : ''
+  const takeover = control?.status().enabled === true
+  if (takeover) {
+    if (!control?.status().running || control.status().error) return { enabled: false }
+    try { return codexLaunchRoute(preferences, hostedUrl, readRemoteConfig(remoteConfigFile()), true) }
+    catch { return { enabled: false } }
+  }
+  return codexLaunchRoute(preferences, hostedUrl)
+}
+
 function settingsSnapshot(): SettingsSnapshot {
-  return { codexServer: hostedCodex?.state ?? { status: 'stopped', url: '', detail: '' },
+  return { codexCommand: codexCommandStatus(codexCommandOptions()), codexServer: hostedCodex?.state ?? { status: 'stopped', url: '', detail: '' },
     remoteHooks: { claude: remoteIntegrationStatus(remoteHookOptions('claude')), cursor: remoteIntegrationStatus(remoteHookOptions('cursor')), gemini: remoteIntegrationStatus(remoteHookOptions('gemini')) },
     remote: remoteSettings(remoteConfigFile(), control?.status(), controlLoadError), preferences, version: app.getVersion(), port: server?.port ?? readPort(),
     watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled,
@@ -394,7 +419,7 @@ function placeWindow(win: BrowserWindow, content = { x: 167, y: 8, width: 126, h
   const desired = preferredPosition ?? defaultPosition()
   const dock = preferredPosition?.dock
   const display = screen.getDisplayNearestPoint(dock ?? { x: desired.x + WINDOW_WIDTH / 2, y: desired.y + content.y })
-  const next = dock ? dockedPosition(dock, content, display.workArea, dockCollapsed && !managedAttention(currentBehavior())) : constrainPosition(desired, content, display.workArea)
+  const next = dock ? dockedPosition(dock, content, display.workArea, dockCollapsed && !islandAttention(currentBehavior(), dockCollapsed)) : constrainPosition(desired, content, display.workArea)
   const current = win.getBounds()
   if (current.x !== next.x || current.y !== next.y) win.setPosition(next.x, next.y)
 }
@@ -424,7 +449,7 @@ function updateTrayMenu(next: Tray): void {
       try { updatePreferences({ automation: { enabled: item.checked } }) }
       catch (error) { dialog.showErrorBox('无法保存配置', errorText(error)) }
     } },
-    { id: 'remote-toggle', label: `远程接管（${remoteLabel}）`, type: 'checkbox', checked: remote?.enabled ?? false, enabled: configured,
+    { id: 'remote-toggle', label: `远程接管（${remoteLabel}）`, type: 'checkbox', checked: remote?.enabled ?? false, enabled: configured && !testingRemoteConnection,
       click: item => setRemoteEnabled(item.checked) },
     { label: '配置远程接管…', click: openRemoteSettings },
     { type: 'separator' },
@@ -527,10 +552,10 @@ function trackPointer(win: BrowserWindow): () => void {
   screen.on('display-removed', reposition)
   win.on('hide', endDrag)
   win.webContents.on('render-process-gone', endDrag)
-  let lastPolicy = `${islandMode}:${managedAttention(currentBehavior())}`
+  let lastPolicy = `${islandMode}:${islandAttention(currentBehavior(), currentDock().collapsed)}`
   const syncBehavior = (): void => {
     if (win.isDestroyed()) return
-    const policy = `${islandMode}:${managedAttention(currentBehavior())}`
+    const policy = `${islandMode}:${islandAttention(currentBehavior(), currentDock().collapsed)}`
     if (policy === lastPolicy) return
     lastPolicy = policy
     if (isPassive(currentBehavior())) endDrag()
@@ -555,7 +580,7 @@ function trackPointer(win: BrowserWindow): () => void {
       localY >= interaction.y &&
       localX <= interaction.x + interaction.width &&
       localY <= interaction.y + interaction.height
-    const ignore = shouldIgnoreMouse(currentBehavior(), overIsland, interaction.expanded, !!drag)
+    const ignore = shouldIgnoreMouse(currentBehavior(), overIsland, interaction.expanded, !!drag, currentDock().collapsed)
     if (ignore !== ignoring) {
       ignoring = ignore
       ignoreMouse(win, ignore)
@@ -606,8 +631,18 @@ function wireIpc(activityStore: ActivityStore): void {
     notifySettings()
     return settingsSnapshot()
   })
+  ipcMain.handle('island:test-remote-connection', async (event, target: unknown) => {
+    if (event.sender !== settingsWindow?.webContents) throw new Error('请从配置窗口测试连接')
+    if (control?.status().enabled) throw new Error('请先关闭远程接管，再测试连接')
+    if (testingRemoteConnection) throw new Error('连接测试正在进行，请稍后重试')
+    testingRemoteConnection = true
+    if (tray) updateTrayMenu(tray)
+    try { return await testRemoteConnection(target) }
+    finally { testingRemoteConnection = false; if (tray) updateTrayMenu(tray) }
+  })
   ipcMain.handle('island:remote-enabled', (event, enabled: unknown) => {
     if (event.sender !== settingsWindow?.webContents || typeof enabled !== 'boolean') throw new Error('无效的远程接管操作')
+    if (enabled && testingRemoteConnection) throw new Error('连接测试正在进行，请完成后再开启远程接管')
     const runtime = loadControl()
     if (!runtime) throw new Error('请先添加并保存远程渠道')
     runtime.setEnabled(enabled)
@@ -630,6 +665,14 @@ function wireIpc(activityStore: ActivityStore): void {
     notifySettings()
     return settingsSnapshot()
   })
+  ipcMain.handle('island:codex-command-integration', (event, installed: unknown) => {
+    if (event.sender !== settingsWindow?.webContents || typeof installed !== 'boolean') throw new Error('请从配置窗口修改 Codex 命令接入')
+    const options = codexCommandOptions()
+    setCodexCommandIntegration(options, installed)
+    if (installed) writeCodexLaunchConfig(options, `http://127.0.0.1:${server!.port}/v1/codex/launch`, codexLaunchToken)
+    notifySettings()
+    return settingsSnapshot()
+  })
   ipcMain.handle('island:settings-action', (event, action: unknown) => {
     if (event.sender !== settingsWindow?.webContents) throw new Error('请从配置窗口操作')
     if (action === 'show') reveal()
@@ -645,7 +688,7 @@ function wireIpc(activityStore: ActivityStore): void {
     if (event.sender === mainWindow?.webContents && isIslandMode(mode)) setIslandMode(mode)
   })
   ipcMain.on('island:acknowledge', (event, id: unknown) => {
-    if (event.sender !== mainWindow?.webContents || typeof id !== 'string' || islandMode !== 'managed') return
+    if (event.sender !== mainWindow?.webContents || typeof id !== 'string') return
     attention.acknowledge(id)
     notifyBehavior()
   })

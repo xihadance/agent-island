@@ -4,7 +4,7 @@ import { getBridge } from './bridge'
 import { Island } from './Island'
 import { useIslandDrag } from './useIslandDrag'
 import { useIslandBehavior } from './useIslandBehavior'
-import { isPassive } from '../../shared/island-behavior'
+import { isPassive, islandAttention } from '../../shared/island-behavior'
 import type { IslandApi } from './env'
 
 export function App() {
@@ -22,14 +22,16 @@ export function App() {
   const hoveringRef = useRef(false)
   const managed = behavior.mode === 'managed'
   const pending = activities.filter(item => behavior.attentionIds.includes(item.id))
-  const attention = managed && pending.length > 0
   const passive = isPassive(behavior)
-  const drag = useIslandDrag(bridge, !passive, attention)
-  const visibleActivities = managed ? attention ? pending : activities.slice(0, 1) : activities
-  const visibleSelectedId = managed ? (pending.find(item => item.id === selectedId)?.id ?? pending[0]?.id ?? null) : selectedId
-  const interacting = managed ? attention : !drag.dock.collapsed && (expanded || selectedId !== null || drag.dock.edge !== null)
+  const drag = useIslandDrag(bridge, !passive, pending.length > 0)
+  const attention = pending.length > 0 && islandAttention(behavior, drag.dock.collapsed)
+  const visibleActivities = attention ? pending : managed ? activities.slice(0, 1) : activities
+  const visibleSelectedId = attention ? (pending.find(item => item.id === selectedId)?.id ?? pending[0]?.id ?? null) : selectedId
+  const interacting = attention || (!managed && !drag.dock.collapsed && (expanded || selectedId !== null || drag.dock.edge !== null))
   const passiveRef = useRef(passive)
+  const attentionRef = useRef(attention)
   passiveRef.current = passive
+  attentionRef.current = attention
   expandedRef.current = interacting
 
   useEffect(() => {
@@ -87,7 +89,7 @@ export function App() {
     const syncIgnore = (overIsland: boolean): void => {
       hoveringRef.current = overIsland
       setHovered(overIsland)
-      bridge.setIgnoreMouse(passiveRef.current || !(overIsland || expandedRef.current))
+      bridge.setIgnoreMouse(passiveRef.current || !(overIsland || (!attentionRef.current && expandedRef.current)))
     }
     const onMove = (event: MouseEvent): void => {
       const element = document.elementFromPoint(event.clientX, event.clientY)
@@ -111,8 +113,8 @@ export function App() {
 
   useEffect(() => {
     if (bridge.onPointer) return
-    bridge.setIgnoreMouse(passive || !(hoveringRef.current || interacting))
-  }, [bridge, interacting, passive])
+    bridge.setIgnoreMouse(passive || !(hoveringRef.current || (!attention && interacting)))
+  }, [bridge, interacting, passive, attention])
 
   useEffect(() => {
     if (!bridge.setInteraction) return
@@ -139,7 +141,7 @@ export function App() {
   }, [bridge, interacting])
 
   const toggle = (): void => {
-    if (managed) return
+    if (managed || attention) return
     if (drag.dock.edge) {
       drag.setDockExpanded(drag.dock.collapsed)
       if (drag.dock.collapsed) {
@@ -156,7 +158,7 @@ export function App() {
   }
 
   const collapseFromOutside = (event: ReactMouseEvent<HTMLDivElement>): void => {
-    if (managed) return
+    if (managed || attention) return
     if (event.target !== event.currentTarget) return
     if (drag.dock.edge) drag.setDockExpanded(false)
     if (primary?.state === 'error') return
@@ -179,7 +181,7 @@ export function App() {
           hovered={hovered}
           onHover={setHovered}
           activities={visibleActivities}
-          expanded={managed ? attention && pending.length === 1 : expanded && !!primary && !stacked}
+          expanded={attention ? pending.length === 1 : !managed && expanded && !!primary && !stacked}
           selectedId={managed && !attention ? null : visibleSelectedId}
           resting={resting && !primary && !drag.dock.edge}
           onToggle={toggle}

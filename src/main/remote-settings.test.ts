@@ -46,3 +46,17 @@ it('preserves legacy enabled behavior and never exposes malformed JSON fragments
   expect(JSON.stringify(remoteSettings(file))).not.toContain('secret-value')
   expect(remoteSettings(file).error).toBeTruthy()
 })
+
+it.each([{ threads: undefined }, { threads: [] }])('saves an automatic Codex connection with threads=$threads', ({ threads }) => {
+  const file = fixture()
+  const connection = { id: 'codex-auto', url: 'ws://127.0.0.1:4500', ...(threads ? { threads } : {}) }
+  saveRemoteSettings(file, { channels: [channel], codex: [connection] }, remoteSettings(file).revision, 17321)
+  expect(remoteSettings(file).codex).toEqual([{ ...connection, threads: [] }])
+  expect(remoteSettings(file).error).toBeUndefined()
+})
+
+it('rejects an invalid automatic connection before saving', () => {
+  const file = fixture(); const snapshot = remoteSettings(file)
+  expect(() => saveRemoteSettings(file, { channels: [], codex: [{ id: 'codex-auto', url: 'ws://127.0.0.1:4500', threads: 't' }] }, snapshot.revision, 17321)).toThrow('threads 必须是数组')
+  expect(remoteSettings(file).revision).toBe(snapshot.revision)
+})

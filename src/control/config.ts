@@ -57,10 +57,10 @@ export function parseRemoteConfig(input: unknown, file: string): RemoteConfig {
   check(value.codex === undefined || Array.isArray(value.codex), 'codex 必须是数组')
   const codex = ((value.codex ?? []) as unknown[]).map(raw => {
     const c = record(raw)
-    check(Array.isArray(c.threads) && c.threads.length > 0, 'Codex 需要指定原生 thread ID')
+    check(c.threads === undefined || Array.isArray(c.threads), 'Codex threads 必须是数组，留空可自动接管已加载会话')
     const id = string(c.id, 'Codex 连接 ID', 80)
     check(!ids.has(id), '连接 ID 重复'); ids.add(id)
-    return { id, url: string(c.url, 'Codex URL', 1000), threads: c.threads.map(t => string(t, 'thread ID', 250)), tokenEnv: c.tokenEnv === undefined ? undefined : string(c.tokenEnv, 'tokenEnv', 100) }
+    return { id, url: string(c.url, 'Codex URL', 1000), threads: ((c.threads ?? []) as unknown[]).map(t => string(t, 'thread ID', 250)), tokenEnv: c.tokenEnv === undefined ? undefined : string(c.tokenEnv, 'tokenEnv', 100) }
   })
   return { mode: 'takeover', enabled: value.enabled !== false, controlToken: token, port: Number(port), stateFile: path.resolve(path.dirname(file), typeof value.stateFile === 'string' ? value.stateFile : 'remote-state.json'), channels, codex }
 }
@@ -90,4 +90,15 @@ export function remoteExplicitlyDisabled(file: string): boolean {
 export function secret(name: string | undefined, env = process.env): string {
   check(name && env[name]?.trim(), `请设置渠道凭据环境变量 ${name ?? '(未配置)'}`)
   return env[name]!
+}
+
+export function validateCredentialName(name: string | undefined): void {
+  check(name === undefined || /^[A-Za-z_][A-Za-z0-9_]*$/.test(name), '凭据填写环境变量名称，例如 CUTE_ISLAND_TELEGRAM_TOKEN')
+}
+
+export function validateCodexUrl(value: string): void {
+  let url: URL
+  try { url = new URL(value) } catch { throw new Error('Codex WebSocket 地址无效') }
+  check((url.protocol === 'wss:' || url.protocol === 'ws:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) && !url.username && !url.password && !url.search && !url.hash,
+    'Codex 仅支持本机 ws 或远程 wss；认证请填写环境变量名称')
 }

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { initRemoteConfig, parseRemoteConfig } from '../control/config'
+import { initRemoteConfig, parseRemoteConfig, validateCodexUrl, validateCredentialName } from '../control/config'
 import { check, record } from '../control/store'
 import type { ControlStatus } from '../control/runtime'
 import type { RemoteSettings } from '../shared/remote-settings'
@@ -37,14 +37,9 @@ export function saveRemoteSettings(file: string, input: unknown, expectedRevisio
   })
   const next = { ...value, channels: merge(value.channels, patch.channels), codex: merge(value.codex, patch.codex) }
   const validated = parseRemoteConfig(next, file)
-  for (const connection of validated.codex) {
-    let url: URL
-    try { url = new URL(connection.url) } catch { throw new Error('Codex WebSocket 地址无效') }
-    check((url.protocol === 'wss:' || url.protocol === 'ws:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) && !url.username && !url.password && !url.search && !url.hash,
-      'Codex 仅支持本机 ws 或远程 wss；认证请填写环境变量名称')
-  }
+  for (const connection of validated.codex) validateCodexUrl(connection.url)
   for (const name of [...validated.channels.flatMap(c => [c.tokenEnv, c.secretEnv]), ...validated.codex.map(c => c.tokenEnv)]) {
-    check(name === undefined || /^[A-Za-z_][A-Za-z0-9_]*$/.test(name), '凭据填写环境变量名称，例如 CUTE_ISLAND_TELEGRAM_TOKEN')
+    validateCredentialName(name)
   }
   if (!exists) initRemoteConfig(file, port)
   const temporary = `${file}.${randomBytes(6).toString('hex')}.tmp`

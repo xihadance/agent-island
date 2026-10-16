@@ -199,6 +199,10 @@ body[data-surface='settings'] { scrollbar-color: var(--settings-scrollbar) var(-
 .remote-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .remote-editor { border: 0; border-bottom: 1px solid var(--settings-line); padding: 16px 0 22px; margin: 22px 0; min-width: 0; }
 .remote-editor legend { padding-right: 12px; color: var(--settings-text); font-size: 14px; font-weight: 600; }
+.remote-test-result { margin: 12px 0 0; color: var(--settings-muted); font-size: 12px; overflow-wrap: anywhere; }
+.remote-test-result:empty { margin: 0; }
+.remote-test-result[data-state='success'] { color: var(--settings-accent); }
+.remote-test-result[data-state='error'] { color: var(--settings-error-text); }
 .remote-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .remote-field label { display: block; font-size: 13px; color: var(--settings-secondary); margin-bottom: 7px; }
 .remote-field input, .remote-add select { width: 100%; padding: 9px 12px; border: 1px solid var(--settings-control-border); border-radius: 7px; background: var(--settings-input); color: var(--settings-text); font-size: 13px; min-width: 0; }

@@ -1,8 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import { ActivityStore } from './activity'
-import { AttentionTracker, attentionKind, isPassive, shouldIgnoreMouse } from './island-behavior'
+import { AttentionTracker, attentionKind, islandAttention, isPassive, shouldIgnoreMouse } from './island-behavior'
 
-describe('managed island attention', () => {
+describe('island attention', () => {
+  it('reveals pending focus alerts only while docked and keeps transparent space usable', () => {
+    const store = new ActivityStore()
+    const tracker = new AttentionTracker()
+    const behavior = () => ({ mode: 'focus' as const, attentionIds: tracker.pendingIds() })
+    store.upsert({ id: 'one', state: 'running' })
+    tracker.update(store.list())
+    expect(islandAttention(behavior(), true)).toBe(false)
+    store.upsert({ id: 'one', state: 'approval' })
+    tracker.update(store.list())
+    expect(islandAttention(behavior(), true)).toBe(true)
+    expect(islandAttention(behavior(), false)).toBe(false)
+    expect(isPassive(behavior())).toBe(false)
+    expect(shouldIgnoreMouse(behavior(), false, true, false, true)).toBe(true)
+    expect(shouldIgnoreMouse(behavior(), true, true, false, true)).toBe(false)
+    tracker.acknowledge('one')
+    expect(islandAttention(behavior(), true)).toBe(false)
+    store.upsert({ id: 'one', state: 'error' })
+    tracker.update(store.list())
+    expect(islandAttention(behavior(), true)).toBe(true)
+    store.upsert({ id: 'one', state: 'running' })
+    tracker.update(store.list())
+    expect(islandAttention(behavior(), true)).toBe(false)
+    store.dispose()
+  })
+
   it('keeps routine work and generic waiting quiet, but identifies explicit requests and failures', () => {
     const store = new ActivityStore()
     for (const state of ['running', 'thinking', 'waiting', 'success'] as const) {

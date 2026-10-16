@@ -64,16 +64,17 @@ export class AttentionTracker {
   }
 }
 
-export function managedAttention(behavior: IslandBehavior): boolean {
-  return behavior.mode === 'managed' && behavior.attentionIds.length > 0
+/** Temporarily reveal actionable sessions without changing the saved edge collapse. */
+export function islandAttention(behavior: IslandBehavior, dockCollapsed = false): boolean {
+  return behavior.attentionIds.length > 0 && (behavior.mode === 'managed' || dockCollapsed)
 }
 
 export function isPassive(behavior: IslandBehavior): boolean {
-  return behavior.mode === 'managed' && !managedAttention(behavior)
+  return behavior.mode === 'managed' && !islandAttention(behavior)
 }
 
-/** Managed alerts capture only their visible surface; the rest of the desktop stays usable. */
-export function shouldIgnoreMouse(behavior: IslandBehavior, overIsland: boolean, expanded: boolean, dragging: boolean): boolean {
-  if (behavior.mode === 'managed') return isPassive(behavior) || (!dragging && !overIsland)
+/** Alerts capture only their visible surface; the rest of the desktop stays usable. */
+export function shouldIgnoreMouse(behavior: IslandBehavior, overIsland: boolean, expanded: boolean, dragging: boolean, dockCollapsed = false): boolean {
+  if (behavior.mode === 'managed' || islandAttention(behavior, dockCollapsed)) return isPassive(behavior) || (!dragging && !overIsland)
   return !dragging && !expanded && !overIsland
 }

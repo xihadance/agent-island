@@ -42,6 +42,10 @@ export async function runCli(argv: readonly string[], io: CliIo = {}): Promise<n
     return command ? 0 : 0
   }
   try {
+    if (command === 'codex-launch') {
+      const { runCodexLaunch } = await import('./control/codex-launch')
+      return await runCodexLaunch(rest, stdout, io.env)
+    }
     if (command === 'remote') {
       const { runRemoteCli } = await import('./control/cli')
       return await runRemoteCli(rest, { stdout, stderr, env: io.env, fetchImpl: io.fetchImpl })

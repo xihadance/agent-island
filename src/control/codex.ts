@@ -11,6 +11,8 @@ export class CodexAdapter implements AgentControlAdapter {
   private socket?: WebSocket
   private closed = false
   private timer?: ReturnType<typeof setTimeout>
+  private poll?: ReturnType<typeof setInterval>
+  private scanning?: WebSocket
   private generation = ''
   private sequence = 0
   private sessions = new Map<string, string>()
@@ -22,12 +24,15 @@ export class CodexAdapter implements AgentControlAdapter {
     check(!url.username && !url.password, 'Codex 认证请通过 tokenEnv 配置')
   }
   start(): void {
-    if (this.closed) return
+    if (this.closed || this.socket) return
     const socket = new WebSocket(this.config.url, { headers: this.config.token ? { Authorization: `Bearer ${this.config.token}` } : {}, handshakeTimeout: 10000, maxPayload: 8 * 1024 * 1024 })
     this.socket = socket
     this.generation = uid()
     socket.on('error', () => {})
     socket.on('close', () => {
+      if (this.socket !== socket) return
+      this.socket = undefined
+      clearInterval(this.poll)
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('Codex 控制连接断开')) }
       this.pending.clear()
       if (this.closed) return
@@ -39,28 +44,71 @@ export class CodexAdapter implements AgentControlAdapter {
       if (!this.closed) this.timer = setTimeout(() => this.start(), 5000)
     })
     socket.on('message', bytes => {
+      if (this.socket !== socket) return
       try { this.onMessage(JSON.parse(bytes.toString())) } catch { /* Malformed or unsupported events never grant access. */ }
     })
-    socket.on('open', () => { void this.initialize().catch(() => socket.close()) })
+    socket.on('open', () => { void this.initialize(socket).catch(() => socket.close()) })
   }
-  private async initialize(): Promise<void> {
+  private async initialize(socket: WebSocket): Promise<void> {
     await this.rpc('initialize', { clientInfo: { name: 'cute-island', title: 'Cute Island 接管', version: '0.1.11' }, capabilities: { experimentalApi: true } })
+    if (this.closed || this.socket !== socket) return
     await this.write({ method: 'initialized' })
-    const loaded = await this.rpc('thread/loaded/list', {})
-    for (const thread of this.config.threads) {
-      if (this.closed) return
+    await this.discover(socket)
+    if (!this.closed && this.socket === socket) this.poll = setInterval(() => { void this.discover(socket).catch(() => socket.close()) }, 5000)
+  }
+  private async discover(socket: WebSocket): Promise<void> {
+    if (this.closed || this.socket !== socket || this.scanning === socket) return
+    this.scanning = socket
+    try { await this.scan(socket) }
+    finally { if (this.scanning === socket) this.scanning = undefined }
+  }
+  private async scan(socket: WebSocket): Promise<void> {
+    const loaded = new Set<string>()
+    const cursors = new Set<string>()
+    let cursor: string | null = null
+    for (let page = 0; page < 20; page++) {
+      const result = await this.rpc('thread/loaded/list', { limit: 100, cursor })
+      if (this.closed || this.socket !== socket) return
+      check(Array.isArray(result.data) && result.data.every((id: unknown) => typeof id === 'string'), 'Codex 返回了无效会话列表')
+      for (const id of result.data) loaded.add(id)
+      cursor = result.nextCursor ?? null
+      check(cursor === null || typeof cursor === 'string', 'Codex 返回了无效分页信息')
+      if (!cursor) break
+      check(!cursors.has(cursor), 'Codex 返回了重复的会话分页')
+      cursors.add(cursor)
+    }
+    check(!cursor, 'Codex 已加载会话过多，无法完成接管扫描')
+    for (const thread of this.sessions.keys()) if (!loaded.has(thread)) this.detach(thread)
+    const targets = this.config.threads.length ? this.config.threads : loaded
+    for (const thread of targets) {
+      if (this.closed || this.socket !== socket) return
       // Only subscribe to threads already loaded on THIS instance. Never create a second runner.
-      if (!loaded.data?.includes(thread)) continue
+      if (!loaded.has(thread) || this.sessions.has(thread)) continue
       const id = `codex-${createHash('sha256').update(`${this.config.id}:${thread}`).digest('hex').slice(0, 24)}`
       this.sessions.set(thread, id)
       this.hub.store.session({ id, agent: 'codex', nativeId: thread, adapter: 'codex', label: thread.slice(0, 12), connected: true, capabilities: ['approve', 'answer', 'message', 'interrupt'] })
       this.hub.attach(id, this)
-      const result = await this.rpc('thread/resume', { threadId: thread })
-      if (this.closed) return
+      let result: any
+      try { result = await this.rpc('thread/resume', { threadId: thread }) }
+      catch {
+        if (this.closed || this.socket !== socket) return
+        // A thread may unload between listing and subscription. Retry on the next scan.
+        this.detach(thread)
+        continue
+      }
+      if (this.closed || this.socket !== socket) return
       const native = result.thread
       const active = native.turns?.findLast((turn: any) => turn.status === 'inProgress')
       this.hub.store.change(state => { const s = state.sessions.find(s => s.id === id)!; s.label = native.name || s.label; s.turnId = active?.id ?? s.turnId })
     }
+  }
+  private detach(thread: string, settle = true): void {
+    const id = this.sessions.get(thread)
+    if (!id) return
+    this.sessions.delete(thread)
+    this.hub.store.change(state => { const session = state.sessions.find(s => s.id === id); if (session) { session.connected = false; session.turnId = undefined } })
+    if (settle) this.hub.store.settleSession(id, 'uncertain')
+    for (const [requestId, request] of this.native) if (request.params.threadId === thread) this.native.delete(requestId)
   }
   private onMessage(message: Record<string, any>): void {
     if (this.closed) return
@@ -75,6 +123,7 @@ export class CodexAdapter implements AgentControlAdapter {
     const params = message.params ?? {}
     const sessionId = this.sessions.get(params.threadId)
     if (!sessionId) return
+    if (message.method === 'thread/closed') { this.detach(params.threadId); return }
     if (message.method === 'turn/started') {
       this.hub.store.settleSession(sessionId, 'cancelled', true)
       this.hub.store.change(state => { const s = state.sessions.find(s => s.id === sessionId)!; s.turnId = params.turn.id; s.lastSeenAt = this.hub.store.now() })
@@ -152,6 +201,9 @@ export class CodexAdapter implements AgentControlAdapter {
     if (this.closed) return
     this.closed = true
     clearTimeout(this.timer)
+    clearInterval(this.poll)
+    // The runtime settles unsent and submitted work separately when takeover is disabled.
+    for (const thread of this.sessions.keys()) this.detach(thread, false)
     for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('Codex 接管已停止')) }
     this.pending.clear()
     this.sessions.clear(); this.native.clear()

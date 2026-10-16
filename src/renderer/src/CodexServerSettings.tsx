@@ -26,7 +26,7 @@ export function CodexServerSettings({ snapshot, busy, update }: { snapshot: Sett
     {server.status === 'running' && <div className="codex-client-command"><label className="settings-field-label" htmlFor="codex-connect-command">在新的终端中连接此服务</label>
       <div className="connection-form"><input id="codex-connect-command" value={command} readOnly spellCheck={false} onFocus={event => event.target.select()} />
         <button className="settings-button" onClick={() => { void navigator.clipboard.writeText(command).then(() => setCopied('命令已复制')).catch(() => setCopied('请选中命令后复制')) }}>复制命令</button></div>
-      <p className="settings-help" role="status">{copied || '连接 CLI 并打开会话后，在“自动审批”中开启规则。需要远程消息操作时，在远程接管页添加此服务地址和原生 thread ID。'}</p>
+      <p className="settings-help" role="status">{copied || '安装命令接入后可直接运行 codex；也可复制此命令手动连接。远程消息操作需添加同一服务地址，会话 ID 可留空。'}</p>
     </div>}
   </div>
 }
