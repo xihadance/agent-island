@@ -9,7 +9,7 @@ import { checkClaudeRecovery, ClaudeRecoveryRunner } from './claude-resume'
 import { listProcessSnapshot } from '../agents/processes'
 import type { ControlSession } from './types'
 
-vi.mock('../agents/processes', () => ({ listProcessSnapshot: vi.fn(async () => ({ running: new Set(), processes: [] })) }))
+vi.mock('../agents/processes', async (original) => ({ ...(await original<object>()), listProcessSnapshot: vi.fn(async () => ({ running: new Set(), processes: [] })) }))
 const cleanup: (() => void)[] = []
 afterEach(() => { cleanup.splice(0).reverse().forEach(close => close()); vi.clearAllMocks() })
 const session: ControlSession = { id: 's', nativeId: '01234567-89ab-cdef-0123-456789abcdef', agent: 'claude', adapter: 'hook', connected: false, label: '项目', lastSeenAt: 1, capabilities: [], cwd: path.resolve('原项目') }
@@ -114,6 +114,18 @@ it('validates the original Claude transcript, directory and configured native Ho
   await expect(checkClaudeRecovery(local, 'different-config', env)).rejects.toThrow('Hook')
   await expect(checkClaudeRecovery({ ...local, nativeId: '../../other' }, configFile, env)).rejects.toThrow('ID 无效')
   await expect(checkClaudeRecovery({ ...local, cwd: path.join(local.cwd!, 'missing') }, configFile, env)).rejects.toThrow('工作目录不存在')
+})
+
+it('ignores a crashed session registration whose PID was recycled, but still honours a live one', async () => {
+  const { root, local, configFile, env } = transcriptFixture()
+  mkdirSync(path.join(root, 'sessions'), { recursive: true })
+  writeFileSync(path.join(root, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: session.nativeId, status: 'idle' }))
+  const recycled = { pid: process.pid, parentPid: 1, name: 'pwsh.exe', commandLine: 'pwsh.exe -NoProfile', createdAt: Date.now() + 600000 }
+  vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(), processes: [recycled] })
+  await expect(checkClaudeRecovery(local, configFile, env)).resolves.toBeUndefined()
+  const alive = { pid: process.pid, parentPid: 1, name: 'claude.exe', commandLine: 'claude.exe', createdAt: Date.now() - 600000 }
+  vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(['claude']), processes: [alive] })
+  await expect(checkClaudeRecovery(local, configFile, env)).rejects.toThrow('请先在原终端结束会话')
 })
 
 it('rejects a live process or a transcript that has already continued', async () => {

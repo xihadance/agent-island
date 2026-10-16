@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { claudePlugin } from '../agents/plugins/claude'
-import { listProcessSnapshot } from '../agents/processes'
+import { listProcessSnapshot, registrationMatchesProcess } from '../agents/processes'
 import { parseTranscript } from '../agents/parse'
 import { check } from './store'
 import type { ControlSession } from './types'
@@ -39,9 +39,13 @@ export async function checkClaudeRecovery(session: ControlSession, configFile?: 
   check(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(session.nativeId), 'Claude 原生会话 ID 无效')
   check(session.cwd && path.isAbsolute(session.cwd) && await stat(session.cwd).then(info => info.isDirectory(), () => false), '原会话工作目录不存在')
   const root = claudePlugin.defaultRoot(homedir(), env)
-  const registrations = await claudePlugin.registeredSessions!(root)
-  check(!registrations.some(s => s.sessionId === session.nativeId), '原 Claude 会话进程仍在运行，请先在原终端结束会话', 409)
   const snapshot = await listProcessSnapshot([claudePlugin]).catch(() => { throw new Error('无法检查 Claude 进程，请稍后重试') })
+  const byPid = new Map(snapshot.processes.map(p => [p.pid, p]))
+  const registrations = await claudePlugin.registeredSessions!(root)
+  // A crashed CLI leaves its registration behind, and a recycled PID makes it look alive forever.
+  // Trust the registry only while that PID is still the same claude process, exactly as the watcher does.
+  check(!registrations.some(s => s.sessionId === session.nativeId && registrationMatchesProcess(byPid, claudePlugin, s.pid, s.updatedAt)),
+    '原 Claude 会话进程仍在运行，请先在原终端结束会话', 409)
   check(!snapshot.processes.some(p => p.commandLine.includes(session.nativeId)), '原 Claude 会话进程仍在运行，请勿重复恢复', 409)
   let transcript: string | undefined
   for (const dir of await readdir(root, { withFileTypes: true }).catch(() => { throw new Error('无法读取 Claude 会话目录，请检查安装和文件权限') })) {

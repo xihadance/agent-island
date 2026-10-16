@@ -87,6 +87,16 @@ export function clientForProcess(pid: number, processes: readonly ProcessInfo[],
   return shell
 }
 
+/**
+ * A session registration proves liveness only while its PID is still that same agent process.
+ * A crashed CLI leaves its registration behind and the OS recycles PIDs, so the file alone is not evidence.
+ */
+export function registrationMatchesProcess(byPid: ReadonlyMap<number, ProcessInfo>, plugin: AgentPlugin, pid: number, updatedAt?: number): boolean {
+  const info = byPid.get(pid)
+  return !!info && !(updatedAt !== undefined && info.createdAt !== undefined && info.createdAt > updatedAt)
+    && matchAgentProcesses(info.commandLine || info.name, [plugin]).has(plugin.kind)
+}
+
 export function matchAgentProcesses(output: string, plugins: readonly AgentPlugin[] = BUILTIN_PLUGINS): Set<string> {
   const found = new Set<string>()
   const executables = new Map(plugins.flatMap((plugin) => plugin.executables.map((name) => [name, plugin.kind] as const)))

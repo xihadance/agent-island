@@ -6,7 +6,7 @@ import { mapLimited, readSession, SessionReader, type SessionFile } from './file
 import { SessionDiscovery } from './discovery'
 import { activityId } from './parse'
 import { BUILTIN_PLUGINS } from './plugins'
-import { clientForProcess, listProcessSnapshot, matchAgentProcesses, type ProcessSnapshot } from './processes'
+import { clientForProcess, listProcessSnapshot, matchAgentProcesses, registrationMatchesProcess, type ProcessSnapshot } from './processes'
 import { dropActiveTasks, mergeChildTasks, presentTasks, type ChildSession } from './reduce'
 import type { AgentPlugin, ChildLink, SessionView } from './types'
 
@@ -184,11 +184,7 @@ export class SessionWatcher {
         const inactive = new Set<string>()
         const registeredPids = new Set<number>()
         const pids = this.sessionPids.get(plugin.kind) ?? new Map<string, { pid: number; updatedAt: number }>()
-        const matches = (pid: number, updatedAt?: number): boolean => {
-          const process = byPid.get(pid)
-          return !!process && !(updatedAt !== undefined && process.createdAt !== undefined && process.createdAt > updatedAt)
-            && matchAgentProcesses(process.commandLine || process.name, [plugin]).has(plugin.kind)
-        }
+        const matches = (pid: number, updatedAt?: number): boolean => registrationMatchesProcess(byPid, plugin, pid, updatedAt)
         for (const session of sessions) {
           if (this.listSnapshot && !matches(session.pid, session.updatedAt)) {
             inactive.add(session.sessionId)
