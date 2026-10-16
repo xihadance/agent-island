@@ -158,7 +158,7 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
             }}>添加渠道</button></div>
         </section>
         <section className="settings-section" aria-labelledby="remote-codex-title"><h2 id="remote-codex-title">Codex 远程控制连接</h2>
-          <p className="settings-description">客户端使用 --remote 连接到此地址后，开启远程接管即可自动发现会话。填写会话 ID 可限定接管范围。Claude、Cursor、Gemini 使用上方 Hook 接入。</p>
+          <p className="settings-description">灵动岛托管的 Codex 服务会自动转发到上方消息渠道，无需添加连接；终端和远程均可审批，先处理的一端生效。这里仅配置其他 app-server，会话 ID 可限定范围。Claude、Cursor、Gemini 使用上方 Hook 接入。</p>
           {draft.codex.map((connection, index) => <fieldset className="remote-editor" key={index}><legend>Codex · {index + 1}</legend><div className="remote-grid">
             <Field label="连接 ID" value={connection.id} onChange={id => changeCodex(index, { id })} />
             <Field label="WebSocket 地址" value={connection.url} onChange={url => changeCodex(index, { url })} placeholder="ws://127.0.0.1:4500" />

@@ -16,10 +16,12 @@ export class CodexAdapter implements AgentControlAdapter {
   private scanning?: WebSocket
   private generation = ''
   private sequence = 0
+  private initialized = false
+  private recovering = new Set<string>()
   private sessions = new Map<string, string>()
   private native = new Map<string, NativeRequest>()
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
-  constructor(private readonly hub: ControlHub, private readonly config: CodexConnection) {
+  constructor(private readonly hub: ControlHub, private readonly config: CodexConnection, private readonly requestsChanged: (created: boolean) => void = () => {}) {
     const url = new URL(config.url)
     check(url.protocol === 'wss:' || url.protocol === 'ws:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname), 'Codex 仅允许本机 ws 或远程 wss')
     check(!url.username && !url.password, 'Codex 认证请通过 tokenEnv 配置')
@@ -33,6 +35,7 @@ export class CodexAdapter implements AgentControlAdapter {
     socket.on('close', () => {
       if (this.socket !== socket) return
       this.socket = undefined
+      this.initialized = false
       clearInterval(this.poll)
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('Codex 控制连接断开')) }
       this.pending.clear()
@@ -54,6 +57,7 @@ export class CodexAdapter implements AgentControlAdapter {
     await this.rpc('initialize', { clientInfo: { name: 'cute-island', title: 'Cute Island 接管', version: '0.1.11' }, capabilities: { experimentalApi: true } })
     if (this.closed || this.socket !== socket) return
     await this.write({ method: 'initialized' })
+    this.initialized = true
     await this.discover(socket)
     if (!this.closed && this.socket === socket) this.poll = setInterval(() => { void this.discover(socket).catch(() => socket.close()) }, 5000)
   }
@@ -79,15 +83,15 @@ export class CodexAdapter implements AgentControlAdapter {
       cursors.add(cursor)
     }
     check(!cursor, 'Codex 已加载会话过多，无法完成接管扫描')
-    for (const thread of this.sessions.keys()) if (!loaded.has(thread)) this.detach(thread)
+    for (const thread of this.sessions.keys()) if (!loaded.has(thread) && !this.recovering.has(thread)) this.detach(thread)
     const targets = this.config.threads.length ? this.config.threads : loaded
     for (const thread of targets) {
       if (this.closed || this.socket !== socket) return
       // Only subscribe to threads already loaded on THIS instance. Never create a second runner.
-      if (!loaded.has(thread) || this.sessions.has(thread)) continue
+      if (!loaded.has(thread) || this.sessions.has(thread) || this.recovering.has(thread)) continue
       const id = `codex-${createHash('sha256').update(`${this.config.id}:${thread}`).digest('hex').slice(0, 24)}`
       this.sessions.set(thread, id)
-      this.hub.store.session({ id, agent: 'codex', nativeId: thread, adapter: 'codex', label: thread.slice(0, 12), connected: true, capabilities: ['approve', 'answer', 'message', 'interrupt'] })
+      this.hub.store.session({ id, agent: 'codex', nativeId: thread, connectionId: this.config.id, adapter: 'codex', label: thread.slice(0, 12), connected: true, capabilities: ['approve', 'answer', 'message', 'interrupt'] })
       this.hub.attach(id, this)
       let result: any
       try { result = await this.rpc('thread/resume', { threadId: thread }) }
@@ -122,6 +126,10 @@ export class CodexAdapter implements AgentControlAdapter {
       return
     }
     const params = message.params ?? {}
+    if (message.method === 'thread/started' && this.socket && this.initialized) {
+      void this.discover(this.socket).catch(() => this.socket?.close())
+      return
+    }
     const sessionId = this.sessions.get(params.threadId)
     if (!sessionId) return
     if (message.method === 'thread/closed') { this.detach(params.threadId); return }
@@ -132,19 +140,20 @@ export class CodexAdapter implements AgentControlAdapter {
     if (message.method === 'turn/completed') {
       this.hub.store.settleSession(sessionId)
       this.hub.store.change(state => { state.sessions.find(s => s.id === sessionId)!.turnId = undefined })
-      if (params.turn.status === 'failed') this.hub.store.create({ sourceKey: `codex-error:${this.config.id}:${params.threadId}:${params.turn.id}`, sessionId,
-        origin: 'observation', kind: 'error', title: 'Codex 执行失败', detail: params.turn.error?.message ?? '请检查原会话', questions: [], actions: ['ack'], expiresAt: this.hub.store.now() + 86400000 })
+      if (['failed', 'interrupted'].includes(params.turn.status)) this.hub.store.create({ sourceKey: `codex-error:${this.config.id}:${params.threadId}:${params.turn.id}`, sessionId, turnId: params.turn.id,
+        origin: 'observation', kind: 'error', title: 'Codex 执行失败', detail: params.turn.error?.message ?? '请检查原会话', questions: [], actions: this.hub.recoveryActions(sessionId), expiresAt: this.hub.store.now() + 86400000 })
     }
     if (message.method === 'serverRequest/resolved') {
       for (const r of this.hub.store.snapshot().requests) if (r.sessionId === sessionId && r.nativeRequestId === params.requestId && this.native.has(r.id) && ACTIVE_STATUSES.includes(r.status)) {
         this.hub.store.mark(r.id, r.decision ? 'resolved' : 'cancelled'); this.native.delete(r.id)
       }
+      this.requestsChanged(false)
     }
     if (message.id === undefined || !['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput', 'mcpServer/elicitation/request'].includes(message.method)) return
     if (params.turnId) this.hub.store.change(state => { state.sessions.find(s => s.id === sessionId)!.turnId = params.turnId })
     const input = /requestUserInput$/.test(message.method)
     const elicitation = message.method === 'mcpServer/elicitation/request'
-    const questions: Question[] = input && Array.isArray(params.questions) ? params.questions.map((q: any) => ({ id: q.id, text: q.question, options: (q.options ?? []).map((o: any) => o.label), multi: false, freeText: q.isOther !== false })) : elicitation && params.mode !== 'url' ? formQuestions(params.requestedSchema) ?? [] : []
+    const questions: Question[] = input && Array.isArray(params.questions) ? params.questions.map((q: any) => ({ id: q.id, text: q.question, options: (q.options ?? []).map((o: any) => o.label), descriptions: (q.options ?? []).map((o: any) => typeof o.description === 'string' ? o.description.slice(0, 2000) : ''), multi: false, freeText: q.isOther !== false })) : elicitation && params.mode !== 'url' ? formQuestions(params.requestedSchema) ?? [] : []
     const available = params.availableDecisions as unknown[] | undefined
     const actions: InterventionRequest['actions'] = input ? ['answer'] : elicitation ? questions.length ? ['answer', 'cancel'] : ['cancel'] : [
       ...(!available || available.includes('accept') ? ['approve' as const] : []),
@@ -160,6 +169,7 @@ export class CodexAdapter implements AgentControlAdapter {
       questions, actions: tooLarge ? actions.filter(a => a !== 'approve' && a !== 'answer') : actions,
       expiresAt: this.hub.store.now() + Math.min(typeof params.autoResolutionMs === 'number' ? Math.max(0, params.autoResolutionMs) : 600000, 600000) })
     this.native.set(r.id, { method: message.method, params })
+    this.requestsChanged(true)
   }
   async respond(request: InterventionRequest): Promise<void> {
     const native = this.native.get(request.id)
@@ -183,6 +193,41 @@ export class CodexAdapter implements AgentControlAdapter {
   async interrupt(session: ControlSession): Promise<void> {
     check(session.turnId, '当前没有活动轮次')
     await this.rpc('turn/interrupt', { threadId: session.nativeId, turnId: session.turnId })
+  }
+  acceptsRecovery(session: ControlSession): boolean {
+    if (session.agent !== 'codex' || this.config.threads.length && !this.config.threads.includes(session.nativeId)) return false
+    if (session.connectionId) return session.connectionId === this.config.id
+    // A locally observed transcript must never be loaded on an unrelated remote host.
+    return ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(this.config.url).hostname)
+  }
+  async prepareResume(session: ControlSession, text: string, failedTurnId?: string): Promise<() => Promise<void>> {
+    check(this.acceptsRecovery(session), '此 Codex 连接不允许恢复该会话')
+    check(this.initialized && !this.closed, 'Codex 服务未连接，请先启动原服务', 409)
+    const socket = this.socket
+    const result = await this.rpc('thread/read', { threadId: session.nativeId, includeTurns: true })
+    check(result.thread?.id === session.nativeId, 'Codex 返回了不同的原生会话')
+    checkFailedThread(result.thread)
+    check(!failedTurnId || result.thread.turns.at(-1)?.id === failedTurnId, '原会话已进入新一轮，异常通知已失效', 409)
+    return async () => {
+      check(!this.closed && this.socket === socket, 'Codex 连接已变化，请检查原会话', 409)
+      const thread = session.nativeId
+      this.recovering.add(thread)
+      const id = `codex-${createHash('sha256').update(`${this.config.id}:${thread}`).digest('hex').slice(0, 24)}`
+      this.sessions.set(thread, id)
+      this.hub.store.session({ id, agent: 'codex', nativeId: thread, connectionId: this.config.id, cwd: session.cwd,
+        adapter: 'codex', label: session.label, connected: true, capabilities: ['approve', 'answer', 'message', 'interrupt'] })
+      this.hub.attach(id, this)
+      try {
+        const resumed = await this.rpc('thread/resume', { threadId: thread })
+        check(resumed.thread?.id === thread, 'Codex 未确认恢复原会话')
+        checkFailedThread(resumed.thread)
+        check(resumed.thread.turns.at(-1)?.id === result.thread.turns.at(-1)?.id, '原会话已变化，未提交继续指令', 409)
+        check(!this.hub.store.snapshot().sessions.find(s => s.id === id)?.turnId, '原会话已开始执行，未提交重复指令', 409)
+        check(!this.closed && this.socket === socket, 'Codex 接管已停止')
+        const started = await this.rpc('turn/start', { threadId: thread, input: [{ type: 'text', text }] })
+        check(typeof started.turn?.id === 'string' && started.turn.status !== 'failed', 'Codex 未确认接收继续指令')
+      } finally { this.recovering.delete(thread) }
+    }
   }
   private write(value: unknown): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -210,4 +255,11 @@ export class CodexAdapter implements AgentControlAdapter {
     this.sessions.clear(); this.native.clear()
     this.socket?.terminate()
   }
+}
+
+function checkFailedThread(thread: Record<string, any>): void {
+  const turns = thread.turns
+  check(Array.isArray(turns) && turns.length > 0, '无法确认原会话的中断状态', 409)
+  check(!turns.some((turn: any) => turn.status === 'inProgress') && thread.status?.type !== 'active', '原会话仍在执行，请等待或使用追加指令', 409)
+  check(['failed', 'interrupted'].includes(turns.at(-1)?.status), '原会话已继续或已完成，异常通知已失效', 409)
 }

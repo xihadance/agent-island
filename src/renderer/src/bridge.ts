@@ -83,6 +83,7 @@ function createMockBridge(): IslandApi {
     acknowledge(id) { attention.acknowledge(id); notifyBehavior() },
     setIgnoreMouse() {},
     getActivities: async () => store.list(),
+    answerQuestion: async () => { throw new Error('浏览器预览不连接 Agent，请在桌面应用中回答') },
     dismiss: async (id) => {
       store.dismiss(id)
     },

@@ -3,6 +3,13 @@ import { normalizePreferences, patchPreferences } from './preferences'
 import { canAutoRouteCodex, codexLaunchArguments, codexLaunchRoute } from './codex-launch'
 
 const url = 'ws://127.0.0.1:4500'
+it('routes takeover to the managed service without a separate connection configuration', () => {
+  const preferences = patchPreferences(normalizePreferences(undefined), { codexServer: { enabled: true } })
+  const channels = [{ id: 'phone', type: 'telegram' as const, destination: 'chat', allowedUsers: ['owner'], tokenEnv: 'TEST_TOKEN' }]
+  expect(codexLaunchRoute(preferences, url, { channels, codex: [] }, true)).toEqual({ enabled: true, url })
+  expect(codexLaunchRoute(preferences, url, { channels, codex: [{ id: 'other', url: 'wss://other.test', threads: [] }] }, true)).toEqual({ enabled: true, url })
+  expect(codexLaunchRoute(preferences, url, { codex: [] }, false)).toEqual({ enabled: false })
+})
 it('routes automation and takeover independently and restores default launch when both are off', () => {
   let preferences = patchPreferences(normalizePreferences(undefined), { automation: { enabled: true, codexUrl: url } })
   expect(codexLaunchRoute(preferences, '')).toEqual({ enabled: true, url })

@@ -61,6 +61,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
   const open = new Set<string>()
   let events: AgentEvent[] = []
   let sessionId: string | undefined
+  let cwd: string | undefined
   let client: string | undefined
   let metadataSeen = false
   let historyStart: number | undefined
@@ -86,6 +87,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
           metadataSeen = true
           const meta = isRecord(row.payload) ? row.payload : {}
           sessionId = textOf(meta.id) || undefined
+          cwd = textOf(meta.cwd) || undefined
           client = codexClient(meta)
           const start = meta.subagent_history_start_ordinal
           if (typeof start === 'number' && Number.isSafeInteger(start) && start > 0) historyStart = start
@@ -117,7 +119,7 @@ function createCodexParser(): (text: string) => ParsedTranscript {
       if (row.type === 'turn_context') continue
       events.push(...timestampEvents(messageEvents(row), row))
     }
-    return { events, sessionId, client }
+    return { events, sessionId, client, cwd }
   }
   return parse
 

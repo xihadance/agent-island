@@ -5,8 +5,9 @@ export interface CodexLaunchRoute { enabled: boolean; url?: string; tokenEnv?: s
 export interface CodexCommandStatus { installed: boolean; profiles: string[]; shell: string; error?: string }
 
 /** Remote takeover has priority; scoped connections cannot take over a newly created thread. */
-export function codexLaunchRoute(preferences: Preferences, hostedUrl: string, remote?: Pick<RemoteConfig, 'codex'>, takeover = false): CodexLaunchRoute {
+export function codexLaunchRoute(preferences: Preferences, hostedUrl: string, remote?: Pick<RemoteConfig, 'codex'> & Partial<Pick<RemoteConfig, 'channels'>>, takeover = false): CodexLaunchRoute {
   if (takeover) {
+    if (preferences.codexServer.enabled && hostedUrl && remote?.channels?.length) return { enabled: true, url: hostedUrl }
     const connections = remote?.codex.filter(c => !c.threads.length) ?? []
     const connection = connections.find(c => c.url === hostedUrl) ?? connections[0]
     return connection ? { enabled: true, url: connection.url, tokenEnv: connection.tokenEnv } : { enabled: false }

@@ -368,6 +368,7 @@ export class SessionWatcher {
   }
 
   private publish(file: string, view: SessionView): void {
+    if (view.sessionId) this.store.setSessionSource(view.id, { agent: view.kind, nativeId: view.sessionId, cwd: view.cwd })
     const signature = JSON.stringify([view.state, view.title, view.detail ?? '', view.operation, view.steps, view.tasks, view.client, view.startedAt, view.endedAt, view.stale])
     const previous = this.tracked.get(file)
     this.tracked.set(file, { signature, id: view.id })

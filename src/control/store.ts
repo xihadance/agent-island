@@ -20,6 +20,7 @@ export function string(value: unknown, name: string, max = 16000): string {
 /** Persist before publishing or issuing a side effect. A failed write leaves memory untouched. */
 export class ControlStore {
   private state: ControlState
+  private listeners = new Set<() => void>()
   constructor(private readonly file?: string, readonly now: () => number = Date.now) {
     this.state = { version: 1, sessions: [], requests: [], guidance: [], deliveries: {}, cursors: {}, seen: [] }
     if (file && existsSync(file)) {
@@ -29,7 +30,7 @@ export class ControlStore {
       this.state = saved
       this.change(state => {
         for (const session of state.sessions) session.connected = false
-        for (const request of state.requests) if (ACTIVE_STATUSES.includes(request.status) && request.origin !== 'observation') {
+        for (const request of state.requests) if (ACTIVE_STATUSES.includes(request.status) && (request.origin !== 'observation' || request.decision?.action === 'resume')) {
           request.status = 'uncertain'; request.revision++
         }
         for (const message of state.guidance) if (message.status === 'submitted') message.status = 'uncertain'
@@ -37,6 +38,7 @@ export class ControlStore {
     }
   }
   snapshot(): ControlState { return structuredClone(this.state) }
+  subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   change<T>(fn: (state: ControlState) => T): T {
     const next = structuredClone(this.state)
     const result = fn(next)
@@ -47,6 +49,7 @@ export class ControlStore {
       renameSync(temporary, this.file)
     }
     this.state = next
+    for (const listener of this.listeners) { try { listener() } catch { console.error('本地问题状态更新失败，请重新打开灵动岛') } }
     return structuredClone(result)
   }
   session(input: Omit<ControlSession, 'lastSeenAt'>): ControlSession {
@@ -76,6 +79,7 @@ export class ControlStore {
       const ids = new Set(removable.map(r => r.id))
       state.requests = state.requests.filter(r => !ids.has(r.id))
       for (const key of Object.keys(state.deliveries)) if (ids.has(key.split('/').at(-1)!)) delete state.deliveries[key]
+      for (const key of Object.keys(state.answerDrafts ?? {})) if (ids.has(key.split('/').at(-1)!)) delete state.answerDrafts![key]
       return request
     })
   }
@@ -110,6 +114,7 @@ export class ControlStore {
       current.decidedBy = by
       current.status = decision.action === 'ack' ? 'resolved' : 'queued'
       current.revision++
+      for (const key of Object.keys(state.answerDrafts ?? {})) if (key.endsWith(`/${id}`)) delete state.answerDrafts![key]
       return current
     })
   }
@@ -127,12 +132,13 @@ export class ControlStore {
   }
   settleSession(id: string, status: 'cancelled' | 'uncertain' = 'cancelled', preserveGuidance = false): void {
     this.change(state => {
-      for (const r of state.requests) if (r.sessionId === id && ACTIVE_STATUSES.includes(r.status)) { r.status = status; r.revision++ }
+      for (const r of state.requests) if (r.sessionId === id && ACTIVE_STATUSES.includes(r.status) && r.decision?.action !== 'resume') { r.status = status; r.revision++ }
       if (!preserveGuidance) for (const m of state.guidance) if (m.sessionId === id && ['queued', 'submitted'].includes(m.status)) m.status = status
     })
   }
   releaseControl(): void {
     this.change(state => {
+      state.answerDrafts = {}
       for (const session of state.sessions) session.connected = false
       for (const request of state.requests) if (ACTIVE_STATUSES.includes(request.status)) {
         if (request.origin === 'hook') request.released = true

@@ -57,7 +57,7 @@ function buttons(r?: InterventionRequest): ActionRowBuilder<ButtonBuilder>[] {
   if (!r || r.status !== 'pending') return []
   const actions = r.actions.filter(a => a !== 'answer')
   return actions.length ? [new ActionRowBuilder<ButtonBuilder>().addComponents(actions.map(action => new ButtonBuilder()
-    .setCustomId(`${r.id}:${r.revision}:${action}`).setLabel({ approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了' }[action]).setStyle(ButtonStyle.Secondary)))] : []
+    .setCustomId(`${r.id}:${r.revision}:${action}`).setLabel({ approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了', resume: '继续会话' }[action]).setStyle(ButtonStyle.Secondary)))] : []
 }
 export function chunks(text: string, size = 1800): string[] {
   return Array.from({ length: Math.ceil(text.length / size) }, (_, i) => text.slice(i * size, (i + 1) * size))

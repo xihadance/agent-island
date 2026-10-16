@@ -5,6 +5,7 @@ export type AgentKind = 'claude' | 'codex' | 'gemini' | 'cursor'
 
 export interface SessionView {
   id: string
+  cwd?: string
   /** Native id; never reconstruct it from the sanitized activity id. */
   sessionId?: string
   /** Explicit native handoff to a replacement session; not a sub-agent link. */
@@ -48,6 +49,7 @@ export type AgentEvent = { at?: number } & (
 
 export interface ParsedTranscript {
   events: AgentEvent[]
+  cwd?: string
   client?: string
   /** A session id recorded inside the transcript, preferred over the file name. */
   sessionId?: string

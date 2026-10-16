@@ -14,6 +14,7 @@ export function parseSession(plugin: AgentPlugin, sessionId: string, text: strin
   return {
     id: activityId(plugin.kind, parsed.sessionId || sessionId),
     sessionId: parsed.sessionId || sessionId,
+    cwd: parsed.cwd,
     client: parsed.client,
     continuedInSessionId: parsed.continuedInSessionId,
     agent: plugin.label,

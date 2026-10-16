@@ -33,10 +33,14 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
   const owners = new Map<string, string>()
   const localCommands = new Map<string, string>()
   let continuedInSessionId: string | undefined
+  let cwd: string | undefined
+  let sessionId: string | undefined
   return (text) => {
     const events: AgentEvent[] = []
     for (const row of jsonlRows(text)) {
       if (!isRecord(row)) continue
+      if (typeof row.cwd === 'string') cwd = row.cwd
+      if (typeof row.sessionId === 'string') sessionId = row.sessionId
       const message = isRecord(row.message) ? row.message : row
       const content = outputText(message.content)
       // A local command's caveat and command can arrive in separate file appends.
@@ -97,7 +101,7 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
         }
       }
     }
-    return { events, continuedInSessionId }
+    return { events, continuedInSessionId, cwd, sessionId }
   }
 }
 

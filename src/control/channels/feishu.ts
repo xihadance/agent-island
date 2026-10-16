@@ -46,6 +46,6 @@ export class FeishuChannel implements ChannelAdapter {
   close(): void { this.ws.close({ force: true }) }
 }
 function card(text: string, r?: InterventionRequest): string {
-  const actions = r?.status === 'pending' ? r.actions.filter(a => a !== 'answer').map(action => ({ tag: 'button', text: { tag: 'plain_text', content: { approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了' }[action] }, value: { requestId: r.id, revision: r.revision, action } })) : []
+  const actions = r?.status === 'pending' ? r.actions.filter(a => a !== 'answer').map(action => ({ tag: 'button', text: { tag: 'plain_text', content: { approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了', resume: '继续会话' }[action] }, value: { requestId: r.id, revision: r.revision, action } })) : []
   return JSON.stringify({ config: { wide_screen_mode: true }, elements: [{ tag: 'div', text: { tag: 'plain_text', content: text.slice(0, 12000) } }, ...(actions.length ? [{ tag: 'action', actions }] : [])] })
 }

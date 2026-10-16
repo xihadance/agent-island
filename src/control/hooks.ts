@@ -26,7 +26,8 @@ export class HookController {
     store.expire()
     const sessionEnd = ['SessionEnd', 'sessionEnd'].includes(eventName)
     store.session({ id, agent, nativeId, label: typeof event.cwd === 'string' ? event.cwd.split(/[/\\]/).filter(Boolean).at(-1)! : nativeId.slice(0, 16), adapter: 'hook',
-      capabilities: agent === 'claude' ? ['approve', 'answer', 'message'] : ['approve', 'message'], connected: !sessionEnd })
+      capabilities: agent === 'claude' ? ['approve', 'answer', 'message'] : ['approve', 'message'], connected: !sessionEnd,
+      cwd: typeof event.cwd === 'string' ? event.cwd : store.snapshot().sessions.find(s => s.id === id)?.cwd })
     if (sessionEnd) { store.settleSession(id); return { output: {} } }
     if (['SessionStart', 'sessionStart', 'UserPromptSubmit', 'BeforeAgent', 'beforeSubmitPrompt'].includes(eventName)) store.settleSession(id, 'cancelled', true)
     if (['PostToolUse', 'PostToolUseFailure', 'AfterTool', 'postToolUse', 'postToolUseFailure', 'afterShellExecution', 'afterMCPExecution'].includes(eventName)) {
@@ -46,7 +47,8 @@ export class HookController {
         const value = record(q)
         check(Array.isArray(value.options), '问题选项无效')
         return { id: `q${i + 1}`, text: string(value.question, '问题'), multi: value.multiSelect === true, freeText: true,
-          options: value.options.map((o: unknown) => string(record(o).label, '选项', 1000)) }
+          options: value.options.map((o: unknown) => string(record(o).label, '选项', 1000)),
+          descriptions: value.options.map((o: unknown) => typeof record(o).description === 'string' ? String(record(o).description).slice(0, 2000) : '') }
       })
     } else if (agent === 'claude' && eventName === 'PreToolUse' && name === 'ExitPlanMode') kind = 'plan'
     else if (agent === 'claude' && eventName === 'PermissionRequest') kind = 'approval'
@@ -68,7 +70,7 @@ export class HookController {
     }
     const failed = ['PostToolUseFailure', 'postToolUseFailure', 'StopFailure'].includes(eventName) || eventName === 'Notification'
     if (failed) store.create({ sourceKey: `hook:${agent}:${invocation}:notice`, sessionId: id, origin: 'observation', kind: 'error', title: eventName === 'Notification' ? 'Agent 通知' : '执行异常',
-      detail: JSON.stringify(event).slice(0, 16000), questions: [], actions: ['ack'], expiresAt: store.now() + 86400000 })
+      detail: JSON.stringify(event).slice(0, 16000), questions: [], actions: eventName === 'StopFailure' ? this.hub.recoveryActions(id) : ['ack'], expiresAt: store.now() + 86400000 })
     const contextEvents = agent === 'claude' ? ['UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'Stop'] : agent === 'gemini' ? ['BeforeAgent', 'AfterTool'] : ['postToolUse', 'postToolUseFailure', 'stop']
     if (!contextEvents.includes(eventName)) return { output: {} }
     let length = 0

@@ -25,6 +25,8 @@ import { ManagedCodexServer } from './codex-server'
 import { remoteIntegrationStatus, setRemoteIntegration, writeHookLauncher, type HookAgent } from './remote-integration'
 import { codexCommandStatus, setCodexCommandIntegration, writeCodexLaunchConfig, type CodexCommandOptions } from './codex-command'
 import { codexLaunchRoute } from '../shared/codex-launch'
+import { localQuestions } from '../control/local-questions'
+import { withQuestionRequests } from '../shared/question-request'
 
 const WINDOW_WIDTH = 460
 const WINDOW_HEIGHT = 560
@@ -54,6 +56,7 @@ const attention = new AttentionTracker()
 const codexLaunchToken = randomBytes(32).toString('hex')
 const behaviorListeners = new Set<() => void>()
 let lastBehavior = ''
+let lastActivities = ''
 
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-transparent-visuals')
@@ -93,7 +96,7 @@ async function boot(): Promise<void> {
   nativeTheme.themeSource = preferences.theme
   nativeTheme.on('updated', syncSettingsBackground)
   islandMode = preferences.mode
-  hostedCodex = new ManagedCodexServer(() => { codex?.update(); notifySettings() })
+  hostedCodex = new ManagedCodexServer(() => { control?.syncManagedCodex(); codex?.update(); notifySettings() })
   codex = new CodexAutomation(automationPreferences, notifySettings, decision => reportDecision('Codex', decision))
   let config: RemoteConfig | undefined
   try { config = readRemoteConfig(remoteConfigFile()) }
@@ -191,9 +194,7 @@ function createWindow(activityStore: ActivityStore): BrowserWindow {
     if (mainWindow === win) mainWindow = null
   })
   const unsubscribe = activityStore.subscribe((activities) => {
-    attention.update(activities)
-    notifyBehavior()
-    if (!win.isDestroyed()) win.webContents.send('island:activities', activities)
+    publishActivities(activities)
   })
   win.once('ready-to-show', () => {
     if (!win.isDestroyed()) win.showInactive()
@@ -238,7 +239,9 @@ function loadControl(): ControlRuntime | undefined {
   }
   if (server && config.port !== server.port) throw new ActivityError(503, reportControlLoadFailure('接管配置端口已修改，请重启应用后开启接管'))
   try {
-    control = createControlRuntime(config, store, { configFile: remoteConfigFile(), resolveSystemProxy, onChange: () => { codex?.update(); if (tray) updateTrayMenu(tray); notifySettings() } })
+    control = createControlRuntime(config, store, { configFile: remoteConfigFile(), resolveSystemProxy,
+      managedCodexUrl: () => preferences.codexServer.enabled && hostedCodex?.state.status === 'running' ? hostedCodex.state.url : '',
+      onRequestsChange: () => publishActivities(), onChange: () => { publishActivities(); codex?.update(); if (tray) updateTrayMenu(tray); notifySettings() } })
   } catch { throw new ActivityError(503, reportControlLoadFailure()) }
   controlLoadError = undefined
   void control.start().catch(() => console.error('远程接管启动失败，请检查配置'))
@@ -279,6 +282,23 @@ async function configureRemote(): Promise<void> {
 
 function currentBehavior(): IslandBehavior {
   return { mode: islandMode, attentionIds: attention.pendingIds() }
+}
+
+function visibleActivities(activities = store?.list() ?? []) {
+  return withQuestionRequests(activities, control?.status().enabled ? localQuestions(control.hub.store.snapshot()) : [])
+}
+
+function publishActivities(activities = store?.list() ?? []): void {
+  const next = visibleActivities(activities)
+  const key = JSON.stringify(next)
+  if (lastActivities === key) return
+  lastActivities = key
+  attention.update(next)
+  notifyBehavior()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setFocusable(next.some(activity => activity.questionRequest?.status === 'pending' && activity.questionRequest.connected))
+    mainWindow.webContents.send('island:activities', next)
+  }
 }
 
 function notifyBehavior(): void {
@@ -699,7 +719,15 @@ function wireIpc(activityStore: ActivityStore): void {
     if (!win || win.isDestroyed() || win !== mainWindow) return
     if (ignore === true || ignore === false) ignoreMouse(win, ignore)
   })
-  ipcMain.handle('island:get-activities', () => activityStore.list())
+  ipcMain.handle('island:get-activities', () => visibleActivities(activityStore.list()))
+  ipcMain.handle('island:answer-question', async (event, id: unknown, revision: unknown, answers: unknown) => {
+    if (event.sender !== mainWindow?.webContents || typeof id !== 'string' || typeof revision !== 'number') throw new Error('请从灵动岛回答问题')
+    if (!control?.status().enabled) throw new Error('接管已关闭，请在原 Agent 中回答')
+    const request = control.hub.store.get(id)
+    if (request.kind !== 'input' || request.origin === 'observation') throw new Error('此请求没有可用的问题控制关联')
+    await control.hub.respond(id, revision, { action: 'answer', answers: answers as Record<string, string[]> }, 'local')
+    void control.hub.flush()
+  })
   ipcMain.handle('island:dismiss', (_event, id: unknown) => {
     if (typeof id === 'string') activityStore.dismiss(id)
   })

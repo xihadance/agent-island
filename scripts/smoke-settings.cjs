@@ -318,9 +318,11 @@ async function main() {
   await new Promise(resolve => listener.close(resolve))
   try {
     for (const phase of ['main', 'restore']) {
+      const env = { ...process.env, CUTE_ISLAND_DISABLE_GPU: '1', CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '',
+        CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ELECTRON_RENDERER_URL: '', CLAUDE_CONFIG_DIR: path.join(profile, 'claude'), CURSOR_HOME: path.join(profile, 'cursor'), GEMINI_CLI_HOME: path.join(profile, 'gemini'), CODEX_HOME: path.join(profile, 'codex'), ISLAND_SETTINGS_PHASE: phase }
+      delete env.ELECTRON_RUN_AS_NODE
       const child = spawn(require('electron'), [__filename, `--user-data-dir=${profile}`, '--settings'], {
-        windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CUTE_ISLAND_DISABLE_GPU: '1', CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '',
-          CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ELECTRON_RENDERER_URL: '', CLAUDE_CONFIG_DIR: path.join(profile, 'claude'), CURSOR_HOME: path.join(profile, 'cursor'), GEMINI_CLI_HOME: path.join(profile, 'gemini'), CODEX_HOME: path.join(profile, 'codex'), ISLAND_SETTINGS_PHASE: phase }
+        windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env
       })
       let logs = ''
       child.stdout.on('data', value => { logs += value })

@@ -43,6 +43,7 @@ export interface IslandApi {
   dragWindow?: (phase: 'start' | 'move' | 'end') => void
   setIgnoreMouse: (ignore: boolean) => void
   getActivities: () => Promise<Activity[]>
+  answerQuestion: (id: string, revision: number, answers: Record<string, string[]>) => Promise<void>
   dismiss: (id: string) => Promise<void>
   playDemo: () => Promise<void>
   onActivities: (callback: (activities: Activity[]) => void) => () => void

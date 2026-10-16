@@ -16,6 +16,7 @@ export function isUserInputTool(name: string | undefined): boolean {
 export function attentionKind(activity: Activity): AttentionKind | undefined {
   if (activity.state === 'error') return 'error'
   if (activity.state === 'approval') return 'approval'
+  if (activity.questionRequest) return activity.questionRequest.status === 'pending' ? 'input' : undefined
   // "waiting" also means waiting for an agent's response. Only recorded requests
   // for human input count, not elapsed time or natural-language guesses.
   if ((activity.state === 'running' || activity.state === 'waiting') && activity.operation?.kind === 'tool' &&
@@ -28,6 +29,7 @@ export function attentionKind(activity: Activity): AttentionKind | undefined {
 function attentionKeys(activity: Activity): string[] {
   const kind = attentionKind(activity)
   if (!kind) return []
+  if (kind === 'input' && activity.questionRequest) return [JSON.stringify([activity.startedAt, kind, activity.questionRequest.id])]
   if (kind === 'task-approval') return (activity.tasks ?? []).filter(task => task.status === 'active' && task.state === 'approval')
     .map(task => JSON.stringify([activity.startedAt, kind, task.id, task.startedAt, task.detail]))
   if (kind === 'task-error') return (activity.tasks ?? []).filter(task => task.status === 'error')

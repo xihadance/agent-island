@@ -1,11 +1,12 @@
 export type AgentKind = 'claude' | 'codex' | 'gemini' | 'cursor'
 export type InterventionKind = 'approval' | 'plan' | 'input' | 'error' | 'authentication' | 'terminal'
-export type ControlAction = 'approve' | 'deny' | 'cancel' | 'answer' | 'ack'
+export type ControlAction = 'approve' | 'deny' | 'cancel' | 'answer' | 'ack' | 'resume'
 export type RequestStatus = 'pending' | 'queued' | 'submitted' | 'resolved' | 'cancelled' | 'expired' | 'uncertain'
 export interface Question {
   id: string
   text: string
   options: string[]
+  descriptions?: string[]
   multi: boolean
   freeText: boolean
   valueType?: 'string' | 'boolean'
@@ -34,6 +35,7 @@ export interface InterventionRequest {
   decision?: Decision
   decidedBy?: string
   released?: boolean
+  failureStartedAt?: number
 }
 export type RequestInput = Omit<InterventionRequest, 'id' | 'status' | 'createdAt' | 'revision' | 'decision' | 'decidedBy'>
 export interface ControlSession {
@@ -46,6 +48,13 @@ export interface ControlSession {
   connected: boolean
   lastSeenAt: number
   turnId?: string
+  cwd?: string
+  connectionId?: string
+}
+export interface SessionResumer {
+  available(session: ControlSession): boolean
+  prepare(session: ControlSession, text: string, request: InterventionRequest): Promise<() => Promise<void>>
+  close(): void
 }
 export interface Guidance {
   id: string
@@ -64,6 +73,7 @@ export interface ControlState {
   deliveries: Record<string, Delivery>
   cursors: Record<string, number>
   seen: string[]
+  answerDrafts?: Record<string, { revision: number; answers: Record<string, string[]> }>
 }
 export interface AgentControlAdapter {
   respond(request: InterventionRequest): Promise<void>
@@ -78,6 +88,8 @@ export interface RemoteMessage {
   text?: string
   replyTo?: string
   action?: { requestId: string; revision: number; decision: Decision }
+  selection?: { requestId: string; revision: number; question: number; option: number }
+  submitAnswers?: { requestId: string; revision: number }
 }
 export interface ChannelAdapter {
   id: string

@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto'
 import { activityId } from '../agents/parse'
-import type { Activity } from '../shared/activity'
+import type { Activity, SessionSource } from '../shared/activity'
 import { isUserInputTool } from '../shared/island-behavior'
 import { check, ControlStore, string, uid } from './store'
-import { ACTIVE_STATUSES, STATUS_LABEL, type AgentControlAdapter, type ChannelAdapter, type ControlSession, type Decision, type Guidance, type InterventionRequest, type RemoteMessage } from './types'
+import { ACTIVE_STATUSES, STATUS_LABEL, type AgentControlAdapter, type ChannelAdapter, type ControlSession, type Decision, type Guidance, type InterventionRequest, type RemoteMessage, type SessionResumer } from './types'
+
+export const RESUME_PROMPT = '请继续上次异常中断的任务。先核对已有进度和执行结果，避免重复已完成的操作，再完成剩余工作。'
 
 export function redact(text: string): string {
   // An unquoted Authorization header owns the rest of its line (e.g. Digest
@@ -16,8 +18,10 @@ export function redact(text: string): string {
 export function formatRequest(r: InterventionRequest, session?: ControlSession): string {
   const text = [`${session?.agent ?? 'Agent'} · ${session?.label ?? r.sessionId}`, `#${r.id} · ${STATUS_LABEL[r.status]}`, r.title,
     `完整内容：/detail ${r.id}`, r.detail.length > 800 ? `${r.detail.slice(0, 800)}\n…内容较长，请查看完整内容后决定。` : r.detail]
-  r.questions.forEach(q => text.push(`${q.id}: ${q.text}${q.multi ? '（多选）' : ''}`, ...q.options.map((s, i) => `  ${i + 1}. ${s}`)))
+  r.questions.forEach(q => text.push(`${q.id}: ${q.text}${q.multi ? '（多选）' : ''}`, ...q.options.map((s, i) => `  ${i + 1}. ${s}${q.descriptions?.[i] ? `：${q.descriptions[i]}` : ''}`)))
+  if (r.decision?.answers) text.push('已提交回答：', ...r.questions.map(q => `${q.id}: ${r.decision!.answers![q.id]?.join('、') ?? ''}`))
   if (r.status === 'pending') {
+    if (r.actions.includes('resume')) text.push('可选择“继续会话”恢复原会话并继续未完成的任务；“知道了”只关闭提醒。')
     if (r.actions.includes('answer')) text.push(r.questions.length === 1 ? '引用此消息直接回答；多选请发送 JSON 答案。' : '回答格式：',
       `/answer ${r.id} ${JSON.stringify(Object.fromEntries(r.questions.map(q => [q.id, [q.options[0] ?? '你的回答']])) )}`)
     text.push(...r.actions.filter(a => a !== 'answer').map(a => `/${a} ${r.id}`))
@@ -34,8 +38,16 @@ export class ControlHub {
   private closed = false
   private flushing = false
   private inbound: Promise<unknown> = Promise.resolve()
+  private resumer?: SessionResumer
+  private resuming = new Set<string>()
+  private source: (id: string) => SessionSource | undefined = () => undefined
   constructor(readonly store: ControlStore, private readonly log: (message: string) => void = console.error) {}
   attach(sessionId: string, adapter: AgentControlAdapter): void { this.adapters.set(sessionId, adapter) }
+  setResumer(resumer: SessionResumer, source: (id: string) => SessionSource | undefined = () => undefined): void { this.resumer = resumer; this.source = source }
+  recoveryActions(sessionId: string): InterventionRequest['actions'] {
+    const session = this.store.snapshot().sessions.find(s => s.id === sessionId)
+    return session && this.resumer?.available(session) ? ['resume', 'ack'] : ['ack']
+  }
   async addChannel(channel: ChannelAdapter): Promise<void> {
     if (this.closed) { channel.close(); return }
     this.startingChannels.add(channel)
@@ -59,6 +71,7 @@ export class ControlHub {
   }
   close(): void {
     this.closed = true
+    this.resumer?.close()
     clearTimeout(this.timer)
     for (const channel of this.startingChannels) channel.close()
     for (const channel of this.channels) channel.close()
@@ -66,6 +79,7 @@ export class ControlHub {
   }
   async respond(id: string, revision: number, decision: Decision, by: string): Promise<InterventionRequest> {
     check(!this.closed, '远程接管已停用', 409)
+    if (decision.action === 'resume') return this.resume(id, revision, by)
     const request = this.store.get(id)
     const session = this.store.snapshot().sessions.find(s => s.id === request.sessionId)
     check(decision.action === 'ack' || session?.connected, '会话未连接，无法提交操作', 409)
@@ -77,6 +91,45 @@ export class ControlHub {
       try { await adapter.respond(next) } catch { if (!this.closed) this.store.mark(id, 'uncertain'); throw new Error('提交结果待确认，请检查原会话') }
     }
     return this.store.get(id)
+  }
+  async resume(id: string, revision: number, by: string, text = RESUME_PROMPT): Promise<InterventionRequest> {
+    check(!this.closed, '远程接管已停用', 409)
+    string(text, '继续指令', 16000)
+    const request = this.store.get(id)
+    const session = this.store.snapshot().sessions.find(s => s.id === request.sessionId)
+    check(request.kind === 'error' && request.actions.includes('resume') && session && this.resumer, '此通知不支持恢复会话', 409)
+    check(request.status === 'pending' && request.revision === revision && request.expiresAt > this.store.now(), '请求已处理、已失效或版本已变化', 409)
+    const key = `${session.agent}:${session.nativeId}`
+    check(!this.resuming.has(key), '此会话正在恢复，请勿重复操作', 409)
+    this.resuming.add(key)
+    let submitted = false
+    try {
+      // Preparation is read-only. Revalidate the notification after awaiting native liveness checks.
+      const run = await this.resumer.prepare(session, text, request)
+      check(!this.closed, '远程接管已停用', 409)
+      this.store.decide(id, revision, { action: 'resume' }, by)
+      this.store.change(state => {
+        const current = state.requests.find(r => r.id === id)!
+        current.status = 'submitted'; current.revision++
+        current.detail += `\n继续指令：${text}`
+        const aliases = new Set(state.sessions.filter(s => s.agent === session.agent && s.nativeId === session.nativeId).map(s => s.id))
+        for (const other of state.requests) if (other.id !== id && aliases.has(other.sessionId) && other.actions.includes('resume') && other.status === 'pending') {
+          other.status = 'resolved'; other.revision++
+        }
+      })
+      submitted = true
+      // Return promptly so this channel can approve tools while the resumed CLI starts.
+      void Promise.resolve().then(run).then(() => {
+        if (!this.closed) this.store.mark(id, 'resolved')
+      }, error => {
+        if (!this.closed) this.store.change(state => {
+          const current = state.requests.find(r => r.id === id)!
+          current.status = 'uncertain'; current.revision++
+          current.detail += `\n恢复结果待确认，请检查原会话；系统不会自动重试。${error instanceof Error ? error.message : ''}`
+        })
+      }).catch(() => this.log('恢复结果记录失败，请检查原会话和状态文件')).finally(() => this.resuming.delete(key))
+      return this.store.get(id)
+    } finally { if (!submitted) this.resuming.delete(key) }
   }
   async send(sessionId: string, text: string, by: string): Promise<Guidance> {
     check(!this.closed, '远程接管已停用', 409)
@@ -106,6 +159,28 @@ export class ControlHub {
     this.store.change(state => { state.seen.push(eventKey); state.seen = state.seen.slice(-10000) })
     try {
       const by = `${channel.id}:${message.sender}`
+      if (message.selection || message.submitAnswers) {
+        const action = message.selection ?? message.submitAnswers!
+        const state = this.store.snapshot()
+        const deliveryKey = `${channel.id}/${action.requestId}`
+        check(state.deliveries[deliveryKey]?.messageId, '此请求未发送到当前渠道', 403)
+        const request = this.store.get(action.requestId)
+        check(request.status === 'pending' && request.revision === action.revision && request.expiresAt > this.store.now(), '请求已处理、已失效或版本已变化', 409)
+        check(request.kind === 'input' && request.actions.includes('answer'), '此请求不支持选择回答')
+        const draft = state.answerDrafts?.[deliveryKey]
+        const answers: Record<string, string[]> = draft?.revision === request.revision ? draft.answers : Object.create(null)
+        if (message.selection) {
+          const { question: index, option: optionIndex } = message.selection
+          const question = request.questions[index]
+          check(Number.isInteger(index) && Number.isInteger(optionIndex) && question && question.options[optionIndex] !== undefined, '问题选项无效')
+          const option = question.options[optionIndex]
+          const selected = answers[question.id] ?? []
+          answers[question.id] = question.multi ? selected.includes(option) ? selected.filter(value => value !== option) : [...selected, option] : [option]
+          this.store.change(next => { next.answerDrafts ??= {}; next.answerDrafts[deliveryKey] = { revision: request.revision, answers } })
+          return ''
+        }
+        return STATUS_LABEL[(await this.respond(request.id, request.revision, { action: 'answer', answers }, by)).status]
+      }
       if (message.action) {
         const delivery = this.store.snapshot().deliveries[`${channel.id}/${message.action.requestId}`]
         check(delivery?.messageId, '此请求未发送到当前渠道', 403)
@@ -115,7 +190,7 @@ export class ControlHub {
       const match = /^\/(\w+)(?:@\w+)?(?:\s+(\S+))?(?:\s+([\s\S]*))?$/.exec(text)
       if (match) {
         const [, command, id, tail] = match
-        if (command === 'sessions') return this.store.snapshot().sessions.map(s => `${s.id}\n${s.agent} · ${s.label} · ${s.connected && s.adapter !== 'observation' ? '已接管' : '观察/离线'}${s.adapter === 'hook' ? '（指令在 Hook 处理点接收）' : ''}`).join('\n\n') || '暂无会话'
+        if (command === 'sessions') return redact(this.store.snapshot().sessions.map(s => `${s.id}\n${s.agent} · ${s.label} · ${s.connected && s.adapter !== 'observation' ? '已接管' : '观察/离线'}${s.adapter === 'hook' ? '（指令在 Hook 处理点接收）' : ''}\n原生会话：${s.nativeId}`).join('\n\n')) || '暂无会话'
         if (command === 'pending') {
           const state = this.store.snapshot()
           return [...state.requests.filter(r => ACTIVE_STATUSES.includes(r.status) || r.status === 'uncertain').map(r => formatRequest(r)),
@@ -132,6 +207,13 @@ export class ControlHub {
           return r ? formatRequest(r) : m ? `#${m.id} · ${STATUS_LABEL[m.status]}` : '未找到请求或消息'
         }
         if (command === 'send') { const m = await this.send(id, tail ?? '', by); return `#${m.id} · ${STATUS_LABEL[m.status]}` }
+        if (command === 'resume') {
+          const state = this.store.snapshot()
+          const matches = state.requests.filter(r => r.actions.includes('resume') && r.status === 'pending' && (r.id === id || state.sessions.some(s => s.id === r.sessionId && s.nativeId === id)))
+          check(matches.length === 1, '请使用异常通知中的请求 ID；原生会话 ID 必须唯一对应一条待处理通知')
+          const r = await this.resume(matches[0].id, matches[0].revision, by, tail || RESUME_PROMPT)
+          return `#${r.id} · ${STATUS_LABEL[r.status]} · 正在恢复原会话，请查看通知中的处理结果`
+        }
         if (command === 'interrupt') {
           const session = this.store.snapshot().sessions.find(s => s.id === id)
           check(session?.connected && session.capabilities.includes('interrupt'), '该会话不支持远程中断')
@@ -143,7 +225,7 @@ export class ControlHub {
           const decision: Decision = command === 'answer' ? answerDecision(r, tail ?? '') : { action: command as Decision['action'] }
           return STATUS_LABEL[(await this.respond(id, r.revision, decision, by)).status]
         }
-        return '命令：/sessions /pending /detail ID /status ID /approve ID /deny ID /cancel ID /ack ID /answer ID 答案 /send 会话ID 内容 /interrupt 会话ID'
+        return '命令：/sessions /pending /detail ID /status ID /approve ID /deny ID /cancel ID /ack ID /answer ID 答案 /send 会话ID 内容 /resume 异常请求ID [继续指令] /interrupt 会话ID'
       }
       if (message.replyTo) {
         const state = this.store.snapshot()
@@ -191,9 +273,9 @@ export class ControlHub {
     const found = new Set<string>()
     for (const activity of activities) {
       const state = this.store.snapshot()
-      const controlled = state.sessions.find(s => s.adapter !== 'observation' && s.connected && activityId(s.agent, s.nativeId) === activity.id)
+      const controlled = state.sessions.find(s => s.adapter !== 'observation' && activityId(s.agent, s.nativeId) === activity.id)
       const issues: { key: string; kind: 'approval' | 'input' | 'error'; title: string; detail: string }[] = []
-      if (!controlled || !state.requests.some(r => r.sessionId === controlled.id && ACTIVE_STATUSES.includes(r.status))) {
+      if (!controlled?.connected || !state.requests.some(r => r.sessionId === controlled.id && ACTIVE_STATUSES.includes(r.status))) {
         if (activity.state === 'approval') issues.push({ key: 'approval', kind: 'approval', title: activity.title, detail: activity.operation?.command ?? activity.detail ?? '' })
         if (['running', 'waiting'].includes(activity.state) && isUserInputTool(activity.operation?.name)) issues.push({ key: 'input', kind: 'input', title: '需要人工回答（尚未建立问题控制关联）', detail: activity.title })
       }
@@ -207,12 +289,16 @@ export class ControlHub {
           activity.steps.filter(s => s.status === 'waiting' || s.status === 'error').map(s => s.id)])).digest('hex')
         found.add(fingerprint)
         if (state.requests.some(r => r.origin === 'observation' && r.toolKey === fingerprint && r.status !== 'cancelled')) continue
-        const sessionId = controlled?.id ?? `observe:${activity.id}`
-        if (!controlled && !state.sessions.some(s => s.id === sessionId)) this.store.session({ id: sessionId, nativeId: activity.id, agent: inferAgent(activity.agent), adapter: 'observation', label: activity.agent, capabilities: [], connected: false })
-        this.store.create({ sourceKey: `observe:${uid()}`, sessionId, origin: 'observation', kind: issue.kind, title: issue.title, detail: `${issue.detail}\n仅通知；此事件没有可用的原生控制请求。`, toolKey: fingerprint, questions: [], actions: ['ack'], expiresAt: this.store.now() + 24 * 3600000 })
+        const source = this.source(activity.id)
+        if (source?.cwd && controlled && !controlled.cwd) this.store.change(next => { next.sessions.find(s => s.id === controlled.id)!.cwd = source.cwd })
+        const sessionId = controlled?.id ?? `observe:${source ? `${source.agent}:${source.nativeId}` : activity.id}`
+        if (issue.key === 'error' && state.requests.some(r => r.sessionId === sessionId && r.kind === 'error' && !r.toolKey && r.createdAt >= activity.startedAt && r.expiresAt > this.store.now())) continue
+        if (!controlled && !state.sessions.some(s => s.id === sessionId)) this.store.session({ id: sessionId, nativeId: source?.nativeId ?? activity.id, cwd: source?.cwd, agent: inferAgent(source?.agent ?? activity.agent), adapter: 'observation', label: activity.agent, capabilities: [], connected: false })
+        const actions = issue.key === 'error' && (source || controlled) ? this.recoveryActions(sessionId) : ['ack' as const]
+        this.store.create({ sourceKey: `observe:${uid()}`, sessionId, origin: 'observation', kind: issue.kind, title: issue.title, failureStartedAt: activity.startedAt, detail: actions.includes('resume') ? issue.detail : `${issue.detail}\n仅通知；此事件没有可用的原生控制请求。`, toolKey: fingerprint, questions: [], actions, expiresAt: this.store.now() + 24 * 3600000 })
       }
     }
-    for (const r of this.store.snapshot().requests) if (r.origin === 'observation' && r.toolKey && !found.has(r.toolKey) && !['cancelled', 'expired'].includes(r.status)) this.store.mark(r.id, 'cancelled')
+    for (const r of this.store.snapshot().requests) if (r.origin === 'observation' && r.toolKey && !found.has(r.toolKey) && r.decision?.action !== 'resume' && !['cancelled', 'expired'].includes(r.status)) this.store.mark(r.id, 'cancelled')
   }
 }
 function inferAgent(label: string): ControlSession['agent'] {

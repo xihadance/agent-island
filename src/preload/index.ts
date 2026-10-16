@@ -55,6 +55,9 @@ const island = {
   getActivities(): Promise<Activity[]> {
     return ipcRenderer.invoke('island:get-activities')
   },
+  answerQuestion(id: string, revision: number, answers: Record<string, string[]>): Promise<void> {
+    return ipcRenderer.invoke('island:answer-question', id, revision, answers)
+  },
   dismiss(id: string): Promise<void> {
     return ipcRenderer.invoke('island:dismiss', id)
   },

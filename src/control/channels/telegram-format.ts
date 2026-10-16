@@ -62,7 +62,8 @@ function requestBody(request: InterventionRequest): { command?: string; detail: 
 }
 
 export function telegramRequest(request: InterventionRequest, session?: ControlSession): string {
-  const observation = request.origin === 'observation'
+  const recovery = request.actions.includes('resume')
+  const observation = request.origin === 'observation' && !recovery
   const status = observation && request.status === 'pending' ? '待查看'
     : observation && request.status === 'resolved' ? '已知悉' : STATUS_LABEL[request.status]
   const agent = session ? names[session.agent] : 'Agent'
@@ -75,21 +76,28 @@ export function telegramRequest(request: InterventionRequest, session?: ControlS
   if (body.detail) parts.push(part(clip(body.detail, body.command ? 300 : 1100), body.detail.length > 240 ? 'blockquote expandable' : 'blockquote'), part('\n\n'))
   let questionsTruncated = false
   if (request.questions.length) {
-    const questions = request.questions.map(q => `${q.id} · ${q.text}${q.multi ? '（多选）' : ''}\n${q.options.map((option, i) => `${i + 1}. ${option}`).join('\n')}`).join('\n\n')
+    const questions = request.questions.map(q => `${q.id} · ${q.text}${q.multi ? '（多选）' : ''}\n${q.options.map((option, i) => `${i + 1}. ${option}${q.descriptions?.[i] ? ` — ${q.descriptions[i]}` : ''}`).join('\n')}`).join('\n\n')
     questionsTruncated = redact(questions).length > 900
     parts.push(part(clip(redact(questions), 900), 'blockquote expandable'), part('\n\n'))
   }
-  if (observation) {
+  if (recovery) {
+    parts.push(part(request.status === 'pending' ? '选择“继续会话”将恢复原会话并继续未完成的任务；“知道了”只关闭提醒。' : request.decision?.action === 'resume' ? '已请求恢复原会话；结果待确认时请检查原会话，系统不会自动重试。' : '已关闭提醒。', 'blockquote'), part('\n\n'))
+    if (request.status === 'pending') parts.push(part(`/resume ${request.id}`, 'code'), part('\n\n'))
+  } else if (observation) {
     parts.push(part('此事件仅用于提醒，无法在这里批准或回答。请回到原会话处理；“知道了”只关闭提醒。', 'blockquote'), part('\n\n'))
   } else if (request.status === 'pending' && request.actions.includes('answer')) {
     const single = request.questions.length === 1 && !request.questions[0].multi
-    parts.push(part(single ? request.questions[0].options.length ? '点击选项，或引用此消息回答。\n\n' : '引用此消息直接回答。\n\n' : '请用 JSON 回答全部问题；完整问题可点“查看详情”。\n'))
+    parts.push(part(single ? request.questions[0].options.length ? '点击选项，或引用此消息回答。也可在本地灵动岛回答。\n\n' : '引用此消息直接回答，也可在本地灵动岛输入。\n\n' : '逐题点击选项后按“提交回答”；多选可再次点击取消。也可在本地灵动岛回答，或用 JSON 补充其他内容。\n'))
     if (!single) {
       const example = `/answer ${request.id} ${JSON.stringify(Object.fromEntries(request.questions.map(q => [q.id, [q.options[0] ?? '你的回答']])) )}`
       if (example.length <= 600) parts.push(part(example, 'pre'), part('\n\n'))
     }
   } else if (request.status === 'pending' && request.actions.includes('approve')) {
     parts.push(part('确认完整内容后，使用下方按钮处理本次请求。\n\n'))
+  }
+  if (request.decision?.answers) {
+    const summary = request.questions.map(q => `${q.id}: ${request.decision!.answers![q.id]?.join('、') ?? ''}`).join('\n')
+    parts.push(part('已提交回答\n', 'b'), part(clip(redact(summary), 600), 'blockquote'), part('\n\n'))
   }
   if ((body.command && body.command.length > 1100) || body.detail.length > (body.command ? 300 : 1100) || questionsTruncated) {
     parts.push(part('以上为摘要，请查看完整内容。\n'))
@@ -114,7 +122,7 @@ export function telegramReply(text: string, incoming?: string): string[] {
   const lines = safe.split('\n')
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index]
-    const command = /^(.*?)(\/(?:detail|status|approve|deny|cancel|ack|answer|send|interrupt)\s+\S+.*)$/.exec(line)
+    const command = /^(.*?)(\/(?:detail|status|approve|deny|cancel|ack|answer|send|resume|interrupt)\s+\S+.*)$/.exec(line)
     if (command) parts.push(part(command[1]), part(command[2], 'code'))
     else parts.push(part(line, index === 0 || /^#\S+ · /.test(line) ? 'b' : undefined))
     if (index < lines.length - 1) parts.push(part('\n'))

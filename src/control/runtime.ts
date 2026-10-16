@@ -5,14 +5,16 @@ import { ControlHub } from './hub'
 import { HookController } from './hooks'
 import { readRemoteConfig, saveRemoteEnabled, secret, type ChannelConfig, type RemoteConfig } from './config'
 import { CodexAdapter } from './codex'
+import { NativeSessionResumer } from './resume'
 import type { ChannelAdapter } from './types'
 
 export interface ControlStatus { enabled: boolean; running: boolean; error?: string }
 
-export function createControlRuntime(initial: RemoteConfig, activities: ActivityStore, options: { configFile?: string; resolveSystemProxy?: SystemProxyResolver; onChange?: () => void } = {}) {
+export function createControlRuntime(initial: RemoteConfig, activities: ActivityStore, options: { configFile?: string; resolveSystemProxy?: SystemProxyResolver; onChange?: () => void; onRequestsChange?: () => void; managedCodexUrl?: () => string } = {}) {
   let config = initial
   const store = new ControlStore(config.stateFile)
-  let group = createConnections(config, activities, store, options.resolveSystemProxy)
+  const stopRequests = store.subscribe(() => options.onRequestsChange?.())
+  let group = createConnections(config, activities, store, options.resolveSystemProxy, options.configFile)
   let enabled = config.enabled !== false
   let running = false
   let closed = false
@@ -23,7 +25,7 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
   function start(): void {
     if (closed || !enabled || running) return
     try {
-      group.start()
+      group.start(options.managedCodexUrl?.() ?? '')
       running = true
       error = undefined
     } catch {
@@ -37,6 +39,7 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
     get hub() { return group.hub },
     get hooks() { return group.hooks },
     status,
+    syncManagedCodex() { if (enabled && running && !closed) group.syncCodex(options.managedCodexUrl?.() ?? '') },
     async start() { start() },
     setEnabled(value: boolean): ControlStatus {
       check(!closed, '接管服务已退出', 409)
@@ -62,7 +65,7 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
         store.releaseControl()
         persist(true)
         group.close()
-        group = createConnections(config, activities, store, options.resolveSystemProxy)
+        group = createConnections(config, activities, store, options.resolveSystemProxy, options.configFile)
         enabled = true
         start()
       }
@@ -70,20 +73,44 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
     },
     close() {
       if (closed) return
-      closed = true; running = false; group.close()
+      closed = true; running = false; stopRequests(); group.close()
     }
   }
 }
 
-function createConnections(config: RemoteConfig, activities: ActivityStore, store: ControlStore, resolveSystemProxy?: SystemProxyResolver) {
+function createConnections(config: RemoteConfig, activities: ActivityStore, store: ControlStore, resolveSystemProxy?: SystemProxyResolver, configFile?: string) {
   const hub = new ControlHub(store)
   const hooks = new HookController(hub)
   let stop = () => {}
   const connections: CodexAdapter[] = []
+  const codexEntries = new Map<string, { key: string; adapter: CodexAdapter; transport: ChannelTransport }>()
+  hub.setResumer(new NativeSessionResumer(hub, activities, connections, configFile), id => activities.sessionSource(id))
   const transports = new Set<ChannelTransport>()
   const retries = new Set<ReturnType<typeof setTimeout>>()
   let closed = false
   let started = false
+  function syncCodex(hostedUrl: string): void {
+    if (closed) return
+    const desired = managedCodexConnections(config.codex, config.channels.length ? hostedUrl : '')
+    for (const [id, entry] of codexEntries) if (!desired.some(connection => connection.id === id && JSON.stringify(connection) === entry.key)) {
+      entry.adapter.close()
+      for (const session of store.snapshot().sessions) if (session.connectionId === id) store.settleSession(session.id, 'uncertain')
+      connections.splice(connections.indexOf(entry.adapter), 1)
+      entry.transport.close(); transports.delete(entry.transport); codexEntries.delete(id)
+    }
+    for (const connection of desired) {
+      if (codexEntries.has(connection.id)) continue
+      const transport = createChannelTransport(config.proxy, connection.proxy, resolveSystemProxy)
+      transports.add(transport)
+      const adapter = new CodexAdapter(hub, { ...connection, agent: transport.agent, token: connection.tokenEnv ? secret(connection.tokenEnv) : undefined }, created => {
+        if (created) hub.observe(activities.list())
+        void hub.flush()
+      })
+      codexEntries.set(connection.id, { key: JSON.stringify(connection), adapter, transport })
+      connections.push(adapter)
+      if (started) adapter.start()
+    }
+  }
   async function connectChannel(channel: ChannelConfig): Promise<void> {
     if (closed) return
     let adapter: ChannelAdapter | undefined
@@ -116,15 +143,11 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
     }
   }
   return {
-    hub, hooks,
-    start() {
+    hub, hooks, syncCodex,
+    start(hostedUrl: string) {
       if (started || closed) return
       // Validate synchronous setup before starting any background connection.
-      for (const connection of config.codex) {
-        const transport = createChannelTransport(config.proxy, connection.proxy, resolveSystemProxy)
-        transports.add(transport)
-        connections.push(new CodexAdapter(hub, { ...connection, agent: transport.agent, token: connection.tokenEnv ? secret(connection.tokenEnv) : undefined }))
-      }
+      syncCodex(hostedUrl)
       started = true
       stop = activities.subscribe(list => {
         try { hub.observe(list) } catch { console.error('远程介入记录失败，原状态服务继续运行') }
@@ -136,5 +159,18 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
     },
     close() { closed = true; for (const timer of retries) clearTimeout(timer); stop(); hub.close(); for (const connection of connections) connection.close(); for (const transport of transports) transport.close(); transports.clear() }
   }
+}
+export function managedCodexConnections(configured: RemoteConfig['codex'], hostedUrl: string): RemoteConfig['codex'] {
+  if (!hostedUrl) return configured
+  const hosted = new URL(hostedUrl)
+  const matches = (url: string) => {
+    const candidate = new URL(url)
+    return candidate.protocol === hosted.protocol && candidate.port === hosted.port && candidate.pathname === hosted.pathname &&
+      ['127.0.0.1', 'localhost', '[::1]'].includes(candidate.hostname)
+  }
+  const previous = configured.find(connection => matches(connection.url))
+  let id = previous?.id ?? 'island-hosted'
+  while (!previous && configured.some(connection => connection.id === id)) id += '-local'
+  return [...configured.filter(connection => !matches(connection.url)), { id, url: hostedUrl, threads: [], proxy: { mode: 'direct' } }]
 }
 export type ControlRuntime = ReturnType<typeof createControlRuntime>

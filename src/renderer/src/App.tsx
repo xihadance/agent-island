@@ -4,7 +4,7 @@ import { getBridge } from './bridge'
 import { Island } from './Island'
 import { useIslandDrag } from './useIslandDrag'
 import { useIslandBehavior } from './useIslandBehavior'
-import { isPassive, islandAttention } from '../../shared/island-behavior'
+import { attentionKind, isPassive, islandAttention } from '../../shared/island-behavior'
 import type { IslandApi } from './env'
 
 export function App() {
@@ -49,7 +49,7 @@ export function App() {
 
   const primary = activities[0]
   const stacked = activities.length > 1
-  const attentionId = activities.find((item) => item.state === 'error' || item.state === 'approval')?.id
+  const attentionId = activities.find((item) => attentionKind(item))?.id
 
   useEffect(() => {
     if (managed) return
@@ -63,7 +63,7 @@ export function App() {
       return
     }
     setSelectedId(null)
-    if (primary.state === 'error' || primary.state === 'approval') setExpanded(true)
+    if (primary.state === 'error' || primary.state === 'approval' || primary.questionRequest?.status === 'pending') setExpanded(true)
   }, [primary, stacked, managed])
 
   useEffect(() => {

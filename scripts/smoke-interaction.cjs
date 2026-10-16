@@ -87,9 +87,11 @@ async function smoke() {
   let child, socket, logs = ''
   const errors = []
   const start = () => {
+    const env = { ...process.env,
+      CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ISLAND_FIXTURE_PORT: String(fixturePort), CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '', ELECTRON_RENDERER_URL: '' }
+    delete env.ELECTRON_RUN_AS_NODE
     child = spawn(executable, [__filename, `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`], {
-      windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
-        CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ISLAND_FIXTURE_PORT: String(fixturePort), CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '', ELECTRON_RENDERER_URL: '' }
+      windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env
     })
     child.stderr.on('data', data => { logs += data })
     child.stdout.on('data', data => { logs += data })
@@ -335,6 +337,7 @@ async function smoke() {
       assert.equal((await getWindow()).ignoreMouse, true, 'Focus alerts leave transparent space click-through')
       await screenshot(`focus-${edge}-approval`)
       await click('[data-testid=acknowledge-attention]')
+      await until(async () => await mode() === 'docked')
       assert.equal(await mode(), 'docked', `${edge}: acknowledging restores the edge handle`)
       assert.equal(await fs.readFile(path.join(profile, 'window-position.json'), 'utf8'), savedDock, 'Alerts preserve the saved edge anchor')
       await push({ id: 'drag', client: 'VS Code', progress: 0.5 })

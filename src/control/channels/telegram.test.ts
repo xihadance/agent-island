@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { ControlStore } from '../store'
 import { ControlHub, formatRequest } from '../hub'
-import { TelegramChannel } from './telegram'
+import { keyboard, TelegramChannel } from './telegram'
 
 it('sends and edits HTML notifications, preserving identity and removing settled decision buttons', async () => {
   const store = new ControlStore()
@@ -151,4 +151,50 @@ it('does not silently consume updates when callback acknowledgement fails for an
     expect(store.snapshot().cursors.tg).toBeUndefined()
     expect(receive).not.toHaveBeenCalled()
   } finally { channel.close() }
+})
+
+it('lets authorized Telegram users choose multiple questions before submitting one native answer', async () => {
+  const store = new ControlStore()
+  store.session({ id: 's', nativeId: 'native', agent: 'claude', adapter: 'hook', connected: true, label: 'Claude', capabilities: ['answer'] })
+  const request = store.create({ sessionId: 's', sourceKey: 'questions', origin: 'hook', kind: 'input', title: '选择模块', detail: '',
+    actions: ['answer', 'cancel'], questions: [
+      { id: 'q1', text: '环境', options: ['开发', '生产'], multi: false, freeText: true },
+      { id: 'q2', text: '模块', options: ['登录', '注册'], multi: true, freeText: true }
+    ], expiresAt: Date.now() + 60000 })
+  const calls: { method: string; body: any }[] = []
+  let polls = 0
+  const commands = ['choose:0:0', 'choose:1:0', 'choose:1:1', 'choose:1:0', 'submit', 'choose:0:1']
+  const fetchImpl: typeof fetch = vi.fn(async (url, init) => {
+    const method = String(url).split('/').at(-1)!
+    calls.push({ method, body: JSON.parse(String(init?.body)) })
+    let result: unknown = {}
+    if (method === 'getUpdates') {
+      if (polls++) return await new Promise<Response>((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+      result = [
+        { update_id: 1, callback_query: { id: 'outsider', from: { id: 10 }, message: { message_id: 12, chat: { id: 99 } }, data: `${request.id}:1:choose:0:1` } },
+        ...commands.map((command, index) => ({ update_id: index + 2, callback_query: { id: String(index), from: { id: 42 }, message: { message_id: 12, chat: { id: 99 } }, data: `${request.id}:1:${command}` } }))
+      ]
+    }
+    return new Response(JSON.stringify({ ok: true, result }))
+  })
+  const channel = new TelegramChannel('tg', '99', ['42'], 'test-token', store, fetchImpl)
+  const hub = new ControlHub(store)
+  store.change(state => { state.deliveries[`tg/${request.id}`] = { messageId: '12', revision: 1, attempts: 0, retryAt: 0 } })
+  try {
+    await channel.start(message => hub.receive(channel, message))
+    await vi.waitFor(() => expect(store.snapshot().cursors.tg).toBe(8))
+    expect(store.get(request.id)).toMatchObject({ status: 'queued', decidedBy: 'tg:42', decision: { action: 'answer', answers: { q1: ['开发'], q2: ['注册'] } } })
+    expect(calls.filter(call => call.method === 'editMessageText')).toHaveLength(6)
+    expect(calls.filter(call => call.method === 'sendMessage').at(-1)?.body.text).toContain('已处理')
+    expect(store.snapshot().answerDrafts).toEqual({})
+    expect(keyboard(store.get(request.id)).inline_keyboard).toHaveLength(1)
+  } finally { channel.close(); hub.close() }
+})
+
+it('redacts credentials in option buttons as well as notification text', () => {
+  const store = new ControlStore()
+  store.session({ id: 's', nativeId: 'native', agent: 'claude', adapter: 'hook', connected: true, label: 'Claude', capabilities: ['answer'] })
+  const request = store.create({ sessionId: 's', sourceKey: 'question', origin: 'hook', kind: 'input', title: '问题', detail: '', actions: ['answer'],
+    questions: [{ id: 'q1', text: '选择', options: ['Authorization: Bearer hidden-credential'], multi: false, freeText: true }], expiresAt: Date.now() + 60000 })
+  expect(JSON.stringify(keyboard(request))).not.toContain('hidden-credential')
 })

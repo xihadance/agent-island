@@ -1,6 +1,7 @@
 import type { ControlStore } from '../store'
 import type { ChannelAdapter, ControlSession, InterventionRequest, RemoteMessage } from '../types'
 import { telegramReply, telegramRequest } from './telegram-format'
+import { redact } from '../hub'
 
 export class TelegramChannel implements ChannelAdapter {
   private abort = new AbortController()
@@ -30,13 +31,17 @@ export class TelegramChannel implements ChannelAdapter {
     const pages = request ? [telegramRequest(request, session)] : telegramReply(text)
     let id = ''
     for (const page of pages) {
-      const result = await this.api('sendMessage', { chat_id: this.destination, text: page, parse_mode: 'HTML', reply_markup: keyboard(request), link_preview_options: { is_disabled: true } })
+      const result = await this.api('sendMessage', { chat_id: this.destination, text: page, parse_mode: 'HTML', reply_markup: keyboard(request, this.draft(request)), link_preview_options: { is_disabled: true } })
       id ||= String(result.message_id)
     }
     return id
   }
   async update(messageId: string, _text: string, request: InterventionRequest, session?: ControlSession): Promise<void> {
-    await this.api('editMessageText', { chat_id: this.destination, message_id: Number(messageId), text: telegramRequest(request, session), parse_mode: 'HTML', reply_markup: keyboard(request), link_preview_options: { is_disabled: true } })
+    await this.api('editMessageText', { chat_id: this.destination, message_id: Number(messageId), text: telegramRequest(request, session), parse_mode: 'HTML', reply_markup: keyboard(request, this.draft(request)), link_preview_options: { is_disabled: true } })
+  }
+  private draft(request?: InterventionRequest): Record<string, string[]> {
+    const draft = request && this.store.snapshot().answerDrafts?.[`${this.id}/${request.id}`]
+    return draft && draft.revision === request?.revision ? draft.answers : {}
   }
   private async poll(receive: (message: RemoteMessage) => Promise<string>): Promise<void> {
     let delay = 1000
@@ -53,16 +58,28 @@ export class TelegramChannel implements ChannelAdapter {
           if (this.stopped) return
           if (sender && chat && (callback || message?.text)) {
             let action: RemoteMessage['action']
+            let selection: RemoteMessage['selection']
+            let submitAnswers: RemoteMessage['submitAnswers']
             let text = message.text
             if (callback?.data) {
-              const [requestId, rev, command, option] = String(callback.data).split(':')
+              const [requestId, rev, command, option, choice] = String(callback.data).split(':')
               const r = this.store.snapshot().requests.find(r => r.id === requestId)
               if (command === 'detail') text = `/detail ${requestId}`
+              else if (command === 'choose') selection = { requestId, revision: Number(rev), question: Number(option), option: Number(choice) }
+              else if (command === 'submit') submitAnswers = { requestId, revision: Number(rev) }
               else if (r && command === 'pick' && r.questions.length === 1) action = { requestId, revision: Number(rev), decision: { action: 'answer', answers: { [r.questions[0].id]: [r.questions[0].options[Number(option)]] } } }
               else action = { requestId, revision: Number(rev), decision: { action: command as 'approve' } }
             }
-            const reply = await receive({ eventId: String(update.update_id), sender, chat, text, replyTo: message.reply_to_message ? String(message.reply_to_message.message_id) : undefined, action })
+            const reply = await receive({ eventId: String(update.update_id), sender, chat, text, replyTo: message.reply_to_message ? String(message.reply_to_message.message_id) : undefined, action,
+              ...(selection ? { selection } : {}), ...(submitAnswers ? { submitAnswers } : {}) })
             if (this.stopped) return
+            if ((selection || submitAnswers) && chat === this.destination && this.allowedUsers.includes(sender)) {
+              const state = this.store.snapshot()
+              const requestId = (selection ?? submitAnswers)!.requestId
+              const request = state.requests.find(r => r.id === requestId)
+              const delivery = state.deliveries[`${this.id}/${requestId}`]
+              if (request && delivery?.messageId) await this.update(delivery.messageId, '', request, state.sessions.find(s => s.id === request.sessionId))
+            }
             if (reply) for (const page of telegramReply(reply, text)) await this.api('sendMessage', { chat_id: chat, text: page, parse_mode: 'HTML', link_preview_options: { is_disabled: true } })
           }
           this.store.change(state => { state.cursors[this.id] = update.update_id + 1 })
@@ -81,12 +98,19 @@ export class TelegramChannel implements ChannelAdapter {
   }
   close(): void { this.stopped = true; this.abort.abort() }
 }
-export function keyboard(request?: InterventionRequest): { inline_keyboard: unknown[][] } {
+export function keyboard(request?: InterventionRequest, answers: Record<string, string[]> = {}): { inline_keyboard: unknown[][] } {
   if (!request) return { inline_keyboard: [] }
   const details = [{ text: '查看详情', callback_data: `${request.id}:${request.revision}:detail` }]
   if (request.status !== 'pending') return { inline_keyboard: [details] }
-  const rows: unknown[][] = [request.actions.filter(a => a !== 'answer').map(action => ({ text: ({ approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了' })[action], callback_data: `${request.id}:${request.revision}:${action}` }))]
+  const rows: unknown[][] = [request.actions.filter(a => a !== 'answer').map(action => ({ text: ({ approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了', resume: '继续会话' })[action], callback_data: `${request.id}:${request.revision}:${action}` }))]
   const q = request.questions[0]
-  if (request.actions.includes('answer') && request.questions.length === 1 && !q.multi) q.options.forEach((option, i) => rows.push([{ text: Array.from(option).slice(0, 60).join(''), callback_data: `${request.id}:${request.revision}:pick:${i}` }]))
+  if (request.actions.includes('answer') && request.questions.length === 1 && !q.multi) q.options.forEach((option, i) => rows.push([{ text: Array.from(redact(option)).slice(0, 60).join(''), callback_data: `${request.id}:${request.revision}:pick:${i}` }]))
+  else if (request.actions.includes('answer')) {
+    request.questions.forEach((question, questionIndex) => question.options.forEach((option, optionIndex) => rows.push([{
+      text: Array.from(`${answers[question.id]?.includes(option) ? '已选 · ' : ''}${questionIndex + 1}.${optionIndex + 1} ${redact(option)}`).slice(0, 60).join(''),
+      callback_data: `${request.id}:${request.revision}:choose:${questionIndex}:${optionIndex}`
+    }])))
+    if (request.questions.some(question => question.options.length)) rows.push([{ text: '提交回答', callback_data: `${request.id}:${request.revision}:submit` }])
+  }
   return { inline_keyboard: [...rows.filter(r => r.length), details] }
 }

@@ -120,7 +120,9 @@ Cursor、Gemini 的“批准”只通过本次 Hook 门禁，保留 Agent 自己
 
 可以先在「Agent 接入 → Codex app-server」启动应用托管的本机服务，再用页面给出的 `codex --remote` 命令连接终端客户端。服务使用已安装的 Codex 原生程序，沿用本机登录；启动它并不会接管另一个实例正在运行的会话。
 
-若希望始终直接输入 `codex`，在「Agent 接入 → 直接使用 codex 命令」安装命令接入，然后重新打开终端。开启远程接管时，自动选择会话 ID 留空的 Codex 连接，优先使用本机托管服务对应的连接，否则使用配置中的第一条；全部连接均指定 ID 时不会自动添加参数。远程接管关闭后，若自动审批开启则使用审批服务地址；两者都关闭则恢复普通启动。无需在切换开关时手动增删 `--remote`，已启动会话保持原连接。
+托管服务无需再添加 Codex 远程控制连接。配置 Telegram、飞书、企业微信或 Discord 消息渠道并开启远程接管后，灵动岛自动将托管服务的原生审批和问题转发到这些渠道；终端仍显示同一审批，任一端先处理后另一端的旧按钮失效。停止托管服务或关闭接管会断开转发关联，重新开启自动恢复关联。关联仅存在于运行时，不会向 `remote.json` 写入额外 Codex 连接。
+
+若希望始终直接输入 `codex`，在「Agent 接入 → 直接使用 codex 命令」安装命令接入，然后重新打开终端。开启远程接管且已配置消息渠道时，自动使用运行中的本机托管服务，无需添加 Codex 连接；未使用托管服务时，选择配置中第一条会话 ID 留空的 Codex 连接，全部连接均指定 ID 时不会自动添加参数。远程接管关闭后，若自动审批开启则使用审批服务地址；两者都关闭则恢复普通启动。无需在切换开关时手动增删 `--remote`，已启动会话保持原连接。
 
 命令接入支持 PowerShell、Bash / Zsh，保留显式参数；灵动岛或目标服务不可用时恢复普通启动。认证连接的 `tokenEnv` 必须也在终端环境中可用。安装器备份 Shell 配置，移除时保留其他内容；常规 Codex CLI 更新沿用原安装入口，VS Code 插件独立运行。
 
@@ -135,7 +137,7 @@ Cursor、Gemini 的“批准”只通过本次 Hook 门禁，保留 Agent 自己
 }
 ```
 
-将该对象加入配置的 `codex` 数组，保存后开启远程接管。客户端通过 `codex --remote ws://127.0.0.1:4500` 连接到同一服务。`threads` 留空或省略时，自动接管该服务中全部已加载会话；填写 ID 数组可限定接管范围。启动时立即扫描，此后每 5 秒发现新会话，也会移除已关闭的会话。没有认证的本机监听可省略 `tokenEnv`；非本机连接只接受 `wss://`。服务通过 `thread/loaded/list` 分页检查会话，仅订阅同一实例已加载的线程。
+该配置仅用于其他 app-server：将对象加入 `codex` 数组，保存后开启远程接管。灵动岛自身的托管服务自动关联，不需要此项。客户端通过 `codex --remote ws://127.0.0.1:4500` 连接到同一服务。`threads` 留空或省略时，自动接管该服务中全部已加载会话；填写 ID 数组可限定接管范围。启动时立即扫描，此后每 5 秒发现新会话，也会移除已关闭的会话。没有认证的本机监听可省略 `tokenEnv`；非本机连接只接受 `wss://`。服务通过 `thread/loaded/list` 分页检查会话，仅订阅同一实例已加载的线程。
 
 支持命令、文件、权限审批，原生问题回答，简单 MCP 表单，`turn/steer` 和 `turn/interrupt`。运行中追加消息携带 `expectedTurnId`；已确认空闲的线程使用 `turn/start`。权限批准仅作用于当前请求／轮次，不保存“始终允许”规则。Codex App-server／WebSocket 接口存在实验性限制，须使用支持这些方法的版本。
 
@@ -152,11 +154,29 @@ Cursor、Gemini 的“批准”只通过本次 Hook 门禁，保留 Agent 自己
 | 单问题自由回答 | 引用通知回复，或 `/answer 请求ID 答案` |
 | 多问题／多选 | `/answer 请求ID {"q1":["A"],"q2":["B","C"]}` |
 | 追加指导 | `/send 会话ID 先修复测试，再继续实现` |
+| 恢复异常中断的会话 | `/resume 异常请求ID [继续指令]`，也可使用唯一对应待处理通知的原生会话 ID |
 | 中断 | `/interrupt 会话ID`，只对支持的 Codex 连接开放 |
 
-Telegram 的单问题单选还提供选项按钮。飞书、企业微信和 Discord 提供审批按钮，多问题通过相同的 JSON 命令回答。普通“yes”“继续”等裸消息不会自动批准，也不会猜测目标会话。长通知是摘要，审批前用 `/detail` 查看完整内容；详情通过多条消息发送。
+Telegram 的单问题单选可直接点击选项回答；多问题和多选题可逐题点击选项，再按「提交回答」，多选再次点击可取消。选项说明随问题展示，长内容可点「查看详情」。自由输入可引用单题通知回复，多题的其他回答可使用 JSON 命令。飞书、企业微信和 Discord 提供审批按钮，多问题通过相同的 JSON 命令回答。普通“yes”“继续”等裸消息不会自动批准，也不会猜测目标会话。
 
-Telegram 通知使用 HTML 富文本：状态加粗、命令显示为可复制代码块、长说明和问题放入可展开引用。通知下方提供「查看详情」按钮，长详情自动分条发送，保留完整内容；请求状态变化时更新原消息，并撤去已经失效的审批／回答按钮。日志观察事件标为「仅提醒」，「知道了」只关闭提醒，不会批准或回答原会话；只有已连接且支持追加指导的会话才显示 `/send` 提示。
+已接管的问题也会在本地灵动岛展开，支持单选、多选、选项说明和自由输入；内容较长时向下滚动到「提交回答」。从本地或远程任一端提交后，两端同步处理状态，旧按钮无法重复提交。托管模式在回答后自动收起，关注模式可展开查看已提交的答案，直到 Agent 确认完成。仅从日志观察到的问题没有原生控制关联，仍需在原 Agent 中回答。
+
+远程接管开启时，本机自动审批和自动回答都会暂停，保留原设置；关闭接管后恢复。如果希望自动选择推荐项，需要先关闭远程接管。
+
+Telegram 通知使用 HTML 富文本：状态加粗、命令显示为可复制代码块、长说明和问题放入可展开引用。通知下方提供「查看详情」按钮，长详情自动分条发送，保留完整内容；请求状态变化时更新原消息，并撤去已经失效的操作按钮。无法恢复的日志观察事件标为「仅提醒」，「知道了」只关闭提醒；只有已连接且支持追加指导的会话才显示 `/send` 提示。
+
+### 从异常通知继续任务
+
+Codex、Claude Code 的主会话有明确异常／中断记录，且能关联原生会话及恢复入口时，四个渠道的异常通知都会提供「继续会话」和「知道了」。选择「继续会话」会恢复原生会话并发送：
+
+> 请继续上次异常中断的任务。先核对已有进度和执行结果，避免重复已完成的操作，再完成剩余工作。
+
+也可发送 `/resume 通知中的请求ID 先检查测试，再继续原任务` 自定义继续指令。`/sessions` 显示原生会话 ID；它唯一对应一条待处理异常通知时，可直接作为 `/resume` 的目标。普通日志静默、子任务异常和外部 HTTP 推送不会据此启动主会话。旧通知对应的会话已继续或已完成时，恢复会被拒绝。
+
+- **Codex**：需要已配置且运行中的 app-server。先读取原线程核对失败／中断轮次，再 `thread/resume` 加载同一个原生 ID，最后 `turn/start` 提交继续指令。已有连接保留连接归属和 `threads` 限定范围；仅由本机日志发现的线程必须唯一匹配一条本机连接。不会新建或分叉线程，也不会因为启动接管或周期扫描自动恢复离线线程。服务自身已退出时，需先在本机重新启动服务。
+- **Claude Code**：需要本机已安装并登录 CLI、原工作目录仍存在，并已安装指向当前配置的远程 Hook。后台运行 `claude --resume 原生ID --print`，通过标准输入提交继续指令；权限和问题仍走原生 Hook，不绕过权限。原会话仍有可识别的进程或会话注册记录时拒绝重复启动；关闭原终端会话后再恢复。灵动岛关闭接管或退出时，会停止自己启动的 Claude 恢复进程。
+
+操作在执行前持久化，随后通知更新接收结果；等待启动时仍可在渠道处理审批。重复消息、重复点击和应用重启不会重放同一恢复请求。`resolved` 表示原生继续指令已确认接收，任务是否完成仍以会话后续日志为准；`uncertain` 表示结果待确认，请检查原会话，系统不会自动重试。恢复进程再次明确失败时，会重新通知。
 
 状态含义：`pending` 等待处理，`queued` 回复已收到但还未提交，`submitted` 已发送至 Agent 等待确认，`resolved` 原生请求已确认处理，`cancelled/expired` 已失效，`uncertain` 无法确认结果。重复事件不重复执行；本地已回答、请求被取消或过期后，旧按钮失效。重启后待决的控制请求标为 `uncertain`，不自动重放批准。通知发送采用重试，极端断网时可能收到相同请求 ID 的重复通知，但只能决定一次。
 
@@ -228,10 +248,13 @@ npm run build
 node scripts/smoke-remote-toggle.cjs
 node scripts/smoke-connectivity.cjs
 node scripts/smoke-codex-command.cjs
+node scripts/smoke-managed-codex.cjs
 ```
 
 自动测试使用本机 HTTP／WebSocket 和模拟 Bot API，验证原生 Hook 回传、Codex 关联、重复回复、失效请求、崩溃恢复、渠道授权及重试。`smoke-remote-toggle.cjs` 使用隔离配置和真实 Electron 托盘回调，验证启停、编译后的 CLI Hook 释放、旧审批失效、显示模式独立和重启持久化，不连接实际渠道。真实 Bot、飞书应用、企业微信租户、Discord 权限和实际 Agent 版本仍需在配置自己的账号后进行联调。
 
 `smoke-codex-command.cjs` 在 Windows 上使用真实 Electron、同一个 PowerShell 会话和隔离配置，验证命令接入的安装、动态切换、接管优先级、服务失联回退、CLI 更新及移除恢复，覆盖中文、引号和空参数。服务和 Codex 命令使用本机测试替身，不调用模型或真实消息渠道；同时保存浅色、深色及窄窗口截图。
+
+`smoke-managed-codex.cjs` 使用真实 Electron、隔离的托管服务测试替身及 Telegram API 测试替身，验证无需 Codex 连接配置即可转发原生审批、终端和远端同时处理、旧按钮失效、接管启停和托管服务重启。不调用模型或真实消息渠道。
 
 官方协议参考：[Claude Hooks](https://code.claude.com/docs/en/hooks)、[Claude Channels](https://code.claude.com/docs/en/channels-reference)、[Codex App-server](https://developers.openai.com/codex/app-server/)、[Gemini Hooks](https://geminicli.com/docs/hooks/reference/)、[Cursor Hooks](https://cursor.com/docs/agent/hooks)、[Telegram](https://core.telegram.org/bots/api)、[飞书](https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-callbacks)、[企业微信 SDK](https://github.com/WecomTeam/aibot-node-sdk)、[Discord](https://docs.discord.com/developers/interactions/receiving-and-responding)。

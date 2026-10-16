@@ -128,9 +128,10 @@ export function useIslandDrag(bridge: IslandApi, enabled = true, revealDock = fa
     onPointerDownCapture(event: ReactPointerEvent<HTMLDivElement>) {
       if (!enabled || event.button !== 0 || !event.isPrimary || gesture.current) return
       const target = event.target as HTMLElement
-      // Keep buttons, command selection and scrollbars available for their own gestures.
-      if (target.closest('button:not(.session-line), a, input, textarea, select, .operation-detail, .session-detail')) return
+      // A new gesture must not inherit a drag's missing synthetic click.
       suppressClick.current = false
+      // Keep buttons, command selection and scrollbars available for their own gestures.
+      if (target.closest('button:not(.session-line), a, input, textarea, select, .operation-detail, .session-detail, .question-answers')) return
       gesture.current = { id: event.pointerId, start: { x: event.screenX, y: event.screenY }, origin: current.current, element: event.currentTarget, moved: false }
       bridge.dragWindow?.('start')
     },

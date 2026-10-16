@@ -7,6 +7,7 @@ import { OperationDetails, Status, Steps, TaskBadge, Tasks } from './ActivityDet
 import { useIslandDrag } from './useIslandDrag'
 import { ExecutionTime } from './ExecutionTime'
 import { attentionKind, type IslandMode } from '../../shared/island-behavior'
+import { QuestionAnswers } from './QuestionAnswers'
 
 interface IslandProps {
   drag: ReturnType<typeof useIslandDrag>
@@ -39,7 +40,8 @@ export function Island({ drag, behaviorMode, passive, attention, onAcknowledge, 
   const baseMetrics = mode === 'docked' ? { width: vertical ? 16 : 72, height: vertical ? 72 : 16, radius: 8 } : metricsFor(mode, activity, activities, selectedId)
   const openActivity = activities.find(item => item.id === selectedId) ?? activity
   const attentionHeight = attention ? 64 - (openActivity?.state === 'approval' ? 70 : 0) : 0
-  const metrics = { ...baseMetrics, height: Math.min(520, baseMetrics.height + attentionHeight) }
+  const questionHeight = openActivity?.questionRequest && (mode === 'expanded' || (mode === 'stack' && selectedId)) ? 260 : 0
+  const metrics = { ...baseMetrics, height: Math.min(520, baseMetrics.height + attentionHeight + questionHeight) }
   const contentKey = collapsed ? 'docked' : stacked ? 'stack' : activity ? `${mode}:${activity.agent}:${activity.state}` : mode
 
   return (
@@ -231,6 +233,7 @@ function SessionRow({
       {open && (
         <div className="session-detail" onClick={(event) => event.stopPropagation()}>
           {onAcknowledge && <AttentionNotice activity={activity} onAcknowledge={onAcknowledge} />}
+          {activity.questionRequest && <QuestionAnswers key={activity.questionRequest.id} request={activity.questionRequest} />}
           {activity.detail && <div className="detail">{activity.detail}</div>}
           <OperationDetails activity={activity} showApprovalNotice={!onAcknowledge} />
           {typeof activity.progress === 'number' && <Progress value={activity.progress} />}
@@ -283,6 +286,7 @@ function Expanded({ activity, onDismiss, onAcknowledge }: { activity: Activity; 
         )}
       </div>
       {onAcknowledge && <AttentionNotice activity={activity} onAcknowledge={onAcknowledge} />}
+      {activity.questionRequest && <QuestionAnswers key={activity.questionRequest.id} request={activity.questionRequest} />}
       <div className="expanded-title" data-testid="island-title">
         {activity.title}
       </div>
@@ -304,7 +308,7 @@ function AttentionNotice({ activity, onAcknowledge }: { activity: Activity; onAc
   const label = kind === 'approval' ? '需要审批' : kind === 'input' ? '需要你回复' : kind === 'task-approval' ? '子 Agent 需要审批' : kind === 'task-error' ? '后台任务异常' : '会话异常'
   return (
     <div className="managed-notice" data-testid="managed-notice" data-kind={kind}>
-      <div><strong>{label}</strong><span>请在 {activity.agent} 中查看处理</span></div>
+      <div><strong>{label}</strong><span>{activity.questionRequest ? '展开选项即可回答' : `请在 ${activity.agent} 中查看处理`}</span></div>
       <button type="button" className="close" data-testid="acknowledge-attention" onClick={(event) => {
         event.stopPropagation()
         onAcknowledge(activity.id)

@@ -1,3 +1,5 @@
+import type { QuestionRequest } from './question-request'
+
 export const SUCCESS_DWELL_MS = 2800
 
 export type ActivityState = 'thinking' | 'running' | 'waiting' | 'approval' | 'success' | 'error'
@@ -64,6 +66,7 @@ export interface Activity {
   endedAt?: number
   /** The last recorded state is retained, but recent session liveness is unknown. */
   stale?: boolean
+  questionRequest?: QuestionRequest
 }
 
 export interface ActivityInput {
@@ -203,7 +206,16 @@ interface ParsedActivity {
   stale?: boolean
 }
 
+export interface SessionSource { agent: string; nativeId: string; cwd?: string }
+
 export class ActivityStore {
+  // Only the local watcher supplies execution identity; public activity pushes cannot set it.
+  private readonly sessionSources = new Map<string, SessionSource>()
+  setSessionSource(id: string, source: SessionSource): void { this.sessionSources.set(id, { ...source }) }
+  sessionSource(id: string): SessionSource | undefined {
+    const source = this.sessionSources.get(id)
+    return source ? { ...source } : undefined
+  }
   private readonly activities = new Map<string, Activity>()
   private readonly listeners = new Set<(activities: Activity[]) => void>()
   private readonly dismissTimers = new Map<string, { cancel: () => void }>()
@@ -302,6 +314,7 @@ export class ActivityStore {
   }
 
   dismiss(id: string): void {
+    this.sessionSources.delete(id)
     this.clearTimer(id)
     this.dismissGeneration.delete(id)
     if (!this.activities.delete(id)) return
@@ -309,6 +322,7 @@ export class ActivityStore {
   }
 
   clear(): void {
+    this.sessionSources.clear()
     for (const id of this.dismissTimers.keys()) this.clearTimer(id)
     this.dismissGeneration.clear()
     if (this.activities.size === 0) return
@@ -317,6 +331,7 @@ export class ActivityStore {
   }
 
   dispose(): void {
+    this.sessionSources.clear()
     for (const id of this.dismissTimers.keys()) this.clearTimer(id)
     this.dismissGeneration.clear()
     this.listeners.clear()
@@ -332,6 +347,7 @@ export class ActivityStore {
       this.dismissTimers.delete(activity.id)
       if (this.activities.get(activity.id)?.state !== 'success') return
       this.activities.delete(activity.id)
+      this.sessionSources.delete(activity.id)
       this.dismissGeneration.delete(activity.id)
       this.emit()
     }, SUCCESS_DWELL_MS)

@@ -36,7 +36,7 @@ export class WecomChannel implements ChannelAdapter {
     const actions = r?.status === 'pending' ? r.actions.filter(a => a !== 'answer') : []
     const body = r && actions.length ? { msgtype: 'template_card' as const, template_card: { card_type: 'button_interaction' as const,
       main_title: { title: `#${r.id} ${r.title}`.slice(0, 100), desc: text.slice(0, 2000) }, task_id: `${r.id}@${r.revision}`,
-      button_list: actions.map(action => ({ text: { approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了' }[action], key: `${r.id}:${r.revision}:${action}`, style: 1 as const }))
+      button_list: actions.map(action => ({ text: { approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了', resume: '继续会话' }[action], key: `${r.id}:${r.revision}:${action}`, style: 1 as const }))
     } } : { msgtype: 'markdown' as const, markdown: { content: (r ? text.slice(0, 800) : text).replace(/<@/g, '< @') } }
     const result = await this.ws.sendMessage(this.destination, body)
     return String(result.headers.req_id)
