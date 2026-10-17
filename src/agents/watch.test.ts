@@ -413,6 +413,39 @@ describe('SessionWatcher', () => {
     expect(store.get('claude-busy')?.state).toBe('thinking')
   })
 
+  it('reports a recorded CLI exit as stopped and alerts only on the session that vanished', async () => {
+    const { roots } = tempHome()
+    const turn = [
+      { type: 'user', timestamp: new Date(NOW).toISOString(), message: { content: '改登录页' } },
+      { type: 'assistant', timestamp: new Date(NOW).toISOString(), message: { content: [{ type: 'thinking', thinking: '处理中' }] } }
+    ]
+    // The terminal was closed: the CLI recorded its own shutdown on the way out.
+    writeJsonl(path.join(roots.claude, 'project', 'quit.jsonl'), [...turn, { type: 'cost-state', sessionId: 'quit', totalCostUSD: 0 }])
+    // Killed instead: the same silence, with no shutdown record to show for it.
+    writeJsonl(path.join(roots.claude, 'project', 'killed.jsonl'), turn)
+    for (const id of ['quit', 'killed']) touch(path.join(roots.claude, 'project', `${id}.jsonl`), NOW)
+    let now = NOW
+    let registrations: SessionRegistration[] = [{ sessionId: 'quit', pid: 11, busy: true, updatedAt: NOW }, { sessionId: 'killed', pid: 12, busy: true, updatedAt: NOW }]
+    const snapshot: ProcessSnapshot = { running: new Set(['claude']),
+      processes: registrations.map(({ pid }) => ({ pid, parentPid: 0, name: 'claude.exe', commandLine: '', createdAt: NOW - 1000 })) }
+    const store = newStore()
+    const watcher = new SessionWatcher(store, { roots, now: () => now, processMs: 0,
+      plugins: [{ ...claudePlugin, registeredSessions: async () => registrations }], listProcessSnapshot: () => snapshot })
+    await watcher.scan()
+    expect(store.get('claude-quit')?.state).toBe('stopped')
+    expect(store.get('claude-killed')?.state).toBe('thinking')
+    // Both processes are gone and both logs fall silent well past the interruption window.
+    registrations = []
+    snapshot.processes = []
+    snapshot.running = new Set()
+    now += 70_000
+    await watcher.scan()
+    expect(store.get('claude-quit')).toMatchObject({ state: 'stopped', title: '会话已退出', endedAt: NOW })
+    expect(store.get('claude-killed')).toMatchObject({ state: 'error', title: '会话已中断' })
+    expect(attentionKind(store.get('claude-quit')!)).toBeUndefined()
+    expect(attentionKind(store.get('claude-killed')!)).toBe('error')
+  })
+
   it('does not trust busy registrations bound to recycled or unrelated process IDs', async () => {
     const { roots } = tempHome()
     for (const id of ['recycled', 'unrelated']) {

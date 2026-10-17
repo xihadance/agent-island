@@ -39,6 +39,8 @@ export type AgentEvent = { at?: number } & (
   | { kind: 'tool' | 'approval'; title: string; callId?: string; operation?: ActivityOperation; reason?: string }
   | { kind: 'tool_result'; title: string; ok: boolean; callId?: string }
   | { kind: 'done' | 'error'; title: string }
+  /** The agent recorded its own shutdown. Silence after this is not an interruption. */
+  | { kind: 'exit' }
   | { kind: 'task_start'; taskId: string; task: TaskKind; label: string; detail?: string }
   | { kind: 'task_update'; taskId: string; detail: string }
   /** `taskId: '*'` settles every open sub-agent, e.g. "all background agents were stopped". */

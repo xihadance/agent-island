@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import type { ActivityStore } from '../shared/activity'
+import { isTerminalState, type ActivityStore } from '../shared/activity'
 import { isUserInputTool } from '../shared/island-behavior'
 import { mapLimited, readSession, SessionReader, type SessionFile } from './files'
 import { SessionDiscovery } from './discovery'
@@ -279,7 +279,7 @@ export class SessionWatcher {
         if (seen.has(file)) continue
         // Preserve failures until explicitly dismissed, even if the log disappears.
         const activity = this.store.get(tracked.id)
-        if (activity?.state === 'error' || activity?.state === 'success') continue
+        if (activity && isTerminalState(activity.state)) continue
         if (candidates.has(file)) continue
         this.tracked.delete(file)
         this.store.dismiss(tracked.id)

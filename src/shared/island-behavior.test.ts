@@ -30,7 +30,8 @@ describe('island attention', () => {
 
   it('keeps routine work and generic waiting quiet, but identifies explicit requests and failures', () => {
     const store = new ActivityStore()
-    for (const state of ['running', 'thinking', 'waiting', 'success'] as const) {
+    // 'stopped' is a recorded exit, not a failure: it must never raise an alert.
+    for (const state of ['running', 'thinking', 'waiting', 'success', 'stopped'] as const) {
       expect(attentionKind(store.upsert({ id: state, state }))).toBeUndefined()
     }
     expect(attentionKind(store.upsert({ id: 'approval', state: 'approval' }))).toBe('approval')

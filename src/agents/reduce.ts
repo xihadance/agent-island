@@ -34,18 +34,40 @@ export function createReducer() {
   let turn = 0
   let startedAt: number | undefined
   let endedAt: number | undefined
+  /** Latest recorded event time, used to date an exit the transcript does not timestamp. */
+  let lastAt: number | undefined
 
   function push(events: readonly AgentEvent[]): void {
     for (const event of events) {
+      if (event.at !== undefined) lastAt = event.at
       if (event.kind === 'user' || event.kind === 'turn_start') {
         turn += 1
         startedAt = event.at
         endedAt = undefined
-      } else if (event.kind !== 'task_drop') {
+      } else if (event.kind !== 'task_drop' && event.kind !== 'exit') {
         if (!turn) turn = 1
         startedAt ??= event.at
       }
       if (event.kind === 'turn_start') continue
+      if (event.kind === 'exit') {
+        // The agent recorded its own shutdown. An unfinished turn ends here by choice,
+        // not by failure, and its in-process children died with it.
+        if (!terminal) {
+          state = 'stopped'
+          title = '会话已退出'
+          operation = undefined
+          detail = taskDetail
+          terminal = true
+          endedAt ??= event.at ?? lastAt
+        }
+        for (const task of tasks.values()) {
+          if (task.status !== 'active') continue
+          task.status = 'stopped'
+          const at = event.at ?? lastAt
+          if (at !== undefined) task.endedAt = Math.max(task.startedAt ?? at, at)
+        }
+        continue
+      }
       if (event.kind === 'task_start') {
         const existing = tasks.get(event.taskId)
         const taskStartedAt = existing?.status === 'active' ? existing.startedAt ?? event.at : event.at
@@ -194,9 +216,12 @@ export function createReducer() {
     for (const task of settled.slice(0, Math.max(0, settled.length - MAX_TASKS))) tasks.delete(task.id)
   }
 
-  /** Open human questions with no other tools in flight. Approval still takes the headline. */
+  /**
+   * Open human questions with no other tools in flight. Approval still takes the headline.
+   * A recorded exit outranks the question: nobody can answer a process that is gone.
+   */
   function holdForAnswer(): boolean {
-    if (state === 'error' || steps.some((step) => step.status === 'waiting')) return false
+    if (state === 'error' || state === 'stopped' || steps.some((step) => step.status === 'waiting')) return false
     const input = steps.find((step) => step.status === 'active' && isUserInputStep(step))
     if (!input || steps.some((step) => step.status === 'active' && !isUserInputStep(step))) return false
     const event = stepEvents.get(input.id)

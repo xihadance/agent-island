@@ -488,6 +488,7 @@ body[data-surface='web'] {
 :is(.island, .session-row)[data-state='success'] { --progress-color: var(--state-success); }
 .session-row[data-state='running'] { --progress-color: var(--state-running); }
 :is(.island, .session-row)[data-state='waiting'] { --progress-color: var(--island-ink-muted); }
+:is(.island, .session-row)[data-state='stopped'] { --progress-color: var(--island-ink-muted); }
 
 .steps {
   list-style: none;
@@ -552,6 +553,7 @@ body[data-surface='web'] {
 .state-approval { color: var(--state-approval); }
 .state-success { color: var(--state-success); }
 .state-error { color: var(--state-error); }
+.state-stopped { color: var(--island-ink-muted); }
 .spinner-track { opacity: 0.2; }
 .spinner-arc { transform-origin: 12px 12px; }
 .is-animated .spinner-arc { animation: status-spin 1s linear infinite; }

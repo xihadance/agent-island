@@ -2,7 +2,7 @@ import type { QuestionRequest } from './question-request'
 
 export const SUCCESS_DWELL_MS = 2800
 
-export type ActivityState = 'thinking' | 'running' | 'waiting' | 'approval' | 'success' | 'error'
+export type ActivityState = 'thinking' | 'running' | 'waiting' | 'approval' | 'success' | 'error' | 'stopped'
 export type StepStatus = 'pending' | 'active' | 'waiting' | 'done' | 'error'
 export const OPERATION_KINDS = ['command', 'read', 'edit', 'search', 'mcp', 'skill', 'agent', 'tool'] as const
 export type OperationKind = typeof OPERATION_KINDS[number]
@@ -97,7 +97,8 @@ export const ACTIVITY_STATES: readonly ActivityState[] = [
   'waiting',
   'approval',
   'success',
-  'error'
+  'error',
+  'stopped'
 ]
 
 export const STATE_LABEL: Record<ActivityState, string> = {
@@ -106,7 +107,8 @@ export const STATE_LABEL: Record<ActivityState, string> = {
   waiting: '等待中',
   approval: '需要审批',
   success: '已完成',
-  error: '失败'
+  error: '失败',
+  stopped: '已退出'
 }
 
 const PRIORITY: Record<ActivityState, number> = {
@@ -115,7 +117,16 @@ const PRIORITY: Record<ActivityState, number> = {
   running: 40,
   thinking: 30,
   waiting: 20,
-  success: 10
+  success: 10,
+  stopped: 5
+}
+
+/**
+ * A finished turn. `stopped` is terminal too: the agent recorded its own exit,
+ * so nothing more will arrive for this turn.
+ */
+export function isTerminalState(state: ActivityState): boolean {
+  return state === 'success' || state === 'error' || state === 'stopped'
 }
 
 const ID_PATTERN = /^[A-Za-z0-9._:-]{1,80}$/
@@ -263,7 +274,7 @@ export class ActivityStore {
     const now = this.now()
     const state = parsed.state ?? current?.state ?? 'running'
     const newRound = parsed.startedAt !== undefined && parsed.startedAt !== current?.startedAt
-    const restarting = newRound || (current?.endedAt !== undefined && state !== 'success' && state !== 'error')
+    const restarting = newRound || (current?.endedAt !== undefined && !isTerminalState(state))
     const next: Activity = {
       id: parsed.id,
       agent: parsed.agent ?? current?.agent ?? 'Agent',
@@ -278,7 +289,7 @@ export class ActivityStore {
       startedAt: parsed.startedAt ?? (restarting ? now : current?.startedAt ?? now),
       updatedAt: now
     }
-    const terminal = state === 'success' || state === 'error'
+    const terminal = isTerminalState(state)
     if (!terminal && (parsed.stale ?? (!restarting && current?.stale))) next.stale = true
     if (terminal) {
       next.endedAt = parsed.endedAt ?? (!newRound && current?.state === state && current.endedAt !== undefined ? current.endedAt : now)
@@ -337,15 +348,17 @@ export class ActivityStore {
     this.listeners.clear()
   }
 
+  /** A recorded exit needs no acknowledgment, so it dwells and clears like a completion. */
   private syncDismissTimer(activity: Activity): void {
     this.clearTimer(activity.id)
-    if (activity.state !== 'success') return
+    if (activity.state !== 'success' && activity.state !== 'stopped') return
     const generation = ++this.nextGeneration
     this.dismissGeneration.set(activity.id, generation)
+    const state = activity.state
     const handle = this.schedule(() => {
       if (this.dismissGeneration.get(activity.id) !== generation) return
       this.dismissTimers.delete(activity.id)
-      if (this.activities.get(activity.id)?.state !== 'success') return
+      if (this.activities.get(activity.id)?.state !== state) return
       this.activities.delete(activity.id)
       this.sessionSources.delete(activity.id)
       this.dismissGeneration.delete(activity.id)

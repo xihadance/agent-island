@@ -205,7 +205,7 @@ push 选项
   --id        活动 id，默认 default
   --agent     显示名称
   --client    来源客户端，例如 VS Code、Windows Terminal；null 清空
-  --state     thinking | running | waiting | approval | success | error
+  --state     thinking | running | waiting | approval | success | error | stopped
   --title     一行标题
   --detail    补充说明，传 null 可清空
   --progress  0 到 1

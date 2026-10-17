@@ -78,7 +78,7 @@ export async function checkClaudeRecovery(session: ControlSession, configFile?: 
   // A turn that went silent with no live process is what the watcher reports as interrupted;
   // reuse its rule so the recovery gate and that notification can never disagree.
   check(!!view && view.sessionId === session.nativeId && presentSession(view, false, Date.now() - transcriptMtime, true)?.state === 'error',
-    '原 Claude 会话已继续、已完成或无法确认中断状态', 409)
+    '原 Claude 会话已继续、已完成、已退出或无法确认中断状态', 409)
   check(!view.cwd || path.resolve(view.cwd) === path.resolve(session.cwd), '原会话工作目录已变化，请在本机确认后恢复', 409)
   let settings: Record<string, any>
   try { settings = JSON.parse(readFileSync(path.join(root, '..', 'settings.json'), 'utf8')) }

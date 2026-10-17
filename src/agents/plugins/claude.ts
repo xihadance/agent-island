@@ -35,6 +35,8 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
   let continuedInSessionId: string | undefined
   let cwd: string | undefined
   let sessionId: string | undefined
+  /** A shutdown record only means something once this transcript has said anything. */
+  let spoke = false
   return (text) => {
     const events: AgentEvent[] = []
     for (const row of jsonlRows(text)) {
@@ -51,6 +53,15 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
         if (localCommands.size > 32) localCommands.delete(localCommands.keys().next().value!)
       }
       if (row.isMeta === true) continue
+      // Written when the CLI shuts down. Its own exit is evidence, not a silent interruption;
+      // a resumed session simply appends new turns after it.
+      if (row.type === 'cost-state') {
+        if (spoke || events.length) events.push(...timestampEvents([{ kind: 'exit' }], row))
+        continue
+      }
+      // The command itself is skipped by its caveat above, but its output arrives as a
+      // separate non-meta user row. It is the CLI echoing back, never a new request.
+      if (row.type === 'user' && /^\s*<local-command-(?:stdout|stderr)>/.test(content)) continue
       if (row.type === 'user' && /^\s*<command-name>/.test(content)) {
         const parent = textOf(row.parentUuid)
         const prompt = textOf(row.promptId)
@@ -101,6 +112,7 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
         }
       }
     }
+    if (events.length) spoke = true
     return { events, continuedInSessionId, cwd, sessionId }
   }
 }

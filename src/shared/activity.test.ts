@@ -162,6 +162,19 @@ describe('ActivityStore', () => {
     expect(store.list().map((item) => item.id)).toEqual(['bad'])
   })
 
+  it('treats a recorded exit as terminal, dwelling like a completion', () => {
+    const pending: Array<{ fn: () => void; cancelled: boolean }> = []
+    const store = new ActivityStore(schedulerOf(pending), () => 500)
+    const exited = store.upsert({ id: 'gone', agent: 'Claude Code', state: 'stopped', title: '会话已退出', startedAt: 200 })
+    expect(exited.endedAt).toBe(500)
+    expect(pending).toHaveLength(1)
+    // A stopped turn is the quietest thing on the island: never ahead of live work.
+    store.upsert({ id: 'live', agent: 'Codex', state: 'waiting' })
+    expect(pickPrimary(store.list())?.id).toBe('live')
+    pending[0]?.fn()
+    expect(store.get('gone')).toBeUndefined()
+  })
+
   it('ignores a superseded success timer', () => {
     const pending: Array<{ fn: () => void; cancelled: boolean }> = []
     const store = new ActivityStore(schedulerOf(pending))

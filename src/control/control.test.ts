@@ -180,6 +180,20 @@ describe('remote routing and delivery', () => {
     hub.observe([]); hub.observe(activities.list()); expect(store.snapshot().requests).toHaveLength(4)
     activities.dispose()
   })
+  it('raises nothing for a recorded exit and retires what the dead session was waiting on', () => {
+    const { store, hub } = setup()
+    const activities = new ActivityStore()
+    activities.upsert({ id: 'claude-gone', state: 'approval', title: '运行 npm test', operation: { kind: 'command', command: 'npm test' } })
+    hub.observe(activities.list())
+    const pending = store.snapshot().requests.filter(r => r.status === 'pending')
+    expect(pending).toHaveLength(1)
+    // The CLI exited. Nobody can approve into a dead process, and the exit is not an error.
+    activities.upsert({ id: 'claude-gone', state: 'stopped', title: '会话已退出', operation: null })
+    hub.observe(activities.list())
+    expect(store.get(pending[0].id).status).toBe('cancelled')
+    expect(store.snapshot().requests.filter(r => r.status === 'pending')).toHaveLength(0)
+    activities.dispose()
+  })
 })
 
 describe('native Hook takeover', () => {
