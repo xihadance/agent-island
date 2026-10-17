@@ -32,6 +32,11 @@ function parseGemini(text: string): ParsedTranscript {
 
 function rowEvents(row: unknown): AgentEvent[] {
   if (!isRecord(row)) return []
+  // A recorded failure, usually an API error. Without this the turn stays "waiting"
+  // and a silent session gets reported as interrupted, losing the real reason.
+  if (row.type === 'error') {
+    return timestampEvents([{ kind: 'error', title: cleanText(textOf(row.content) || textOf(row.message)) || '执行失败' }], row)
+  }
   const events: AgentEvent[] = []
   if (Array.isArray(row.thoughts)) {
     for (const thought of row.thoughts) {

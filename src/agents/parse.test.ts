@@ -47,6 +47,21 @@ describe('parseTranscript', () => {
       .toMatchObject({ state: 'success', terminal: true })
   })
 
+  it('reports a recorded Gemini failure instead of leaving the turn waiting', () => {
+    const at = '2026-01-16T10:27:55.015Z'
+    const view = parseTranscript('gemini', 'failed', JSON.stringify({ messages: [
+      { type: 'user', content: '装一下依赖' },
+      { type: 'error', timestamp: at, content: '[API Error: {"error":{"code":403,"message":"permission denied"}}]' }
+    ] }, null, 2))
+    // Without this the turn stays "waiting" and silence gets reported as an interruption.
+    expect(view).toMatchObject({ state: 'error', terminal: true, endedAt: Date.parse(at) })
+    expect(view?.title).toContain('403')
+    // 'info' rows stay quiet; only a recorded error ends the turn.
+    expect(parseTranscript('gemini', 'notice', JSON.stringify({ messages: [
+      { type: 'user', content: '装一下依赖' }, { type: 'info', content: 'Gemini CLI update available!' }
+    ] }, null, 2))).toMatchObject({ state: 'waiting', terminal: false })
+  })
+
   it('matches out-of-order parallel tool results to their call ids', () => {
     const view = parseTranscript('claude', 'parallel', [
       { type: 'assistant', message: { content: [
