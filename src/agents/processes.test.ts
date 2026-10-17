@@ -1,7 +1,81 @@
+import { EventEmitter } from 'node:events'
+import type { ChildProcess } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { clientForProcess, processSnapshotFrom, type ProcessInfo } from './processes'
+import { ResidentShell, clientForProcess, processSnapshotFrom, residentScript, type ProcessInfo } from './processes'
 
 const proc = (pid: number, parentPid: number, name: string, commandLine = ''): ProcessInfo => ({ pid, parentPid, name, commandLine })
+
+/** A stand-in for the resident PowerShell: records prompts, emits replies on demand. */
+function fakeShell() {
+  const spawns: Array<{ args: string[]; prompts: number; child: EventEmitter & Partial<ChildProcess>; say: (text: string) => void }> = []
+  const launch = (_command: string, args: string[]): ChildProcess => {
+    const child = new EventEmitter() as EventEmitter & Partial<ChildProcess>
+    const stdout = new EventEmitter()
+    const entry = { args, prompts: 0, child, say: (text: string) => stdout.emit('data', text) }
+    Object.assign(child, {
+      stdout: Object.assign(stdout, { setEncoding() {} }),
+      stderr: Object.assign(new EventEmitter(), { resume() {} }),
+      stdin: { write: () => { entry.prompts += 1; return true }, end() {} },
+      exitCode: null,
+      killed: false,
+      kill: () => { Object.assign(child, { killed: true }); child.emit('exit', 0); return true }
+    })
+    spawns.push(entry)
+    return child as ChildProcess
+  }
+  return { spawns, launch }
+}
+
+const END = '@@CUTE_ISLAND_PROCESSES_END@@'
+/** Queries are queued, so the shell starts on a later microtask than the call. */
+const settled = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+describe('resident process query shell', () => {
+  it('reuses one shell across queries and reassembles answers split across chunks', async () => {
+    const { spawns, launch } = fakeShell()
+    const shell = new ResidentShell(launch)
+    const first = shell.ask('Q')
+    await settled()
+    expect(spawns).toHaveLength(1)
+    // A chunk boundary may fall anywhere, including inside the sentinel.
+    spawns[0].say('[{"pid":1}')
+    spawns[0].say(']' + END.slice(0, 5))
+    spawns[0].say(END.slice(5) + '\n')
+    expect(await first).toBe('[{"pid":1}]')
+    const second = shell.ask('Q')
+    await settled()
+    spawns[0].say('[{"pid":2}]' + END + '\n')
+    expect(await second).toBe('[{"pid":2}]')
+    // Still the same console host: no second spawn.
+    expect(spawns).toHaveLength(1)
+    expect(spawns[0].prompts).toBe(2)
+    shell.dispose()
+  })
+
+  it('starts a new shell after the old one dies, and rejects what was in flight', async () => {
+    const { spawns, launch } = fakeShell()
+    const shell = new ResidentShell(launch)
+    const pending = shell.ask('Q')
+    await settled()
+    spawns[0].child.emit('exit', 1)
+    await expect(pending).rejects.toThrow('已退出')
+    const next = shell.ask('Q')
+    await settled()
+    expect(spawns).toHaveLength(2)
+    spawns[1].say('[{"pid":2}]' + END + '\n')
+    expect(await next).toBe('[{"pid":2}]')
+    shell.dispose()
+    await expect(shell.ask('Q')).rejects.toThrow('已停止')
+  })
+
+  it('wraps a query in a read-answer-mark loop that survives a failing query', () => {
+    const script = residentScript('Get-Thing')
+    expect(script).toContain('while ($null -ne [Console]::In.ReadLine())')
+    // A throwing query must still print the sentinel, or the reader waits forever.
+    expect(script).toContain("try { Get-Thing } catch { '[]' }")
+    expect(script.indexOf(END)).toBeGreaterThan(script.indexOf('Get-Thing'))
+  })
+})
 
 describe('session client process evidence', () => {
   it('detects desktop Cursor without treating arbitrary command arguments as a host', () => {

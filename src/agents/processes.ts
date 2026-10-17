@@ -1,10 +1,13 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { promisify } from 'node:util'
 import { BUILTIN_PLUGINS } from './plugins'
 import type { AgentPlugin } from './types'
 
 const execFileAsync = promisify(execFile)
 const RUNTIMES = ['node', 'nodejs', 'bun']
+/** Marks the end of one query's output on the resident shell's stdout. */
+const SENTINEL = '@@CUTE_ISLAND_PROCESSES_END@@'
+const QUERY_TIMEOUT_MS = 8000
 
 /** Kinds of agents with a running process, detected from executables and npm script paths. */
 export async function listAgentProcesses(plugins: readonly AgentPlugin[] = BUILTIN_PLUGINS): Promise<Set<string>> {
@@ -24,12 +27,136 @@ export interface ProcessSnapshot {
   processes: ProcessInfo[]
 }
 
+/**
+ * A long-lived PowerShell that answers repeated process queries.
+ *
+ * Spawning a fresh powershell.exe allocates and tears down a console host every
+ * time, even with windowsHide. That churn steals activation, which closes IME
+ * candidate windows and tray flyouts mid-interaction. One resident shell
+ * allocates its console once and reuses it, and is ~2x faster per query.
+ */
+export class ResidentShell {
+  private child?: ChildProcess
+  private buffer = ''
+  private pending?: { resolve: (text: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+  private queue: Promise<unknown> = Promise.resolve()
+  private disposed = false
+
+  constructor(private readonly launch: (command: string, args: string[]) => ChildProcess =
+  (command, args) => spawn(command, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })) {}
+
+  /** Queries are serialized: one shell, one stdout stream, one answer at a time. */
+  ask(script: string): Promise<string> {
+    const run = this.queue.then(() => this.exchange(script), () => this.exchange(script))
+    this.queue = run.catch(() => {})
+    return run
+  }
+
+  dispose(): void {
+    this.disposed = true
+    this.settle(new Error('进程查询已停止'))
+    this.kill()
+  }
+
+  private exchange(script: string): Promise<string> {
+    if (this.disposed) return Promise.reject(new Error('进程查询已停止'))
+    const child = this.ensure(script)
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        // A wedged shell must not stall every later scan; drop it and start over.
+        this.settle(new Error('进程查询超时'))
+        this.kill()
+      }, QUERY_TIMEOUT_MS)
+      timer.unref?.()
+      this.pending = { resolve, reject, timer }
+      try { child.stdin!.write('\n') } catch (error) {
+        this.settle(error instanceof Error ? error : new Error('无法向进程查询发送指令'))
+        this.kill()
+      }
+    })
+  }
+
+  private ensure(script: string): ChildProcess {
+    if (this.child && !this.child.killed && this.child.exitCode === null) return this.child
+    this.buffer = ''
+    const child = this.launch('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', residentScript(script)])
+    this.child = child
+    child.stderr?.resume()
+    child.stdout?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => this.receive(chunk))
+    child.once('error', () => { this.settle(new Error('进程查询进程启动失败')); if (this.child === child) this.child = undefined })
+    child.once('exit', () => {
+      this.settle(new Error('进程查询进程已退出'))
+      if (this.child === child) this.child = undefined
+    })
+    return child
+  }
+
+  private receive(chunk: string): void {
+    this.buffer += chunk
+    const at = this.buffer.indexOf(SENTINEL)
+    if (at < 0) {
+      // Never let a silent or runaway shell grow without bound.
+      if (this.buffer.length > 8 * 1024 * 1024) { this.settle(new Error('进程查询返回内容过大')); this.kill() }
+      return
+    }
+    const payload = this.buffer.slice(0, at)
+    this.buffer = this.buffer.slice(at + SENTINEL.length).replace(/^\r?\n/, '')
+    const pending = this.pending
+    this.pending = undefined
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pending.resolve(payload)
+  }
+
+  private settle(error: Error): void {
+    const pending = this.pending
+    this.pending = undefined
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pending.reject(error)
+  }
+
+  private kill(): void {
+    const child = this.child
+    this.child = undefined
+    this.buffer = ''
+    if (!child) return
+    try { child.stdin?.end() } catch { /* Already gone. */ }
+    child.kill()
+  }
+}
+
+/** Wrap a one-shot query in a read-a-line, answer, mark-the-end loop. */
+export function residentScript(query: string): string {
+  return `$ErrorActionPreference = 'Continue'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; `
+    + `while ($null -ne [Console]::In.ReadLine()) { try { ${query} } catch { '[]' } ; `
+    + `[Console]::Out.WriteLine('${SENTINEL}'); [Console]::Out.Flush() }`
+}
+
+const windowsShell = new ResidentShell()
+
+/** Release the resident shell. Later queries start a new one. */
+export function stopProcessQueries(): void {
+  windowsShell.dispose()
+}
+
 /** One query provides both liveness and the ancestry needed for session client labels. */
 export async function listProcessSnapshot(plugins: readonly AgentPlugin[] = BUILTIN_PLUGINS): Promise<ProcessSnapshot> {
-  const { stdout } = process.platform === 'win32'
-      ? await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', windowsSnapshotScript(plugins)],
-        { encoding: 'utf8', timeout: 5000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 })
-      : await execFileAsync('ps', ['-ax', '-o', 'pid=,ppid=,args='], { encoding: 'utf8', timeout: 3000, maxBuffer: 2 * 1024 * 1024 })
+  if (process.platform !== 'win32') {
+    const { stdout } = await execFileAsync('ps', ['-ax', '-o', 'pid=,ppid=,args='], { encoding: 'utf8', timeout: 3000, maxBuffer: 2 * 1024 * 1024 })
+    return processSnapshotFrom(stdout, process.platform, plugins)
+  }
+  const script = windowsSnapshotScript(plugins)
+  let stdout: string
+  try {
+    stdout = await windowsShell.ask(script)
+  } catch {
+    // The resident shell died or wedged. Answer this round with a one-shot query;
+    // the next one spawns a fresh resident shell.
+    stdout = (await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 })).stdout
+  }
   return processSnapshotFrom(stdout, process.platform, plugins)
 }
 

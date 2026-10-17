@@ -6,7 +6,7 @@ import { mapLimited, readSession, SessionReader, type SessionFile } from './file
 import { SessionDiscovery } from './discovery'
 import { activityId } from './parse'
 import { BUILTIN_PLUGINS } from './plugins'
-import { clientForProcess, listProcessSnapshot, matchAgentProcesses, registrationMatchesProcess, type ProcessSnapshot } from './processes'
+import { clientForProcess, listProcessSnapshot, matchAgentProcesses, registrationMatchesProcess, stopProcessQueries, type ProcessSnapshot } from './processes'
 import { dropActiveTasks, mergeChildTasks, presentTasks, type ChildSession } from './reduce'
 import type { AgentPlugin, ChildLink, SessionView } from './types'
 
@@ -69,6 +69,7 @@ export class SessionWatcher {
   private readonly now: () => number
   private readonly listProcesses: WatchOptions['listProcesses']
   private readonly listSnapshot: WatchOptions['listProcessSnapshot']
+  private readonly listSnapshotInjected: boolean
   private processPending?: Promise<void>
   private readonly intervalMs: number
   private readonly freshMs: number
@@ -104,6 +105,7 @@ export class SessionWatcher {
       discovery: new SessionDiscovery(roots[plugin.kind], plugin) }))
     this.now = options.now ?? Date.now
     this.listProcesses = options.listProcesses
+    this.listSnapshotInjected = !!options.listProcessSnapshot || !!options.listProcesses
     this.listSnapshot = options.listProcessSnapshot ?? (options.listProcesses ? undefined : () => listProcessSnapshot(plugins))
     this.intervalMs = options.intervalMs ?? 800
     this.freshMs = options.freshMs ?? FRESH_MS
@@ -140,6 +142,8 @@ export class SessionWatcher {
     this.processPending = undefined
     this.lastProcesses = -Infinity
     for (const source of this.sources) source.discovery.close()
+    // Only the default snapshot source owns the resident shell; injected ones are the caller's.
+    if (!this.listSnapshotInjected) stopProcessQueries()
   }
 
   /** Concurrent requests share a scan; slow disks never create overlapping work. */
