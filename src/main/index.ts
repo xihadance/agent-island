@@ -38,6 +38,8 @@ const WINDOW_HEIGHT = 560
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+/** What the tray currently shows, so unchanged refreshes never disturb it. */
+let trayMenuSignature = ''
 let server: StatusServer | null = null
 let store: ActivityStore | null = null
 let watcher: SessionWatcher | null = null
@@ -569,6 +571,8 @@ function createTray(): Tray {
   const icon = nativeImage.createFromDataURL(TRAY_ICON)
   if (process.platform === 'darwin') icon.setTemplateImage(true)
   const next = new Tray(icon)
+  // A fresh tray owns nothing yet; never let a previous tray's signature skip its menu.
+  trayMenuSignature = ''
   updateTrayMenu(next)
   next.on('click', () => reveal())
   next.on('double-click', () => openSettings())
@@ -579,7 +583,14 @@ function updateTrayMenu(next: Tray): void {
   const remote = control?.status()
   const configured = existsSync(remoteConfigFile())
   const remoteLabel = controlLoadError ? '不可用，请检查配置' : remote?.error ? '启动或清理失败' : remote?.enabled ? '已开启' : configured ? '已关闭' : '请先配置'
-  next.setToolTip(`Cute Island · ${islandMode === 'managed' ? '托管模式' : '关注模式'}${preferences.automation.enabled ? ' · 自动审批' : ''} · 远程接管${remoteLabel}`)
+  const tooltip = `Cute Island · ${islandMode === 'managed' ? '托管模式' : '关注模式'}${preferences.automation.enabled ? ' · 自动审批' : ''} · 远程接管${remoteLabel}`
+  // Control state changes on every request and delivery, far more often than this
+  // menu's contents do. Re-applying it closes an open tray menu and flickers the
+  // tooltip, so only touch the tray when something it actually shows changed.
+  const signature = JSON.stringify([tooltip, configured, testingRemoteConnection, remote?.enabled ?? false])
+  if (signature === trayMenuSignature) return
+  trayMenuSignature = signature
+  next.setToolTip(tooltip)
   const menu = Menu.buildFromTemplate([
     { label: '打开配置…', accelerator: 'CmdOrCtrl+,', click: openSettings },
     { type: 'separator' },
