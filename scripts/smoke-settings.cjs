@@ -247,7 +247,7 @@ async function fixture() {
   await evaluate('document.querySelector("[data-testid=theme-light]").click()')
   await until(async () => (await state()).preferences.theme === 'light')
   assert.equal(nativeTheme.themeSource, 'light')
-  assert.equal(settings.getBackgroundColor().toLowerCase(), '#ffffff')
+  assert.equal(settings.getBackgroundColor().toLowerCase(), '#eef0f3')
   await evaluate('document.querySelector("[data-testid=theme-light]").focus()')
   settings.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Right' })
   settings.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Right' })

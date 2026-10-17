@@ -525,7 +525,7 @@ function openRemoteSettings(): void {
   else navigate()
 }
 
-function settingsBackground(): string { return nativeTheme.shouldUseDarkColors ? '#151516' : '#ffffff' }
+function settingsBackground(): string { return nativeTheme.shouldUseDarkColors ? '#121214' : '#eef0f3' }
 function syncSettingsBackground(): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.setBackgroundColor(settingsBackground())
 }

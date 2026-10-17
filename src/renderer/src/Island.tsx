@@ -366,7 +366,7 @@ function metricsFor(
   return {
     width: 380,
     height: activity ? expandedHeight(activity, 0) : 168,
-    radius: 40
+    radius: 32
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-15T11:50:23+00:00",
+  "generatedAt": "2026-10-17T13:10:00+08:00",
   "title": "Design System: Cute Island",
   "extensions": {
     "colorMeta": {
@@ -118,17 +118,7 @@
       },
       "island-secondary-text": {
         "role": "neutral",
-        "displayName": "Island Secondary Text",
-        "tonalRamp": [
-          "oklch(15.00% 0.0000 0.00 / 0.78)",
-          "oklch(26.43% 0.0000 0.00 / 0.78)",
-          "oklch(37.86% 0.0000 0.00 / 0.78)",
-          "oklch(49.29% 0.0000 0.00 / 0.78)",
-          "oklch(60.71% 0.0000 0.00 / 0.78)",
-          "oklch(72.14% 0.0000 0.00 / 0.78)",
-          "oklch(83.57% 0.0000 0.00 / 0.78)",
-          "oklch(95.00% 0.0000 0.00 / 0.78)"
-        ]
+        "displayName": "Island Secondary Text"
       },
       "island-button": {
         "role": "neutral",
@@ -174,31 +164,11 @@
       },
       "settings-background": {
         "role": "neutral",
-        "displayName": "Settings Background",
-        "tonalRamp": [
-          "oklch(15.00% 0.0020 286.22)",
-          "oklch(26.43% 0.0020 286.22)",
-          "oklch(37.86% 0.0020 286.22)",
-          "oklch(49.29% 0.0020 286.22)",
-          "oklch(60.71% 0.0020 286.22)",
-          "oklch(72.14% 0.0020 286.22)",
-          "oklch(83.57% 0.0020 286.22)",
-          "oklch(95.00% 0.0020 286.22)"
-        ]
+        "displayName": "Settings Background"
       },
       "settings-sidebar": {
         "role": "neutral",
-        "displayName": "Settings Sidebar",
-        "tonalRamp": [
-          "oklch(15.00% 0.0020 286.18)",
-          "oklch(26.43% 0.0020 286.18)",
-          "oklch(37.86% 0.0020 286.18)",
-          "oklch(49.29% 0.0020 286.18)",
-          "oklch(60.71% 0.0020 286.18)",
-          "oklch(72.14% 0.0020 286.18)",
-          "oklch(83.57% 0.0020 286.18)",
-          "oklch(95.00% 0.0020 286.18)"
-        ]
+        "displayName": "Settings Sidebar"
       },
       "settings-text": {
         "role": "neutral",
@@ -244,17 +214,7 @@
       },
       "settings-line": {
         "role": "neutral",
-        "displayName": "Settings Line",
-        "tonalRamp": [
-          "oklch(15.00% 0.0089 285.87)",
-          "oklch(26.43% 0.0089 285.87)",
-          "oklch(37.86% 0.0089 285.87)",
-          "oklch(49.29% 0.0089 285.87)",
-          "oklch(60.71% 0.0089 285.87)",
-          "oklch(72.14% 0.0089 285.87)",
-          "oklch(83.57% 0.0089 285.87)",
-          "oklch(95.00% 0.0089 285.87)"
-        ]
+        "displayName": "Settings Line"
       },
       "settings-accent": {
         "role": "primary",
@@ -314,17 +274,7 @@
       },
       "settings-surface": {
         "role": "neutral",
-        "displayName": "Settings Surface",
-        "tonalRamp": [
-          "oklch(15.00% 0.0057 285.96)",
-          "oklch(26.43% 0.0057 285.96)",
-          "oklch(37.86% 0.0057 285.96)",
-          "oklch(49.29% 0.0057 285.96)",
-          "oklch(60.71% 0.0057 285.96)",
-          "oklch(72.14% 0.0057 285.96)",
-          "oklch(83.57% 0.0057 285.96)",
-          "oklch(95.00% 0.0057 285.96)"
-        ]
+        "displayName": "Settings Surface"
       },
       "settings-input": {
         "role": "neutral",
@@ -650,31 +600,11 @@
       },
       "settings-light-background": {
         "role": "neutral",
-        "displayName": "Settings Light Background",
-        "tonalRamp": [
-          "oklch(15.00% 0.0000 0.00)",
-          "oklch(26.43% 0.0000 0.00)",
-          "oklch(37.86% 0.0000 0.00)",
-          "oklch(49.29% 0.0000 0.00)",
-          "oklch(60.71% 0.0000 0.00)",
-          "oklch(72.14% 0.0000 0.00)",
-          "oklch(83.57% 0.0000 0.00)",
-          "oklch(95.00% 0.0000 0.00)"
-        ]
+        "displayName": "Settings Light Background"
       },
       "settings-light-sidebar": {
         "role": "neutral",
-        "displayName": "Settings Light Sidebar",
-        "tonalRamp": [
-          "oklch(15.00% 0.0017 247.84)",
-          "oklch(26.43% 0.0017 247.84)",
-          "oklch(37.86% 0.0017 247.84)",
-          "oklch(49.29% 0.0017 247.84)",
-          "oklch(60.71% 0.0017 247.84)",
-          "oklch(72.14% 0.0017 247.84)",
-          "oklch(83.57% 0.0017 247.84)",
-          "oklch(95.00% 0.0017 247.84)"
-        ]
+        "displayName": "Settings Light Sidebar"
       },
       "settings-light-text": {
         "role": "neutral",
@@ -706,31 +636,11 @@
       },
       "settings-light-muted": {
         "role": "neutral",
-        "displayName": "Settings Light Muted",
-        "tonalRamp": [
-          "oklch(15.00% 0.0208 261.30)",
-          "oklch(26.43% 0.0208 261.30)",
-          "oklch(37.86% 0.0208 261.30)",
-          "oklch(49.29% 0.0208 261.30)",
-          "oklch(60.71% 0.0208 261.30)",
-          "oklch(72.14% 0.0208 261.30)",
-          "oklch(83.57% 0.0208 261.30)",
-          "oklch(95.00% 0.0208 261.30)"
-        ]
+        "displayName": "Settings Light Muted"
       },
       "settings-light-line": {
         "role": "neutral",
-        "displayName": "Settings Light Line",
-        "tonalRamp": [
-          "oklch(15.00% 0.0070 247.90)",
-          "oklch(26.43% 0.0070 247.90)",
-          "oklch(37.86% 0.0070 247.90)",
-          "oklch(49.29% 0.0070 247.90)",
-          "oklch(60.71% 0.0070 247.90)",
-          "oklch(72.14% 0.0070 247.90)",
-          "oklch(83.57% 0.0070 247.90)",
-          "oklch(95.00% 0.0070 247.90)"
-        ]
+        "displayName": "Settings Light Line"
       },
       "settings-light-accent": {
         "role": "primary",
@@ -790,17 +700,7 @@
       },
       "settings-light-surface": {
         "role": "neutral",
-        "displayName": "Settings Light Surface",
-        "tonalRamp": [
-          "oklch(15.00% 0.0029 264.54)",
-          "oklch(26.43% 0.0029 264.54)",
-          "oklch(37.86% 0.0029 264.54)",
-          "oklch(49.29% 0.0029 264.54)",
-          "oklch(60.71% 0.0029 264.54)",
-          "oklch(72.14% 0.0029 264.54)",
-          "oklch(83.57% 0.0029 264.54)",
-          "oklch(95.00% 0.0029 264.54)"
-        ]
+        "displayName": "Settings Light Surface"
       },
       "settings-light-input": {
         "role": "neutral",
@@ -1081,6 +981,30 @@
           "oklch(83.57% 0.0186 256.31)",
           "oklch(95.00% 0.0186 256.31)"
         ]
+      },
+      "island-muted-text": {
+        "role": "neutral",
+        "displayName": "Island Muted Text"
+      },
+      "island-subtle-text": {
+        "role": "neutral",
+        "displayName": "Island Subtle Text"
+      },
+      "island-line": {
+        "role": "neutral",
+        "displayName": "Island Line"
+      },
+      "island-raised": {
+        "role": "neutral",
+        "displayName": "Island Raised"
+      },
+      "settings-card-line": {
+        "role": "neutral",
+        "displayName": "Settings Card Line"
+      },
+      "settings-light-card-line": {
+        "role": "neutral",
+        "displayName": "Settings Light Card Line"
       }
     },
     "typographyMeta": {
@@ -1123,12 +1047,20 @@
       "timestamp": {
         "displayName": "Timestamp",
         "purpose": "History timing metadata and narrow save feedback."
+      },
+      "island-agent": {
+        "displayName": "Compact Agent name",
+        "purpose": "Supporting identity at 11.5px and .82 opacity without spending compact title width."
+      },
+      "island-metadata": {
+        "displayName": "Island metadata",
+        "purpose": "10px client labels and compact timing."
       }
     },
     "shadows": [
       {
         "name": "island-rest",
-        "value": "0 16px 40px rgba(0, 0, 0, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.08)",
+        "value": "0 2px 6px rgba(0, 0, 0, 0.30), 0 18px 44px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(255, 255, 255, 0.09)",
         "purpose": "Default floating island."
       },
       {
@@ -1138,18 +1070,28 @@
       },
       {
         "name": "island-approval",
-        "value": "0 18px 36px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(243, 199, 106, 0.5)",
+        "value": "0 2px 6px rgba(0, 0, 0, 0.30), 0 18px 44px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(243, 199, 106, 0.58)",
         "purpose": "Approval attention."
       },
       {
         "name": "island-error",
-        "value": "0 18px 36px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 105, 97, 0.7)",
+        "value": "0 2px 6px rgba(0, 0, 0, 0.30), 0 18px 44px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(255, 105, 97, 0.72)",
         "purpose": "Error attention."
       },
       {
         "name": "island-focus",
-        "value": "0 18px 36px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.55)",
+        "value": "0 2px 6px rgba(0, 0, 0, 0.30), 0 18px 44px rgba(0, 0, 0, 0.30), inset 0 0 0 1px rgba(255, 255, 255, 0.55)",
         "purpose": "Keyboard focus."
+      },
+      {
+        "name": "settings-card-dark",
+        "value": "0 1px 2px rgba(0, 0, 0, 0.4)",
+        "purpose": "Functional section, note, history and master-switch card."
+      },
+      {
+        "name": "settings-card-light",
+        "value": "0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1)",
+        "purpose": "White cards on the gray light canvas."
       }
     ],
     "motion": [
@@ -1209,8 +1151,8 @@
         "minimum": "640 × 540px"
       },
       "focus": "2px solid var(--settings-focus), offset 3px; radio containers use focus-within.",
-      "previewGeometry": "Three CSS miniatures, 76px high (62px at 560px); 4px frame, 2px line marks and 3px action corners. Compact inner choices use 5px corners.",
-      "review": "Full SHIP review; see surfaces/src-renderer-src-settings-tsx.md for capture matrix, validation and limitations."
+      "previewGeometry": "Three CSS miniatures, 76px high (62px at 560px); 6px frame, 2px line marks and 3px action corners. Compact inner choices use 4px corners.",
+      "review": "October 17 prototype implementation: native settings and interaction smoke passed; in-thread fallback review after independent agents failed at service transport. See surface briefs for scope and limits."
     }
   },
   "components": [
@@ -1220,7 +1162,7 @@
       "refersTo": "button-primary",
       "description": "Green integration action; its label changes with connection state.",
       "html": "<div class=\"ds-preview\"><button class=\"ds-button ds-primary\" type=\"button\">安装接入</button></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--settings-control-border,#626670);border-radius:7px;padding:8px 13px;min-height:38px;background:var(--settings-button,#252529);color:var(--settings-text,#f1f1f3);white-space:nowrap}.ds-button:hover:not(:disabled){background:var(--settings-hover,#333339);border-color:var(--settings-control-hover,#858995)}.ds-primary{background:var(--settings-accent,#78db9c);border-color:var(--settings-accent,#78db9c);color:var(--settings-accent-ink,#112419);font-weight:600}.ds-primary:hover:not(:disabled){background:var(--settings-accent-hover,#93e6b0);border-color:var(--settings-accent-hover,#93e6b0)}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--settings-control-border,#626670);border-radius:8px;padding:8px 13px;min-height:38px;background:var(--settings-button,#252529);color:var(--settings-text,#f1f1f3);white-space:nowrap}.ds-button:hover:not(:disabled){background:var(--settings-hover,#333339);border-color:var(--settings-control-hover,#858995)}.ds-primary{background:var(--settings-accent,#78db9c);border-color:var(--settings-accent,#78db9c);color:var(--settings-accent-ink,#112419);font-weight:600}.ds-primary:hover:not(:disabled){background:var(--settings-accent-hover,#93e6b0);border-color:var(--settings-accent-hover,#93e6b0)}"
     },
     {
       "name": "Secondary settings button",
@@ -1228,7 +1170,7 @@
       "refersTo": "button-secondary",
       "description": "Neutral settings action.",
       "html": "<div class=\"ds-preview\"><button class=\"ds-button\" type=\"button\">保存地址</button></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--settings-control-border,#626670);border-radius:7px;padding:8px 13px;min-height:38px;background:var(--settings-button,#252529);color:var(--settings-text,#f1f1f3);white-space:nowrap}.ds-button:hover:not(:disabled){background:var(--settings-hover,#333339);border-color:var(--settings-control-hover,#858995)}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--settings-control-border,#626670);border-radius:8px;padding:8px 13px;min-height:38px;background:var(--settings-button,#252529);color:var(--settings-text,#f1f1f3);white-space:nowrap}.ds-button:hover:not(:disabled){background:var(--settings-hover,#333339);border-color:var(--settings-control-hover,#858995)}"
     },
     {
       "name": "Island dismissal button",
@@ -1244,7 +1186,7 @@
       "refersTo": "input",
       "description": "Labeled address input with the shared settings focus outline.",
       "html": "<div class=\"ds-preview\"><label class=\"ds-label\" for=\"ds-codex-url\">WebSocket 地址</label><input class=\"ds-input\" id=\"ds-codex-url\" type=\"text\" spellcheck=\"false\" autocomplete=\"off\" placeholder=\"ws://127.0.0.1:4500\"></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-label{display:block;font-size:13px;color:var(--settings-secondary,#c2c2ca);margin:0 0 7px}.ds-input{font:inherit;font-size:13px;min-width:0;padding:9px 12px;border:1px solid var(--settings-control-border,#626670);border-radius:7px;background:var(--settings-input,#19191c);color:var(--settings-text,#f1f1f3);caret-color:var(--settings-accent,#78db9c)}.ds-input::placeholder{color:var(--settings-placeholder,#a1a1ad)}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-label{display:block;font-size:13px;color:var(--settings-secondary,#c2c2ca);margin:0 0 7px}.ds-input{font:inherit;font-size:13px;min-width:0;padding:9px 12px;border:1px solid var(--settings-control-border,#626670);border-radius:8px;background:var(--settings-input,#19191c);color:var(--settings-text,#f1f1f3);caret-color:var(--settings-accent,#78db9c)}.ds-input::placeholder{color:var(--settings-placeholder,#a1a1ad)}"
     },
     {
       "name": "Settings navigation",
@@ -1252,7 +1194,7 @@
       "refersTo": "navigation",
       "description": "Current location uses a neutral fill, theme-appropriate text and green icon.",
       "html": "<div class=\"ds-preview\"><nav class=\"ds-nav\" aria-label=\"配置分类\"><button type=\"button\" aria-current=\"page\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m13 3-8 11h6l-1 7 9-12h-6z\"/></svg><span>自动审批</span></button></nav></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-nav{display:flex;flex-direction:column;gap:5px}.ds-nav button{font:inherit;cursor:pointer;border:0;display:flex;align-items:center;gap:11px;text-align:left;min-height:44px;padding:10px 13px;border-radius:8px;color:var(--settings-secondary,#c2c2ca);background:transparent}.ds-nav button:hover{background:var(--settings-hover,#333339);color:var(--settings-text,#f1f1f3)}.ds-nav button[aria-current=\"page\"]{background:var(--settings-selected,#29292d);color:var(--settings-text,#f1f1f3)}.ds-nav button[aria-current=\"page\"] svg{color:var(--settings-accent,#78db9c)}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-nav{display:flex;flex-direction:column;gap:5px}.ds-nav button{font:inherit;cursor:pointer;border:0;display:flex;align-items:center;gap:12px;text-align:left;min-height:44px;padding:10px 12px;border-radius:8px;color:var(--settings-secondary,#c2c2ca);background:transparent}.ds-nav button:hover{background:var(--settings-hover,#333339);color:var(--settings-text,#f1f1f3)}.ds-nav button[aria-current=\"page\"]{background:var(--settings-enabled-surface,#1b2820);color:var(--settings-accent,#78db9c);font-weight:600;box-shadow:inset 2px 0 0 var(--settings-accent,#78db9c)}.ds-nav button[aria-current=\"page\"] svg{color:var(--settings-accent,#78db9c)}"
     },
     {
       "name": "Task count badge",
@@ -1268,7 +1210,7 @@
       "refersTo": "automation-card",
       "description": "Paused automation surface with a separate status footer; enabled variants are driven by data-enabled.",
       "html": "<div class=\"ds-preview\"><div class=\"ds-master\" data-enabled=\"false\"><div class=\"ds-master-row\"><div><label id=\"ds-master-label\">自动审批模式</label><p id=\"ds-master-description\">当前已暂停，所有请求由你在原 Agent 中处理。</p></div><button class=\"ds-switch\" role=\"switch\" type=\"button\" aria-checked=\"false\" aria-labelledby=\"ds-master-label\" aria-describedby=\"ds-master-description\"><span></span></button></div><div class=\"ds-master-foot\"><span class=\"ds-dot\" aria-hidden=\"true\"></span>需要时可随时开启<button type=\"button\">管理接入 →</button></div></div></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-switch{flex:none;cursor:pointer;width:42px;height:25px;border:1px solid var(--settings-control-border,#626670);border-radius:99px;padding:3px;background:var(--settings-switch,#3c3c44);transition:background-color 150ms ease-out}.ds-switch span{width:17px;height:17px;border-radius:50%;background:var(--settings-switch-knob,#e7e7eb);display:block;transition:transform 150ms ease-out}.ds-switch[aria-checked=\"true\"]{border-color:var(--settings-accent,#78db9c);background:var(--settings-accent,#78db9c)}.ds-switch[aria-checked=\"true\"] span{transform:translateX(16px);background:var(--settings-accent-ink,#112419)}.ds-switch:hover:not(:disabled){filter:brightness(1.13)}@media(prefers-reduced-motion:reduce){.ds-switch,.ds-switch span{transition:none}}.ds-master{border:1px solid var(--settings-line,#303035);border-radius:10px;overflow:hidden;background:var(--settings-surface,#1e1e21)}.ds-master[data-enabled=\"true\"]{border-color:var(--settings-enabled-border,#547b61);background:var(--settings-enabled-surface,#1b2820)}.ds-master-row{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:24px 22px}.ds-master label{font-size:17px;font-weight:600}.ds-master p{margin:5px 0 0;color:var(--settings-muted,#aaaab3);font-size:13px;max-width:64ch}.ds-master-foot{display:flex;align-items:center;gap:8px;min-height:42px;padding:9px 22px;border-top:1px solid var(--settings-line,#303035);color:var(--settings-secondary,#c2c2ca);font-size:12px}.ds-master[data-enabled=\"true\"] p,.ds-master[data-enabled=\"true\"] .ds-master-foot{color:var(--settings-enabled-muted,#bbcebf)}.ds-dot{width:6px;height:6px;display:inline-block;border-radius:50%;background:var(--settings-muted,#aaaab3);flex:none}.ds-master[data-enabled=\"true\"] .ds-dot{background:var(--settings-accent,#78db9c)}.ds-master-foot button{font:inherit;cursor:pointer;margin-left:auto;color:inherit;background:none;border:0;padding:3px 0 3px 12px}.ds-master-foot button:hover{text-decoration:underline;text-underline-offset:3px}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-switch{flex:none;cursor:pointer;width:42px;height:25px;border:1px solid var(--settings-control-border,#626670);border-radius:99px;padding:3px;background:var(--settings-switch,#3c3c44);transition:background-color 150ms ease-out}.ds-switch span{width:17px;height:17px;border-radius:50%;background:var(--settings-switch-knob,#e7e7eb);display:block;transition:transform 150ms ease-out}.ds-switch[aria-checked=\"true\"]{border-color:var(--settings-accent,#78db9c);background:var(--settings-accent,#78db9c)}.ds-switch[aria-checked=\"true\"] span{transform:translateX(17px);background:var(--settings-accent-ink,#112419)}.ds-switch:hover:not(:disabled){filter:brightness(1.13)}@media(prefers-reduced-motion:reduce){.ds-switch,.ds-switch span{transition:none}}.ds-master{border:1px solid var(--settings-line,#32323a);border-radius:12px;overflow:hidden;background:var(--settings-surface,#1c1c21)}.ds-master[data-enabled=\"true\"]{border-color:var(--settings-enabled-border,#547b61);background:var(--settings-enabled-surface,#1b2820)}.ds-master-row{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:24px}.ds-master label{font-size:17px;font-weight:600}.ds-master p{margin:5px 0 0;color:var(--settings-muted,#aaaab3);font-size:13px;max-width:64ch}.ds-master-foot{display:flex;align-items:center;gap:8px;min-height:42px;padding:8px 24px;border-top:1px solid var(--settings-line,#32323a);color:var(--settings-secondary,#c2c2ca);font-size:12px}.ds-master[data-enabled=\"true\"] p,.ds-master[data-enabled=\"true\"] .ds-master-foot{color:var(--settings-enabled-muted,#bbcebf)}.ds-dot{width:6px;height:6px;display:inline-block;border-radius:50%;background:var(--settings-muted,#aaaab3);flex:none}.ds-master[data-enabled=\"true\"] .ds-dot{background:var(--settings-accent,#78db9c)}.ds-master-foot button{font:inherit;cursor:pointer;margin-left:auto;color:inherit;background:none;border:0;padding:3px 0 3px 12px}.ds-master-foot button:hover{text-decoration:underline;text-underline-offset:3px}"
     },
     {
       "name": "Enabled switch",
@@ -1276,7 +1218,7 @@
       "refersTo": "switch-enabled",
       "description": "Checked switch presentation; production state and saving are owned by React.",
       "html": "<div class=\"ds-preview\"><button class=\"ds-switch\" type=\"button\" role=\"switch\" aria-checked=\"true\" aria-label=\"自动批准权限请求\"><span></span></button></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-switch{flex:none;cursor:pointer;width:42px;height:25px;border:1px solid var(--settings-control-border,#626670);border-radius:99px;padding:3px;background:var(--settings-switch,#3c3c44);transition:background-color 150ms ease-out}.ds-switch span{width:17px;height:17px;border-radius:50%;background:var(--settings-switch-knob,#e7e7eb);display:block;transition:transform 150ms ease-out}.ds-switch[aria-checked=\"true\"]{border-color:var(--settings-accent,#78db9c);background:var(--settings-accent,#78db9c)}.ds-switch[aria-checked=\"true\"] span{transform:translateX(16px);background:var(--settings-accent-ink,#112419)}.ds-switch:hover:not(:disabled){filter:brightness(1.13)}@media(prefers-reduced-motion:reduce){.ds-switch,.ds-switch span{transition:none}}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-switch{flex:none;cursor:pointer;width:42px;height:25px;border:1px solid var(--settings-control-border,#626670);border-radius:99px;padding:3px;background:var(--settings-switch,#3c3c44);transition:background-color 150ms ease-out}.ds-switch span{width:17px;height:17px;border-radius:50%;background:var(--settings-switch-knob,#e7e7eb);display:block;transition:transform 150ms ease-out}.ds-switch[aria-checked=\"true\"]{border-color:var(--settings-accent,#78db9c);background:var(--settings-accent,#78db9c)}.ds-switch[aria-checked=\"true\"] span{transform:translateX(17px);background:var(--settings-accent-ink,#112419)}.ds-switch:hover:not(:disabled){filter:brightness(1.13)}@media(prefers-reduced-motion:reduce){.ds-switch,.ds-switch span{transition:none}}"
     },
     {
       "name": "Primary settings button — light",
@@ -1284,7 +1226,7 @@
       "refersTo": "button-primary-light",
       "description": "The same primary action with light-theme tokens and white label ink.",
       "html": "<div class=\"ds-preview ds-theme-light\"><button class=\"ds-button ds-primary\" type=\"button\">安装接入</button></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--settings-control-border,#626670);border-radius:7px;padding:8px 13px;min-height:38px;background:var(--settings-button,#252529);color:var(--settings-text,#f1f1f3);white-space:nowrap}.ds-button:hover:not(:disabled){background:var(--settings-hover,#333339);border-color:var(--settings-control-hover,#858995)}.ds-primary{background:var(--settings-accent,#78db9c);border-color:var(--settings-accent,#78db9c);color:var(--settings-accent-ink,#112419);font-weight:600}.ds-primary:hover:not(:disabled){background:var(--settings-accent-hover,#93e6b0);border-color:var(--settings-accent-hover,#93e6b0)}.ds-theme-light{--settings-background:#ffffff;--settings-sidebar:#f5f6f7;--settings-text:#202329;--settings-secondary:#454d58;--settings-muted:#626975;--settings-line:#dce0e4;--settings-accent:#21734b;--settings-accent-hover:#195e3c;--settings-accent-ink:#ffffff;--settings-focus:#2362b0;--settings-surface:#f7f8fa;--settings-input:#ffffff;--settings-button:#ffffff;--settings-hover:#e9ecf0;--settings-selected:#e3e8e5;--settings-control-border:#8a919a;--settings-control-hover:#626975;--settings-placeholder:#68707b;--settings-enabled-border:#7caa8d;--settings-enabled-surface:#eaf5ee;--settings-enabled-muted:#42644e;--settings-switch:#727984;--settings-switch-knob:#ffffff;--settings-warning-text:#825a16;--settings-warning-surface:#fff8e9;--settings-warning-border:#cfb471;--settings-error-text:#9c322e;--settings-error-surface:#fff1ef;--settings-error-border:#c98982;--settings-selection:#d3eadb;--settings-scrollbar:#929aa5;background:var(--settings-background);padding:16px}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-button{font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--settings-control-border,#626670);border-radius:8px;padding:8px 13px;min-height:38px;background:var(--settings-button,#252529);color:var(--settings-text,#f1f1f3);white-space:nowrap}.ds-button:hover:not(:disabled){background:var(--settings-hover,#333339);border-color:var(--settings-control-hover,#858995)}.ds-primary{background:var(--settings-accent,#78db9c);border-color:var(--settings-accent,#78db9c);color:var(--settings-accent-ink,#112419);font-weight:600}.ds-primary:hover:not(:disabled){background:var(--settings-accent-hover,#93e6b0);border-color:var(--settings-accent-hover,#93e6b0)}.ds-theme-light{--settings-background:#eef0f3;--settings-sidebar:#e4e7eb;--settings-text:#202329;--settings-secondary:#454d58;--settings-muted:#575e68;--settings-line:#d2d7dd;--settings-accent:#21734b;--settings-accent-hover:#195e3c;--settings-accent-ink:#ffffff;--settings-focus:#2362b0;--settings-surface:#ffffff;--settings-input:#ffffff;--settings-button:#ffffff;--settings-hover:#e9ecf0;--settings-selected:#e3e8e5;--settings-control-border:#8a919a;--settings-control-hover:#626975;--settings-placeholder:#68707b;--settings-enabled-border:#7caa8d;--settings-enabled-surface:#eaf5ee;--settings-enabled-muted:#42644e;--settings-switch:#727984;--settings-switch-knob:#ffffff;--settings-warning-text:#825a16;--settings-warning-surface:#fff8e9;--settings-warning-border:#cfb471;--settings-error-text:#9c322e;--settings-error-surface:#fff1ef;--settings-error-border:#c98982;--settings-selection:#d3eadb;--settings-scrollbar:#929aa5;background:var(--settings-background);padding:16px}"
     },
     {
       "name": "Theme choices",
@@ -1292,17 +1234,25 @@
       "refersTo": "theme-choice",
       "description": "Labeled native radio choices with CSS appearance miniatures; production persistence is owned by React. Panel radios demonstrate keyboard focus and checked styling.",
       "html": "<div class=\"ds-preview\"><div class=\"ds-theme-options\" role=\"radiogroup\" aria-label=\"颜色主题\"><label class=\"ds-theme-choice\"><input type=\"radio\" name=\"ds-theme\" value=\"light\"><span class=\"ds-theme-preview\" data-preview-theme=\"light\" aria-hidden=\"true\"><span class=\"ds-theme-preview-sidebar\"><i></i><i></i><i></i></span><span class=\"ds-theme-preview-content\"><i></i><i></i><b></b></span></span><span>浅色</span></label><label class=\"ds-theme-choice\"><input type=\"radio\" name=\"ds-theme\" value=\"dark\" checked><span class=\"ds-theme-preview\" data-preview-theme=\"dark\" aria-hidden=\"true\"><span class=\"ds-theme-preview-sidebar\"><i></i><i></i><i></i></span><span class=\"ds-theme-preview-content\"><i></i><i></i><b></b></span></span><span>深色</span></label><label class=\"ds-theme-choice\"><input type=\"radio\" name=\"ds-theme\" value=\"system\"><span class=\"ds-theme-preview\" data-preview-theme=\"system\" aria-hidden=\"true\"><span class=\"ds-theme-preview-sidebar\"><i></i><i></i><i></i></span><span class=\"ds-theme-preview-content\"><i></i><i></i><b></b></span></span><span>跟随系统</span></label></div></div>",
-      "css": ".ds-preview{background:var(--settings-background,#151516);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-theme-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ds-theme-choice{display:flex;align-items:center;gap:8px;min-width:0;border:1px solid var(--settings-control-border,#626670);border-radius:8px;padding:10px;cursor:pointer;color:var(--settings-secondary,#c2c2ca);font-size:13px;font-weight:550}.ds-theme-choice:hover{border-color:var(--settings-control-hover,#858995)}.ds-theme-choice:has(input:checked){border-color:var(--settings-accent,#78db9c);background:var(--settings-enabled-surface,#1b2820);color:var(--settings-accent,#78db9c)}.ds-theme-choice:focus-within{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-theme-choice input{accent-color:var(--settings-accent,#78db9c)} .ds-theme-choice{position:relative;display:block}.ds-theme-choice input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.ds-theme-choice:has(input:checked)>span:last-child::after{content:\" ✓\"}.ds-theme-preview{--preview-ground:#ffffff;--preview-sidebar:#e9ecf0;--preview-line:#b3bbc5;--preview-accent:#21734b;display:flex;height:76px;border-radius:4px;overflow:hidden;background:var(--preview-ground);margin-bottom:11px;border:1px solid var(--preview-line)}.ds-theme-preview[data-preview-theme=\"dark\"]{--preview-ground:#1e1e21;--preview-sidebar:#303035;--preview-line:#777d88;--preview-accent:#78db9c}.ds-theme-preview[data-preview-theme=\"system\"]{--preview-ground:#e9ecf0;--preview-sidebar:#303035;--preview-line:#929aa5;--preview-accent:#21734b}.ds-theme-preview-sidebar{width:28%;display:grid;align-content:start;gap:6px;padding:12px 7px;background:var(--preview-sidebar)}.ds-theme-preview-sidebar i{height:3px;border-radius:2px;background:var(--preview-line)}.ds-theme-preview-content{flex:1;padding:13px 12px}.ds-theme-preview-content i{display:block;width:75%;height:4px;background:var(--preview-line);border-radius:2px;margin-bottom:7px}.ds-theme-preview-content i:nth-child(2){width:48%}.ds-theme-preview-content b{display:block;margin-top:13px;width:24px;height:10px;border-radius:3px;background:var(--preview-accent)}"
+      "css": ".ds-preview{background:var(--settings-background,#121214);padding:16px;font-family:-apple-system,BlinkMacSystemFont,\"SF Pro Text\",\"Segoe UI\",\"PingFang SC\",\"Noto Sans SC\",\"Microsoft YaHei\",sans-serif;font-size:14px;line-height:1.65;color:var(--settings-text,#f1f1f3)}.ds-preview :is(button,input,select,a):focus-visible{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-preview :is(button,input,select):disabled{cursor:default;opacity:.5}.ds-theme-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.ds-theme-choice{display:flex;align-items:center;gap:8px;min-width:0;border:1px solid var(--settings-control-border,#626670);border-radius:12px;padding:10px;cursor:pointer;color:var(--settings-secondary,#c2c2ca);font-size:13px;font-weight:550}.ds-theme-choice:hover{border-color:var(--settings-control-hover,#858995)}.ds-theme-choice:has(input:checked){border-color:var(--settings-accent,#78db9c);background:var(--settings-enabled-surface,#1b2820);color:var(--settings-accent,#78db9c)}.ds-theme-choice:focus-within{outline:2px solid var(--settings-focus,#78b9ff);outline-offset:3px}.ds-theme-choice input{accent-color:var(--settings-accent,#78db9c)} .ds-theme-choice{position:relative;display:block}.ds-theme-choice input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.ds-theme-choice:has(input:checked)>span:last-child::after{content:\" ✓\"}.ds-theme-preview{--preview-ground:#ffffff;--preview-sidebar:#e9ecf0;--preview-line:#b3bbc5;--preview-accent:#21734b;display:flex;height:76px;border-radius:6px;overflow:hidden;background:var(--preview-ground);margin-bottom:10px;border:1px solid var(--preview-line)}.ds-theme-preview[data-preview-theme=\"dark\"]{--preview-ground:#1e1e21;--preview-sidebar:#303035;--preview-line:#777d88;--preview-accent:#78db9c}.ds-theme-preview[data-preview-theme=\"system\"]{--preview-ground:#e9ecf0;--preview-sidebar:#303035;--preview-line:#929aa5;--preview-accent:#21734b}.ds-theme-preview-sidebar{width:28%;display:grid;align-content:start;gap:6px;padding:12px 8px;background:var(--preview-sidebar)}.ds-theme-preview-sidebar i{height:3px;border-radius:2px;background:var(--preview-line)}.ds-theme-preview-content{flex:1;padding:12px}.ds-theme-preview-content i{display:block;width:75%;height:4px;background:var(--preview-line);border-radius:2px;margin-bottom:7px}.ds-theme-preview-content i:nth-child(2){width:48%}.ds-theme-preview-content b{display:block;margin-top:13px;width:24px;height:10px;border-radius:3px;background:var(--preview-accent)}"
+    },
+    {
+      "name": "Functional settings section",
+      "kind": "card",
+      "refersTo": "settings-section",
+      "description": "Heading band reaches the card edge; content and row dividers remain inset.",
+      "html": "<section class=\"ds-section\"><h2>窗口与位置</h2><div class=\"ds-section-row\"><strong>灵动岛位置</strong><p>拖动后自动记住位置。</p></div></section>",
+      "css": ".ds-section{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",\"Microsoft YaHei\",sans-serif;line-height:1.65;margin-top:20px;padding:0 20px 4px;border:1px solid var(--settings-card-line,#3a3a44);border-radius:12px;background:var(--settings-surface,#1c1c21);color:var(--settings-text,#f1f1f3);box-shadow:var(--settings-card-shadow,0 1px 2px rgba(0,0,0,.4))}.ds-section h2{margin:0 -20px;padding:14px 20px;border-bottom:1px solid var(--settings-line,#32323a);font-size:14px;font-weight:650}.ds-section-row{padding:20px 0;font-size:14px}.ds-section-row p{margin:4px 0 0;font-size:13px;color:var(--settings-muted,#aaaab3)}"
     }
   ],
   "narrative": {
     "northStar": "",
-    "overview": "Cute Island is a compact black desktop surface for following local Agent activity. Its visual identity comes from the changing island silhouette, system typography, drawn icons, and restrained state colors. The companion settings window uses professional, simple form layouts in charcoal dark or white and light-gray themes, with restrained semantic green.\n\nThis document records the implemented system and the user-requested settings theme expansion; it does not establish a replacement visual world or a new creative metaphor. Preserve the existing focus and managed behaviors, the island's transparent host window, and its compact, expanded, stacked and docked forms when extending the product.",
+    "overview": "Cute Island is a compact black desktop surface for following local Agent activity. Its visual identity comes from the changing island silhouette, system typography, drawn icons, and restrained state colors. The companion settings window uses bounded functional cards on charcoal dark or gray light canvases, with green enabled controls and current navigation.\n\nThis document records the implemented system, the settings theme expansion and the approved October 17 prototype refinement. Preserve the existing focus and managed behaviors, the island's transparent host window, and its compact, expanded, stacked and docked forms when extending the product.",
     "keyCharacteristics": [
       "A black floating island paired with settings that support light, dark and system appearance.",
       "System sans typography with Chinese font fallbacks and compact metadata.",
       "Color attached to activity state, enabled controls and selected navigation.",
-      "Rounded island silhouettes; quieter corners and dividing lines in settings.",
+      "Rounded island silhouettes; bordered functional cards and heading bands in settings.",
       "Drawn SVG icons and a small three-dot island mark."
     ],
     "rules": [],

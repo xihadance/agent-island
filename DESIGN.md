@@ -10,21 +10,26 @@ colors:
   state-success: '#78db9c'
   state-error: '#ff8881'
   island-error-emphasis: '#ff6961'
-  island-secondary-text: rgba(255, 255, 255, 0.78)
+  island-secondary-text: rgba(255, 255, 255, 0.74)
+  island-muted-text: rgba(255, 255, 255, 0.55)
+  island-subtle-text: rgba(255, 255, 255, 0.48)
+  island-line: rgba(255, 255, 255, 0.10)
+  island-raised: rgba(255, 255, 255, 0.06)
   island-button: rgba(255, 255, 255, 0.14)
   island-button-hover: rgba(255, 255, 255, 0.24)
   task-badge: rgba(120, 185, 255, 0.14)
-  settings-background: '#151516'
-  settings-sidebar: '#101011'
+  settings-background: '#121214'
+  settings-sidebar: '#0c0c0e'
   settings-text: '#f1f1f3'
   settings-secondary: '#c2c2ca'
   settings-muted: '#aaaab3'
-  settings-line: '#303035'
+  settings-line: '#32323a'
+  settings-card-line: '#3a3a44'
   settings-accent: '#78db9c'
   settings-accent-hover: '#93e6b0'
   settings-accent-ink: '#112419'
   settings-focus: '#78b9ff'
-  settings-surface: '#1e1e21'
+  settings-surface: '#1c1c21'
   settings-input: '#19191c'
   settings-button: '#252529'
   settings-hover: '#333339'
@@ -48,17 +53,18 @@ colors:
   settings-mark: '#000'
   settings-mark-border: '#35353a'
   settings-mark-amber: '#edb77c'
-  settings-light-background: '#ffffff'
-  settings-light-sidebar: '#f5f6f7'
+  settings-light-background: '#eef0f3'
+  settings-light-sidebar: '#e4e7eb'
   settings-light-text: '#202329'
   settings-light-secondary: '#454d58'
-  settings-light-muted: '#626975'
-  settings-light-line: '#dce0e4'
+  settings-light-muted: '#575e68'
+  settings-light-line: '#d2d7dd'
+  settings-light-card-line: '#c6ccd4'
   settings-light-accent: '#21734b'
   settings-light-accent-hover: '#195e3c'
   settings-light-accent-ink: '#ffffff'
   settings-light-focus: '#2362b0'
-  settings-light-surface: '#f7f8fa'
+  settings-light-surface: '#ffffff'
   settings-light-input: '#ffffff'
   settings-light-button: '#ffffff'
   settings-light-hover: '#e9ecf0'
@@ -96,8 +102,8 @@ typography:
     fontSize: 14px
     fontWeight: 600
   section-label:
-    fontSize: 15px
-    fontWeight: 600
+    fontSize: 14px
+    fontWeight: 650
   supporting:
     fontSize: 13px
     lineHeight: 1.65
@@ -107,8 +113,14 @@ typography:
     fontSize: 13px
   island-title:
     fontSize: 13.5px
+    fontWeight: 650
+    letterSpacing: -0.02em
+  island-agent:
+    fontSize: 11.5px
     fontWeight: 600
     letterSpacing: -0.02em
+  island-metadata:
+    fontSize: 10px
   island-detail:
     fontSize: 12.5px
     lineHeight: 1.35
@@ -117,8 +129,8 @@ typography:
     fontSize: 11.5px
     lineHeight: 1.55
   integration-title:
-    fontSize: 16px
-    fontWeight: 600
+    fontSize: 14px
+    fontWeight: 650
   brand:
     fontSize: 15px
     fontWeight: 650
@@ -131,22 +143,23 @@ typography:
   timestamp:
     fontSize: 11px
 rounded:
-  settings-control: 7px
+  settings-control: 8px
   settings-navigation: 8px
-  settings-choice: 9px
-  island-detail: 10px
-  settings-card: 10px
+  settings-choice: 12px
+  island-task-badge: 9px
+  island-detail: 12px
+  settings-card: 12px
   island-idle: 18px
   island-compact: 20px
   island-stack: 28px
-  island-expanded: 40px
+  island-expanded: 32px
   pill: 99px
   island-button: 999px
   theme-preview-line: 2px
   theme-preview-action: 3px
-  theme-preview: 4px
-  theme-quick-choice: 5px
-  settings-mark: 14px
+  theme-preview: 6px
+  theme-quick-choice: 4px
+  settings-mark: 999px
 spacing:
   compact-gap: 8px
   control-gap: 10px
@@ -154,7 +167,7 @@ spacing:
   header-gap: 16px
   settings-row: 20px
   settings-row-gap: 24px
-  settings-section: 32px
+  settings-section: 20px
   settings-header-bottom: 24px
   settings-main-top: 40px
   settings-main-inline: 44px
@@ -197,10 +210,18 @@ components:
     textColor: '{colors.settings-secondary}'
     typography: '{typography.body}'
     rounded: '{rounded.settings-navigation}'
-    padding: 10px 13px
+    padding: 10px 12px
   navigation-current:
-    backgroundColor: '{colors.settings-selected}'
-    textColor: '{colors.settings-text}'
+    backgroundColor: '{colors.settings-enabled-surface}'
+    textColor: '{colors.settings-accent}'
+  settings-section:
+    backgroundColor: '{colors.settings-surface}'
+    rounded: '{rounded.settings-card}'
+    padding: 0 20px 4px
+  settings-section-light:
+    backgroundColor: '{colors.settings-light-surface}'
+    rounded: '{rounded.settings-card}'
+    padding: 0 20px 4px
   automation-card:
     backgroundColor: '{colors.settings-surface}'
     rounded: '{rounded.settings-card}'
@@ -215,18 +236,18 @@ components:
     backgroundColor: '{colors.settings-accent}'
   mode-choice:
     rounded: '{rounded.settings-choice}'
-    padding: 17px
+    padding: 16px
   task-badge:
     backgroundColor: '{colors.task-badge}'
     textColor: '{colors.state-running}'
-    rounded: '{rounded.settings-choice}'
+    rounded: '{rounded.island-task-badge}'
     padding: 0 5px 0 3px
     height: 18px
   island:
     backgroundColor: '{colors.island}'
     textColor: '{colors.white}'
   theme-choice:
-    rounded: '{rounded.settings-navigation}'
+    rounded: '{rounded.settings-choice}'
     padding: 10px
     typography: '{typography.choice-label}'
   theme-choice-selected:
@@ -271,10 +292,10 @@ components:
     textColor: '{colors.settings-light-secondary}'
     typography: '{typography.body}'
     rounded: '{rounded.settings-navigation}'
-    padding: 10px 13px
+    padding: 10px 12px
   navigation-current-light:
-    backgroundColor: '{colors.settings-light-selected}'
-    textColor: '{colors.settings-light-text}'
+    backgroundColor: '{colors.settings-light-enabled-surface}'
+    textColor: '{colors.settings-light-accent}'
   automation-card-light:
     backgroundColor: '{colors.settings-light-surface}'
     rounded: '{rounded.settings-card}'
@@ -295,16 +316,16 @@ components:
 
 ## Overview
 
-Cute Island is a compact black desktop surface for following local Agent activity. Its visual identity comes from the changing island silhouette, system typography, drawn icons, and restrained state colors. The companion settings window uses professional, simple form layouts in charcoal dark or white and light-gray themes, with restrained semantic green.
+Cute Island is a compact black desktop surface for following local Agent activity. Its visual identity comes from the changing island silhouette, system typography, drawn icons, and restrained state colors. The companion settings window uses bounded functional cards on charcoal dark or gray light canvases, with green enabled controls and current navigation.
 
-This document records the implemented system and the user-requested settings theme expansion; it does not establish a replacement visual world or a new creative metaphor. Preserve the existing focus and managed behaviors, the island's transparent host window, and its compact, expanded, stacked and docked forms when extending the product.
+This document records the implemented system, the settings theme expansion and the approved October 17 prototype refinement. Preserve the existing focus and managed behaviors, the island's transparent host window, and its compact, expanded, stacked and docked forms when extending the product.
 
 **Key Characteristics:**
 
 - A black floating island paired with settings that support light, dark and system appearance.
 - System sans typography with Chinese font fallbacks and compact metadata.
 - Color attached to activity state, enabled controls and selected navigation.
-- Rounded island silhouettes; quieter corners and dividing lines in settings.
+- Rounded island silhouettes; bordered functional cards and heading bands in settings.
 - Drawn SVG icons and a small three-dot island mark.
 
 Extraction sources: [island.css](src/renderer/src/island.css), [settings.css](src/renderer/src/settings.css), [Settings.tsx](src/renderer/src/Settings.tsx), [ThemePicker.tsx](src/renderer/src/ThemePicker.tsx), [Island.tsx](src/renderer/src/Island.tsx), and the native settings dimensions in [main/index.ts](src/main/index.ts). Token names for literal CSS values describe their existing role; they do not imply that every value is already a CSS custom property. The accompanying [.impeccable/design.json](.impeccable/design.json) stores shadow, motion and breakpoint extensions plus component previews. Its synthesized tonal ramps are panel previews, not additional application colors.
@@ -323,35 +344,35 @@ Running blue, thinking lavender, approval amber, success green and error coral r
 
 ### Neutral
 
-The island is black with white text and translucent white supporting text and controls. Dark settings use a charcoal canvas and darker sidebar; light settings use a white canvas and light-gray sidebar. Both provide distinct text, secondary text, muted descriptions, fields, control borders, dividers, placeholders, selection and scrollbar tones. The enabled automation card adds a pale or dark green surface; selected navigation uses a quiet neutral fill. Theme-preview miniatures deliberately depict the target appearance and do not change with the surrounding theme.
+The island is black with white text and three translucent white supporting roles (.74, .55 and .48). Dark settings step from a near-black sidebar to a charcoal canvas and raised card surface; light settings use a gray canvas, darker gray sidebar and white cards. Both provide distinct text, secondary text, muted descriptions, fields, control borders, dividers, placeholders, selection and scrollbar tones. The enabled automation card adds a pale or dark green surface; selected navigation uses an enabled-tint fill, green label and 2px inset rail. The neutral selected token remains specific to the compact theme selector. Theme-preview miniatures deliberately depict the target appearance and do not change with the surrounding theme.
 
 Agent badges retain their own appearances in the existing badge and SVG sources. The browser island preview has its own blue-gray gradient backdrop; it is not the native desktop background.
 
 ## Typography
 
-The inherited font stack is the body token, including system UI and Chinese fallbacks. Settings use its body size and increased line height, with the headline role for the page heading, title for the prominent automation label, label for form labels, and section-label for section headings. Integration headings use integration-title; the brand and theme-choice labels have their own compact roles. Supporting descriptions and metadata step down without introducing a separate display family.
+The inherited font stack is the body token, including system UI and Chinese fallbacks. Settings use its body size and increased line height, with the headline role for the page heading, title for the prominent automation label, label for form labels, and a consistent 14px/650 section-label for card heading bands. Integration headings use the same size and weight via integration-title; the brand and theme-choice labels have their own compact roles. Supporting descriptions and metadata step down without introducing a separate display family.
 
-The island uses denser type: compact titles use island-title, expanded titles are larger (16px), and most state labels and timing metadata sit between 10px and 12px. Command content uses the command monospace role and remains selectable. Timestamps and progress numbers use tabular numerals. Long compact titles truncate; command blocks and settings help text can wrap.
+The island uses denser type: compact titles retain 13.5px with 650 weight, expanded titles are 16px/650, compact Agent names step down to 11.5px with .82 opacity, and most state labels and timing metadata sit between 10px and 12px. Command content uses the command monospace role and remains selectable. Timestamps and progress numbers use tabular numerals. Long compact titles truncate; command blocks and settings help text can wrap.
 
 ## Layout
 
 The native island sits inside a transparent host, initially aligned near the top edge. Its content remains within the viewport minus 16px. The rest, idle and compact forms are (92 × 12px), (126 × 36px) and (340 × 40px); expanded width is (380px), stacked width is (400px), and content-dependent heights cap at (520px). Docked forms are (72 × 16px) horizontally or (16 × 72px) vertically. Geometry and attention adjustments remain owned by Island.tsx.
 
-Settings use a sticky sidebar (210px) and a flexible, centered main column capped at (920px), including main padding (40px 44px 48px). The page heading has a bottom divider and bottom padding (24px). Form rows separate copy from controls, with description widths capped at (64ch). Help and informational copy extend to (70–72ch). Section and row spacing use the frontmatter tokens.
+Settings use a sticky sidebar (210px) and a flexible, centered main column capped at (920px), including main padding (40px 44px 48px). The page heading has a bottom divider and bottom padding (24px). Form rows separate copy from controls, with description widths capped at (64ch). Help and informational copy extend to (70–72ch). Functional sections use 20px separation, 20px inline padding and 4px bottom padding. Heading bands reach the card edge with 14px 20px padding and a bottom divider, while form-row dividers remain inset. Prominent switch rows use 24px padding; their footer uses 8px 24px.
 
-At a viewport width of (760px) or less, the sidebar narrows to (165px), the main padding becomes (28px 24px 32px), rows containing selects may wrap, and display-mode choices and remote fields become one column. Theme previews remain three columns with a smaller gap (8px). At (560px) or less, navigation becomes a compact horizontal row above the content, the sidebar footer disappears, the quick theme selector moves beside the brand, and main padding becomes (26px 20px 32px). Header save feedback and action rows wrap. The native settings window opens at (1040 × 800px) and has a minimum of (640 × 540px); the smaller layout supports browser preview rather than a separate mobile application.
+At a viewport width of (760px) or less, the sidebar narrows to (165px), the main padding becomes (28px 24px 32px), rows containing selects may wrap, and display-mode choices and remote fields become one column. Theme previews remain three columns with a smaller gap (8px). At (560px) or less, navigation becomes a compact horizontal row above the content, the sidebar footer disappears, the quick theme selector moves beside the brand, and main padding becomes (28px 20px 32px). Header save feedback and action rows wrap. The native settings window opens at (1040 × 800px) and has a minimum of (640 × 540px); the smaller layout supports browser preview rather than a separate mobile application.
 
 ## Elevation & Depth
 
-The island floats with an ambient black shadow, a faint white inset edge and a subtle top highlight. Error and approval states replace the inset edge with their attention color. Keyboard focus uses a stronger inset white edge. Exact values are captured in the sidecar.
+The island floats with a tight contact shadow and wider ambient shadow, a faint white inset edge and a subtle top highlight. Error and approval states replace the inset edge with their attention color. Keyboard focus uses a stronger inset white edge. Exact values are captured in the sidecar.
 
-Settings remain flat: surface tone, borders, dividers and spacing establish hierarchy. The automation card changes border and surface color when enabled. Existing component focus outlines sit outside controls; they are not persistent decorative halos.
+Settings functional cards use theme-specific border and subtle shadow tokens; separate sidebar, canvas and card tones make their boundaries visible. The automation card shares the same container family and changes border and surface color when enabled. Existing component focus outlines sit outside controls; they are not persistent decorative halos.
 
 ## Shapes
 
-The island silhouette changes with its mode, using the corresponding frontmatter radius. Its compact session rows, circular Agent badges and pill buttons echo that form. Expanded detail surfaces use smaller curved corners.
+The island silhouette changes with its mode, using the corresponding frontmatter radius. Its compact session rows, circular Agent badges and pill buttons echo that form. Expanded capsules use a 32px radius, detail surfaces use 12px, and open stack rows use 20px inside the 28px stack.
 
-Settings controls and notices use the control radius; navigation, theme choices, mode choices and the automation card have their own radii. The theme-preview miniature uses small corners for its frame, line marks and action mark; these are illustrative details rather than a new general control scale. The compact selector has its own inner-choice radius, and the small black brand mark retains its rounded silhouette. Dividing lines are thin (1px). Switches have a pill track and a circular thumb. SVG settings icons use a (24 × 24) viewBox, a (1.6px) stroke and round caps and joins, normally rendered at (20px).
+Settings buttons, inputs and navigation use the 8px control radius; functional cards, notices, mode choices and theme choices use 12px containers. Pills retain their rounded silhouette. The theme-preview miniature uses small corners for its frame, line marks and action mark; these are illustrative details rather than a new general control scale. The compact selector has its own inner-choice radius, and the small black brand mark retains its rounded silhouette. Dividing lines are thin (1px). Switches have a pill track and a circular thumb. SVG settings icons use a (24 × 24) viewBox, a (1.6px) stroke and round caps and joins, normally rendered at (20px).
 
 ## Components
 
@@ -361,11 +382,11 @@ Settings buttons use the secondary variant by default and the green primary vari
 
 ### Navigation
 
-Current settings navigation is indicated by a filled neutral background, theme-appropriate main-text label and green icon. Hover uses the theme hover surface. Labels remain visible alongside icons on desktop and beneath them in the narrow layout. The initial section and page-specific content belong to the [settings surface brief](.impeccable/surfaces/src-renderer-src-settings-tsx.md), rather than a global layout requirement.
+Current settings navigation is indicated by an enabled-tint background, green 600-weight label and icon, and a curved 2px inset rail. Hover uses the theme hover surface. Labels remain visible alongside icons on desktop and beneath them in the narrow layout. The initial section and page-specific content belong to the [settings surface brief](.impeccable/surfaces/src-renderer-src-settings-tsx.md), rather than a global layout requirement.
 
 ### Switches and automation card
 
-The switch retains its semantic switch role, linked label and description. Its circular thumb moves (16px) when checked, with background and transform transitions (150ms ease-out). The automation card combines a prominent labeled switch with a separated status/footer row. Enabled state changes the card surface, border, supporting text and status dot together. Paused state remains an explicit text state.
+The switch retains its semantic switch role, linked label and description. Its circular thumb moves (17px) when checked, with background and transform transitions (150ms ease-out). The automation card combines a prominent labeled switch with a separated status/footer row. Enabled state changes the card surface, border, supporting text and status dot together. Paused state remains an explicit text state.
 
 ### Mode choices
 
@@ -379,7 +400,7 @@ The saved preference defaults to system, including older configuration without a
 
 ### Activity and history
 
-The island's small blue task badge has a compact icon and count; Agent badges preserve identity separately from activity state. Activity colors are accompanied by icons or text. Settings history uses divided rows with action, Agent, time and a wrapping summary. Empty history uses a centered drawn icon, concise explanation and a route to Agent setup.
+The island's small blue task badge has a compact icon and count; Agent badges preserve identity separately from activity state. Activity colors are accompanied by icons or text. Settings history uses a bordered card containing divided rows with action, Agent, time and a wrapping summary. Empty history uses the same card family with a centered drawn icon, concise explanation and a route to Agent setup. Island progress fills inherit the owning session state, including independently colored expanded stack rows.
 
 ### Feedback and motion
 
@@ -390,6 +411,8 @@ The island preserves its geometry spring and state animations. Settings motion r
 **Original settings verification (2026-10-15):** The finish reviewer marked the standalone settings extension **SHIP**, with no material findings, after inspecting all eight captures in [.impeccable/review](.impeccable/review). The mechanical detector returned an empty finding list. Typecheck, build, 229 tests, native settings smoke/restart and original interaction smoke passed as reported by the implementation session. Transient error, focus, loading and the real browser-preview notice were assessed from source, not rendered captures. Narrow-layout evidence used Electron responsive emulation; macOS/Linux appearance and independent external Agent protocol certification were outside this visual review. No new shipping raster asset or image comp was introduced.
 
 **Theme expansion verification (2026-10-15):** The finish reviewer returned the full five-section **SHIP** disposition with no material fixes after reviewing all 20 light/dark captures listed in the [settings surface brief](.impeccable/surfaces/src-renderer-src-settings-tsx.md). The pre-documentation detector recorded no primary findings and nine advisory type/radius documentation gaps; this merge records the actual sizes and shape roles, without rerunning the detector. The 20 measured text/background pairs in [theme-contrast.json](.impeccable/review/theme-contrast.json) have a minimum ratio of (5.01:1); this is measured-pair evidence, not certification of every state. Implementation-session validation reports 306 tests, typecheck, build, real Electron theme/persistence/system-override/keyboard smoke and original interaction smoke passing. The local v0.1.13 Windows NSIS installer and packaged light/dark-toggle, persistence and interaction smoke also passed with zero renderer errors. The documentation pass inspected source, detector/contrast outputs and selected desktop, 640px and mobile captures; it did not rerun the application or tests. External bot delivery, live model tasks and macOS/Linux appearance are outside this review. No shipping raster assets were added.
+
+**Prototype implementation verification (2026-10-17):** Typecheck, 506 tests across 49 files, build, real Electron settings/restart smoke and interaction smoke passed. Current captures under [.impeccable/review](.impeccable/review) use the `refine-` prefix; the settings matrix covers both themes, all five sections, 640px and 390px layouts, remote fields and empty/history states. Browser text measurements in [refine-contrast.json](.impeccable/review/refine-contrast.json) cover 328 rendered settings pairs with a minimum of 4.68:1, excluding disabled controls. This is scoped evidence, not exhaustive transient-state or native-control certification. The island's subtle ink is .48 rather than the prototype's .40 to retain metadata legibility. The once-run detector reported advisory documentation gaps only. Independent review/documenter agents failed before working because of service transport errors, so review and documentation used the skill's in-thread fallback. External channels, live model work, packaging and macOS/Linux appearance were not checked in this pass.
 
 ## Do's and Don'ts
 
