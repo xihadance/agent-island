@@ -453,7 +453,8 @@ export class SessionWatcher {
   }
 }
 
-function presentSession(view: SessionView, live: boolean, age: number, known: boolean, uncertainWhenSilent = false): SessionView | null {
+/** Shared with the recovery gate so interruption detection cannot drift between the watcher and resume. */
+export function presentSession(view: SessionView, live: boolean, age: number, known: boolean, uncertainWhenSilent = false): SessionView | null {
   // A recorded question or approval is still waiting on the user. Silence is not an interruption.
   if (view.terminal || live || view.state === 'approval' || isUserInputTool(view.operation?.name)) return view
   if (!known) return null

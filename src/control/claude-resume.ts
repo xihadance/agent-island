@@ -5,8 +5,9 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { claudePlugin } from '../agents/plugins/claude'
-import { listProcessSnapshot, registrationMatchesProcess } from '../agents/processes'
+import { listProcessSnapshot, matchAgentProcesses, registrationMatchesProcess } from '../agents/processes'
 import { parseTranscript } from '../agents/parse'
+import { presentSession } from '../agents/watch'
 import { check } from './store'
 import type { ControlSession } from './types'
 
@@ -44,28 +45,40 @@ export async function checkClaudeRecovery(session: ControlSession, configFile?: 
   const registrations = await claudePlugin.registeredSessions!(root)
   // A crashed CLI leaves its registration behind, and a recycled PID makes it look alive forever.
   // Trust the registry only while that PID is still the same claude process, exactly as the watcher does.
-  check(!registrations.some(s => s.sessionId === session.nativeId && registrationMatchesProcess(byPid, claudePlugin, s.pid, s.updatedAt)),
-    '原 Claude 会话进程仍在运行，请先在原终端结束会话', 409)
-  check(!snapshot.processes.some(p => p.commandLine.includes(session.nativeId)), '原 Claude 会话进程仍在运行，请勿重复恢复', 409)
+  const holders = registrations.filter(s => s.sessionId === session.nativeId && registrationMatchesProcess(byPid, claudePlugin, s.pid, s.updatedAt))
+  // Only a busy holder proves the session is executing. A closed VS Code conversation keeps its idle
+  // peer process alive, and the watcher reads idle registrations as inactive for the same reason.
+  check(!holders.some(s => s.busy), '原 Claude 会话正在运行中，请先结束当前任务再恢复', 409)
+  // The idle holder's command line still carries the resume id. Skip known holders and count only
+  // an agent-shaped process elsewhere as a competing recovery.
+  const holderPids = new Set(holders.map(s => s.pid))
+  check(!snapshot.processes.some(p => !holderPids.has(p.pid) && p.commandLine.includes(session.nativeId)
+    && matchAgentProcesses(p.commandLine || p.name, [claudePlugin]).has(claudePlugin.kind)),
+    '原 Claude 会话进程仍在运行，请勿重复恢复', 409)
   let transcript: string | undefined
+  let transcriptMtime = 0
   for (const dir of await readdir(root, { withFileTypes: true }).catch(() => { throw new Error('无法读取 Claude 会话目录，请检查安装和文件权限') })) {
     if (!dir.isDirectory()) continue
     const file = path.join(root, dir.name, `${session.nativeId}.jsonl`)
     try {
       const fd = await open(file, 'r')
       try {
-        const { size } = await fd.stat()
+        const { size, mtimeMs } = await fd.stat()
         const start = Math.max(0, size - 512 * 1024)
         const buffer = Buffer.alloc(size - start)
         const { bytesRead } = await fd.read(buffer, 0, buffer.length, start)
         const text = buffer.subarray(0, bytesRead).toString('utf8')
         transcript = start ? text.slice(text.indexOf('\n') + 1) : text
+        transcriptMtime = mtimeMs
       } finally { await fd.close() }
       break
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('无法读取原 Claude 会话记录，请检查文件权限') }
   }
   const view = transcript && parseTranscript('claude', session.nativeId, transcript)
-  check(view && view.sessionId === session.nativeId && view.state === 'error', '原 Claude 会话已继续、已完成或无法确认中断状态', 409)
+  // A turn that went silent with no live process is what the watcher reports as interrupted;
+  // reuse its rule so the recovery gate and that notification can never disagree.
+  check(!!view && view.sessionId === session.nativeId && presentSession(view, false, Date.now() - transcriptMtime, true)?.state === 'error',
+    '原 Claude 会话已继续、已完成或无法确认中断状态', 409)
   check(!view.cwd || path.resolve(view.cwd) === path.resolve(session.cwd), '原会话工作目录已变化，请在本机确认后恢复', 409)
   let settings: Record<string, any>
   try { settings = JSON.parse(readFileSync(path.join(root, '..', 'settings.json'), 'utf8')) }

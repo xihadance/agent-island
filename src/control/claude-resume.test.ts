@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -116,16 +116,29 @@ it('validates the original Claude transcript, directory and configured native Ho
   await expect(checkClaudeRecovery({ ...local, cwd: path.join(local.cwd!, 'missing') }, configFile, env)).rejects.toThrow('工作目录不存在')
 })
 
-it('ignores a crashed session registration whose PID was recycled, but still honours a live one', async () => {
+it('ignores recycled PIDs and idle registrations but still blocks a busy session', async () => {
   const { root, local, configFile, env } = transcriptFixture()
   mkdirSync(path.join(root, 'sessions'), { recursive: true })
-  writeFileSync(path.join(root, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: session.nativeId, status: 'idle' }))
+  const registration = path.join(root, 'sessions', `${process.pid}.json`)
+  writeFileSync(registration, JSON.stringify({ pid: process.pid, sessionId: session.nativeId, status: 'idle' }))
   const recycled = { pid: process.pid, parentPid: 1, name: 'pwsh.exe', commandLine: 'pwsh.exe -NoProfile', createdAt: Date.now() + 600000 }
   vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(), processes: [recycled] })
   await expect(checkClaudeRecovery(local, configFile, env)).resolves.toBeUndefined()
-  const alive = { pid: process.pid, parentPid: 1, name: 'claude.exe', commandLine: 'claude.exe', createdAt: Date.now() - 600000 }
-  vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(['claude']), processes: [alive] })
-  await expect(checkClaudeRecovery(local, configFile, env)).rejects.toThrow('请先在原终端结束会话')
+  // A closed VS Code conversation leaves an idle peer whose command line still carries the resume id.
+  const idlePeer = { pid: process.pid, parentPid: 1, name: 'claude.exe', commandLine: `claude.exe --output-format stream-json --resume=${session.nativeId}`, createdAt: Date.now() - 600000 }
+  vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(['claude']), processes: [idlePeer] })
+  await expect(checkClaudeRecovery(local, configFile, env)).resolves.toBeUndefined()
+  writeFileSync(registration, JSON.stringify({ pid: process.pid, sessionId: session.nativeId, status: 'busy' }))
+  vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(['claude']), processes: [idlePeer] })
+  await expect(checkClaudeRecovery(local, configFile, env)).rejects.toThrow('正在运行中')
+})
+
+it('blocks a competing agent process but ignores unrelated processes that merely mention the id', async () => {
+  const { local, configFile, env } = transcriptFixture()
+  vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(), processes: [{ pid: 999, parentPid: 1, name: 'Code.exe', commandLine: `Code.exe C:\\logs\\${session.nativeId}.jsonl`, createdAt: Date.now() - 1000 }] })
+  await expect(checkClaudeRecovery(local, configFile, env)).resolves.toBeUndefined()
+  vi.mocked(listProcessSnapshot).mockResolvedValueOnce({ running: new Set(['claude']), processes: [{ pid: 999, parentPid: 1, name: 'claude.exe', commandLine: `claude.exe --resume ${session.nativeId}`, createdAt: Date.now() - 1000 }] })
+  await expect(checkClaudeRecovery(local, configFile, env)).rejects.toThrow('请勿重复恢复')
 })
 
 it('rejects a live process or a transcript that has already continued', async () => {
@@ -134,4 +147,13 @@ it('rejects a live process or a transcript that has already continued', async ()
   await expect(checkClaudeRecovery(local, configFile, env)).rejects.toThrow('仍在运行')
   writeFileSync(file, JSON.stringify({ type: 'user', sessionId: session.nativeId, cwd: local.cwd, message: { role: 'user', content: '已经继续了' } }) + '\n')
   await expect(checkClaudeRecovery(local, configFile, env)).rejects.toThrow('已继续')
+})
+
+it('accepts a turn that went silent without a live process, but not one that just continued', async () => {
+  const { local, file, configFile, env } = transcriptFixture()
+  writeFileSync(file, JSON.stringify({ type: 'user', sessionId: session.nativeId, cwd: local.cwd, message: { role: 'user', content: '[Your previous response had no visible output. Please continue and produce a user-visible response.]' } }) + '\n')
+  await expect(checkClaudeRecovery(local, configFile, env)).rejects.toThrow('中断状态')
+  const past = new Date(Date.now() - 120000)
+  utimesSync(file, past, past)
+  await expect(checkClaudeRecovery(local, configFile, env)).resolves.toBeUndefined()
 })
