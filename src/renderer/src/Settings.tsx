@@ -6,6 +6,7 @@ import { RemoteSettings } from './RemoteSettings'
 import { CodexServerSettings } from './CodexServerSettings'
 import { CodexCommandSettings } from './CodexCommandSettings'
 import { ThemePicker, useSettingsTheme } from './ThemePicker'
+import { UpdateSettings } from './UpdateSettings'
 
 type Section = 'general' | 'automation' | 'connections' | 'remote' | 'history'
 const sections: { id: Section; label: string; icon: ReactNode }[] = [
@@ -72,6 +73,7 @@ export function Settings() {
     finally { busyRef.current = false; setBusy(false) }
   }
   const update = (patch: PreferencesPatch): void => { void run(async () => { setSnapshot(await bridge.updateSettings(patch)) }) }
+  const updateAction = (action: 'update-check' | 'update-page' | 'update-download' | 'update-install', success: string): void => { void run(() => bridge.settingsAction(action), success) }
   const auto = snapshot?.preferences.automation
   const title = sections.find(item => item.id === section)!.label
 
@@ -82,7 +84,11 @@ export function Settings() {
         onClick={() => { setSection(item.id); window.location.hash = `settings/${item.id}`; setError('') }}><Icon>{item.icon}</Icon><span>{item.label}</span></button>)}</nav>
       <div className="settings-sidebar-bottom">
         <ThemePicker compact value={snapshot?.preferences.theme ?? 'system'} disabled={busy || !snapshot} onChange={theme => update({ theme })} />
-      <div className="settings-sidebar-foot"><span className="settings-version">Cute Island {snapshot?.version}</span><span>你的 Agent，就在身边。</span>
+      <div className="settings-sidebar-foot"><span className="settings-version">Cute Island {snapshot?.version}</span>
+        {snapshot?.update.available
+          ? <button type="button" className="settings-update-link" onClick={() => { setSection('general'); window.location.hash = 'settings/general'; setError('') }}>
+            <span className="connection-dot" data-active="true" aria-hidden="true" />有新版本 {snapshot.update.available.version}</button>
+          : <span>你的 Agent，就在身边。</span>}
         {snapshot?.preview && <a href="#">返回灵动岛预览</a>}</div>
       </div>
     </aside>
@@ -119,7 +125,9 @@ export function Settings() {
           </section>
           <section className="settings-section" aria-labelledby="window-title"><h2 id="window-title">窗口与位置</h2><div className="setting-row"><div className="setting-copy"><strong>灵动岛位置</strong><p>拖动后自动记住位置，也可以一键回到屏幕顶部。</p></div><button className="settings-button" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction('reset-position'), '已恢复顶部居中')}>恢复顶部居中</button></div>
             <div className="settings-actions"><button className="settings-button" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction('show'), '已显示灵动岛')}>显示灵动岛</button><button className="settings-button" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction('hide'), '已隐藏灵动岛')}>隐藏灵动岛</button><button className="settings-button" disabled={busy} onClick={() => void run(() => bridge.playDemo(), '演示已开始')}>播放演示</button></div>
-          </section><p className="settings-help">关闭配置窗口后，灵动岛继续在托盘中运行。可从托盘或灵动岛的右键菜单再次打开配置。</p>
+          </section>
+          <UpdateSettings snapshot={snapshot} busy={busy} update={update} action={updateAction} />
+          <p className="settings-help">关闭配置窗口后，灵动岛继续在托盘中运行。可从托盘或灵动岛的右键菜单再次打开配置。</p>
         </>}
         {section === 'connections' && <>
           <section className="settings-section settings-section-first" aria-labelledby="claude-title"><div className="section-heading"><h2 id="claude-title">Claude Code</h2><span className="connection-state"><span className="connection-dot" data-active={snapshot.claudeInstalled} />{snapshot.claudeInstalled ? '已安装接入' : '尚未接入'}</span></div>

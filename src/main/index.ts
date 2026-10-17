@@ -27,6 +27,10 @@ import { codexCommandStatus, setCodexCommandIntegration, writeCodexLaunchConfig,
 import { codexLaunchRoute } from '../shared/codex-launch'
 import { localQuestions } from '../control/local-questions'
 import { withQuestionRequests } from '../shared/question-request'
+import { UpdateChecker } from './updater'
+import { createAutoInstaller } from './auto-update'
+import { installBlockedReason, releaseApiUrl, releasesPageUrl, supportsAutoInstall } from '../shared/update'
+import { createChannelTransport } from '../control/proxy'
 
 const WINDOW_WIDTH = 460
 const WINDOW_HEIGHT = 560
@@ -48,6 +52,7 @@ let preferences = normalizePreferences(undefined)
 let codex: CodexAutomation | undefined
 let claudeInstalled = false
 let hostedCodex: ManagedCodexServer | undefined
+let updater: UpdateChecker | undefined
 let quitting = false
 let historySequence = 0
 const history: AutomationEntry[] = []
@@ -127,6 +132,7 @@ async function boot(): Promise<void> {
   console.log(`Cute Island 正在监听 http://127.0.0.1:${server.port}`)
   try { writeCodexLaunchConfig(codexCommandOptions(), `http://127.0.0.1:${server.port}/v1/codex/launch`, codexLaunchToken) }
   catch { console.error('Codex 命令接入需要重新安装，请在 Agent 接入中检查') }
+  refreshHookLauncher()
   syncWatcher()
   preferredPosition = readWindowPosition(positionFile())
   claudeInstalled = hasClaudeIntegration(claudeSettingsFile(), server.port)
@@ -137,6 +143,8 @@ async function boot(): Promise<void> {
   if (config) { try { loadControl() } catch { /* Reported in settings and tray. */ } }
   void hostedCodex.configure(preferences.codexServer)
   codex.update()
+  updater = createUpdateChecker()
+  updater.start()
   if (firstLaunch || process.argv.includes('--settings')) openSettings()
   app.on('before-quit', event => {
     if (!quitting && hostedCodex) {
@@ -146,6 +154,7 @@ async function boot(): Promise<void> {
     }
     watcher?.stop()
     codex?.stop()
+    updater?.stop()
     control?.close()
     tray?.destroy()
     store?.dispose()
@@ -291,10 +300,14 @@ function visibleActivities(activities = store?.list() ?? []) {
 function publishActivities(activities = store?.list() ?? []): void {
   const next = visibleActivities(activities)
   const key = JSON.stringify(next)
-  if (lastActivities === key) return
+  if (lastActivities === key) {
+    if (updater?.state.status === 'downloaded') notifySettings()
+    return
+  }
   lastActivities = key
   attention.update(next)
   notifyBehavior()
+  if (updater?.state.status === 'downloaded') notifySettings()
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setFocusable(next.some(activity => activity.questionRequest?.status === 'pending' && activity.questionRequest.connected))
     mainWindow.webContents.send('island:activities', next)
@@ -352,7 +365,8 @@ function settingsSnapshot(): SettingsSnapshot {
     remoteHooks: { claude: remoteIntegrationStatus(remoteHookOptions('claude')), cursor: remoteIntegrationStatus(remoteHookOptions('cursor')), gemini: remoteIntegrationStatus(remoteHookOptions('gemini')) },
     remote: remoteSettings(remoteConfigFile(), control?.status(), controlLoadError), preferences, version: app.getVersion(), port: server?.port ?? readPort(),
     watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled,
-    codexStatus: codex?.status ?? 'disabled', codexDetail: codex?.detail ?? '', history: [...history] }
+    codexStatus: codex?.status ?? 'disabled', codexDetail: codex?.detail ?? '', history: [...history],
+    update: updater?.state ?? { status: 'disabled', current: app.getVersion(), autoInstall: false } }
 }
 
 function notifySettings(): void {
@@ -363,6 +377,111 @@ function reportDecision(agent: string, decision: Decision): void {
   history.unshift({ id: ++historySequence, at: Date.now(), agent, action: decision.action, summary: decision.summary.slice(0, 300) })
   history.splice(50)
   notifySettings()
+}
+
+function updatesEnabled(): boolean {
+  return app.isPackaged && process.env.CUTE_ISLAND_UPDATE !== '0' && preferences.update.enabled
+}
+
+/** A mirror may serve the feed, but releases still have to belong to this repository. */
+function updateFeedUrl(): string {
+  const custom = process.env.CUTE_ISLAND_UPDATE_FEED?.trim()
+  if (!custom) return releaseApiUrl()
+  let url: URL
+  try { url = new URL(custom) } catch { throw new Error('CUTE_ISLAND_UPDATE_FEED 不是有效的地址') }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('CUTE_ISLAND_UPDATE_FEED 需为不含凭据的 http/https 地址')
+  return url.href
+}
+
+function updateProxy() {
+  try { return readRemoteConfig(remoteConfigFile())?.proxy }
+  catch { /* A damaged takeover file must not block version checks. */ }
+}
+
+/** Version lookups follow the takeover proxy so restricted networks behave the same everywhere. */
+async function fetchLatestRelease(): Promise<unknown> {
+  const transport = createChannelTransport(updateProxy(), undefined, resolveSystemProxy)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const response = await transport.nodeRequest(updateFeedUrl(), { method: 'GET', signal: controller.signal as never,
+      headers: { accept: 'application/vnd.github+json', 'user-agent': `cute-island/${app.getVersion()}` } })
+    if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`)
+    const text = (await response.text()).slice(0, 1_000_000)
+    try { return JSON.parse(text) } catch { throw new Error('版本信息不是有效的 JSON') }
+  } catch (error) {
+    throw new Error(controller.signal.aborted ? '检查更新超时，请稍后重试' : errorText(error))
+  } finally { clearTimeout(timeout); transport.close() }
+}
+
+/**
+ * The installed Hook configurations point at this launcher, but the launcher itself
+ * hard-codes the Electron runner it was written with. An application update moves that
+ * runner, and an AppImage mounts it somewhere new on every run, so rewrite it on boot
+ * exactly as the Codex command script already does. The agent configuration files are
+ * untouched: only our own launcher changes.
+ */
+function refreshHookLauncher(): void {
+  const agents: HookAgent[] = ['claude', 'cursor', 'gemini']
+  if (!agents.some(agent => remoteIntegrationStatus(remoteHookOptions(agent)).installed)) return
+  try { writeHookLauncher(remoteHookOptions('claude').runner[0], process.execPath, path.join(app.getAppPath(), 'out', 'cli.cjs')) }
+  catch { console.error('远程接管 Hook 启动脚本刷新失败，请在远程接管中重新安装') }
+}
+
+function autoInstallSupported(): boolean {
+  return supportsAutoInstall({ platform: process.platform, packaged: app.isPackaged, appImage: process.env.APPIMAGE })
+}
+
+function updateBlockedReason(): string {
+  const activities = visibleActivities()
+  return installBlockedReason({
+    pendingRequests: control?.status().enabled ? control.hub.store.snapshot().requests.filter(request => request.status === 'pending').length : 0,
+    attentionIds: attention.pendingIds(),
+    activeSessions: activities.filter(activity => ['running', 'thinking', 'waiting', 'approval'].includes(activity.state)).length
+  })
+}
+
+function createUpdateChecker(): UpdateChecker {
+  return new UpdateChecker({
+    current: app.getVersion(),
+    enabled: updatesEnabled,
+    skippedVersion: () => preferences.update.skippedVersion,
+    fetchRelease: fetchLatestRelease,
+    autoInstall: autoInstallSupported,
+    installer: createAutoInstaller({ expected: () => updater?.state.available?.version, proxy: updateProxy,
+      installOnQuit: () => updater?.installOnQuit === true }),
+    blockedReason: updateBlockedReason,
+    lastCheckedAt: () => preferences.update.lastCheckedAt,
+    onCheckedAt: at => {
+      // Bookkeeping only; a failed write must never interrupt the check.
+      try { preferences = { ...preferences, update: { ...preferences.update, lastCheckedAt: at } }; savePreferences(preferencesFile(), preferences) }
+      catch { console.error('无法保存更新检查时间') }
+    },
+    onChange: notifySettings
+  })
+}
+
+/**
+ * Close the managed Codex service before handing over to the installer. Letting
+ * quitAndInstall() drive the quit would race our own two-phase before-quit handler,
+ * and terminal sessions would lose their service without notice.
+ */
+async function installUpdate(): Promise<void> {
+  if (!updater) throw new Error('更新检查未启动')
+  const state = updater.state
+  if (state.status !== 'downloaded') throw new Error('更新尚未下载完成')
+  if (state.blockedReason) throw new Error(state.blockedReason)
+  quitting = true
+  codex?.stop()
+  try { await hostedCodex?.close() }
+  catch { console.error('托管 Codex 服务关闭失败，继续安装更新') }
+  const reason = updater.install()
+  if (reason) {
+    // Nothing was torn down irreversibly, but this window is no longer a safe moment.
+    quitting = false
+    codex?.update()
+    throw new Error(reason)
+  }
 }
 
 function syncWatcher(): void {
@@ -381,6 +500,7 @@ function updatePreferences(patch: unknown): SettingsSnapshot {
   syncWatcher()
   void hostedCodex?.configure(next.codexServer)
   codex?.update()
+  updater?.sync()
   if (tray) updateTrayMenu(tray)
   notifyBehavior()
   notifySettings()
@@ -701,6 +821,11 @@ function wireIpc(activityStore: ActivityStore): void {
     else if (action === 'reset-position') resetPosition()
     else if (action === 'remote-file') return configureRemote()
     else if (action === 'remote-docs') return shell.openExternal('https://github.com/xihadance/cute-island/blob/main/REMOTE_CONTROL.md')
+    else if (action === 'update-check') void updater?.check(true)
+    // Only a URL that already passed release validation is opened; otherwise the plain releases page.
+    else if (action === 'update-page') return shell.openExternal(updater?.state.available?.url ?? releasesPageUrl())
+    else if (action === 'update-download') return updater?.download()
+    else if (action === 'update-install') return installUpdate()
     else if (action === 'clear-history') { history.length = 0; notifySettings() }
     else throw new Error('无法识别的操作')
   })

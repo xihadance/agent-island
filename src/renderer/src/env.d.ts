@@ -32,7 +32,7 @@ export interface IslandApi {
   onSettings: (callback: (snapshot: SettingsSnapshot) => void) => () => void
   setClaudeIntegration: (installed: boolean) => Promise<SettingsSnapshot>
   setCodexCommandIntegration: (installed: boolean) => Promise<SettingsSnapshot>
-  settingsAction: (action: 'show' | 'hide' | 'reset-position' | 'clear-history' | 'remote-file' | 'remote-docs') => Promise<void>
+  settingsAction: (action: 'show' | 'hide' | 'reset-position' | 'clear-history' | 'remote-file' | 'remote-docs' | 'update-check' | 'update-page' | 'update-download' | 'update-install') => Promise<void>
   getBehavior: () => Promise<IslandBehavior>
   onBehavior: (callback: (behavior: IslandBehavior) => void) => () => void
   setMode: (mode: IslandMode) => void

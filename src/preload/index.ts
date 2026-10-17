@@ -15,7 +15,7 @@ const island = {
   updateSettings(patch: PreferencesPatch): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:update-settings', patch) },
   setClaudeIntegration(installed: boolean): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:claude-integration', installed) },
   setCodexCommandIntegration(installed: boolean): Promise<SettingsSnapshot> { return ipcRenderer.invoke('island:codex-command-integration', installed) },
-  settingsAction(action: 'show' | 'hide' | 'reset-position' | 'clear-history' | 'remote-file' | 'remote-docs'): Promise<void> { return ipcRenderer.invoke('island:settings-action', action) },
+  settingsAction(action: 'show' | 'hide' | 'reset-position' | 'clear-history' | 'remote-file' | 'remote-docs' | 'update-check' | 'update-page' | 'update-download' | 'update-install'): Promise<void> { return ipcRenderer.invoke('island:settings-action', action) },
   onSettings(callback: (snapshot: SettingsSnapshot) => void): () => void {
     const listener = (_event: IpcRendererEvent, snapshot: SettingsSnapshot): void => callback(snapshot)
     ipcRenderer.on('island:settings', listener)

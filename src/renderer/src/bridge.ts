@@ -32,7 +32,8 @@ function createMockBridge(): IslandApi {
     codexServer: { status: 'stopped', url: '', detail: '' },
     remoteHooks: { claude: { installed: false, file: '~/.claude/settings.json' }, cursor: { installed: false, file: '~/.cursor/hooks.json' }, gemini: { installed: false, file: '~/.gemini/settings.json' } },
     remote: { configured: false, enabled: false, running: false, configFile: '~/.cute-island/remote.json', revision: '', channels: [], codex: [], missingCredentials: [] },
-    claudeInstalled: false, codexStatus: 'disabled', codexDetail: '', history: [], preview: true })
+    claudeInstalled: false, codexStatus: 'disabled', codexDetail: '', history: [],
+    update: { status: 'disabled', current: '预览', autoInstall: false }, preview: true })
   const save = (): SettingsSnapshot => {
     mode = preferences.mode
     try { localStorage.setItem('cute-island-preferences', JSON.stringify(preferences)); localStorage.setItem('cute-island-mode', mode) }
@@ -68,6 +69,7 @@ function createMockBridge(): IslandApi {
     setCodexCommandIntegration: async () => { throw new Error('请在桌面应用中安装 Codex 命令接入') },
     settingsAction: async action => {
       if (action === 'clear-history') return
+      if (action.startsWith('update-')) throw new Error('请在桌面应用中检查更新')
       throw new Error('窗口操作请在桌面应用中使用')
     },
     getBehavior: async () => behavior(),

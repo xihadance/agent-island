@@ -70,6 +70,7 @@ npm run island -- push --agent Cursor --state running --title "改登录页"
 | --- | --- |
 | `smoke-interaction.cjs` | 拖动、贴边、透明度、托管模式鼠标穿透、子任务与耗时 |
 | `smoke-settings.cjs` | 配置窗口 IPC、持久化、原生 Hook 安装 |
+| `smoke-update.cjs` | 更新下载代理、安装阻塞刷新、跳过与退出安装 |
 | `smoke-remote-toggle.cjs` | 接管启停、CLI Hook 释放、重启持久化 |
 | `smoke-connectivity.cjs` | 连通性测试(模拟渠道 API + 本机 Codex 服务) |
 | `smoke-codex-command.cjs` | Codex 命令接入安装、动态切换、回退、移除(Windows / PowerShell) |
@@ -122,7 +123,7 @@ npm run island -- push --agent Cursor --state running --title "改登录页"
 
 `remote.json` / `remote-state.json` / `docs/` / `.impeccable/review/` / `codex-session-*.md` 都已在 `.gitignore` 里,**不要提交**。
 
-常用环境变量:`CUTE_ISLAND_PORT`(默认 17321)、`CUTE_ISLAND_TOKEN`、`CUTE_ISLAND_WATCH=0`(关闭日志识别,优先于界面开关)、`CUTE_ISLAND_REMOTE_CONFIG`、`CUTE_ISLAND_DISABLE_GPU=1`、`CUTE_ISLAND_NO_SANDBOX=1`。各 agent 日志根目录可用 `CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`GEMINI_CLI_HOME`、`CURSOR_HOME` 覆盖。
+常用环境变量:`CUTE_ISLAND_PORT`(默认 17321)、`CUTE_ISLAND_TOKEN`、`CUTE_ISLAND_WATCH=0`(关闭日志识别,优先于界面开关)、`CUTE_ISLAND_UPDATE=0`(关闭版本检查,优先于界面开关)、`CUTE_ISLAND_UPDATE_FEED`(自建版本源)、`CUTE_ISLAND_REMOTE_CONFIG`、`CUTE_ISLAND_DISABLE_GPU=1`、`CUTE_ISLAND_NO_SANDBOX=1`。各 agent 日志根目录可用 `CLAUDE_CONFIG_DIR`、`CODEX_HOME`、`GEMINI_CLI_HOME`、`CURSOR_HOME` 覆盖。
 
 ## 扩展点
 
@@ -137,7 +138,7 @@ npm run island -- push --agent Cursor --state running --title "改登录页"
 - **不加任何 attribution trailer**:没有 `Co-authored-by`,没有工具生成标记。这是仓库明确要求,优先于 agent 默认行为。
 - 作者与提交者必须是 `xiha <xihadance@gmail.com>`,提交需 SSH 签名。仓库配了 `gpg.format=ssh` 和 `user.signingkey`,但没开 `commit.gpgsign`,所以**每次提交显式加 `-S`**。`%G?` 会报 `N`(因为没配 `allowedSignersFile`),用 `git cat-file -p HEAD | grep gpgsig` 确认签名。
 - 只在用户明确要求时提交。
-- 发布:patch 版本号同步更新 `package.json`、`package-lock.json`,`RELEASE_NOTES.md` 重写为只含新版本,提交信息用 `chore: release vX.Y.Z` 或 `...and release vX.Y.Z`。推 `v*` 标签触发 `.github/workflows/release.yml`,三端打包成功后发 GitHub Release。
+- 发布:patch 版本号同步更新 `package.json`、`package-lock.json`,`RELEASE_NOTES.md` 重写为只含新版本,提交信息用 `chore: release vX.Y.Z` 或 `...and release vX.Y.Z`。推 `v*` 标签触发 `.github/workflows/release.yml`,三端打包成功后发 GitHub Release。Release 必须带上 `latest*.yml` 和 `*.blockmap`,Windows / AppImage 的应用内更新靠它们;产物名不能含空格(GitHub 会把空格换成点,而 `latest.yml` 里是连字符,不一致会 404),由 `build.artifactName` 和 `build.nsis.artifactName` 保证。
 
 ## 容易踩的坑
 

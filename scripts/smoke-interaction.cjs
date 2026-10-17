@@ -495,7 +495,8 @@ async function smoke() {
     await setMode('managed')
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile, 'preferences.json'), 'utf8')), {
       theme: 'system', mode: 'managed', watchSessions: true, codexServer: { enabled: false, port: 4500, executable: '' },
-      automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' }
+      automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' },
+      update: { enabled: true, skippedVersion: '', lastCheckedAt: 0 }
     })
     await send('Page.reload')
     await until(async () => (await mode()) === 'docked')

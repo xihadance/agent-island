@@ -1,6 +1,7 @@
 import { isIslandMode, type IslandMode } from './island-behavior'
 import type { RemoteSettings } from './remote-settings'
 import type { CodexCommandStatus } from './codex-launch'
+import type { UpdateState } from './update'
 
 export type Theme = 'system' | 'light' | 'dark'
 export function isTheme(value: unknown): value is Theme { return value === 'system' || value === 'light' || value === 'dark' }
@@ -17,6 +18,12 @@ export interface Preferences {
     fallback: 'manual' | 'first'
     codexUrl: string
   }
+  update: {
+    enabled: boolean
+    skippedVersion: string
+    /** Written by the main process only, so a restart does not re-query the feed. */
+    lastCheckedAt: number
+  }
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -24,7 +31,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   codexServer: { enabled: false, port: 4500, executable: '' },
   mode: 'focus',
   watchSessions: true,
-  automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' }
+  automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' },
+  update: { enabled: true, skippedVersion: '', lastCheckedAt: 0 }
 }
 
 export function record(value: unknown): Record<string, unknown> {
@@ -45,6 +53,7 @@ export function normalizePreferences(value: unknown): Preferences {
   const source = record(value)
   const automation = record(source.automation)
   const server = record(source.codexServer)
+  const update = record(source.update)
   return {
     theme: isTheme(source.theme) ? source.theme : 'system',
     codexServer: { enabled: server.enabled === true, port: Number.isInteger(server.port) && Number(server.port) > 0 && Number(server.port) <= 65535 ? Number(server.port) : 4500,
@@ -57,16 +66,22 @@ export function normalizePreferences(value: unknown): Preferences {
       answerQuestions: typeof automation.answerQuestions === 'boolean' ? automation.answerQuestions : true,
       fallback: automation.fallback === 'first' ? 'first' : 'manual',
       codexUrl: typeof automation.codexUrl === 'string' && isLocalCodexUrl(automation.codexUrl) ? automation.codexUrl : ''
+    },
+    update: {
+      enabled: typeof update.enabled === 'boolean' ? update.enabled : true,
+      skippedVersion: typeof update.skippedVersion === 'string' ? update.skippedVersion.trim().slice(0, 40) : '',
+      lastCheckedAt: Number.isFinite(update.lastCheckedAt) && Number(update.lastCheckedAt) > 0 ? Number(update.lastCheckedAt) : 0
     }
   }
 }
 
-export type PreferencesPatch = Partial<Omit<Preferences, 'automation' | 'codexServer'>> & { automation?: Partial<Preferences['automation']>; codexServer?: Partial<Preferences['codexServer']> }
+export type PreferencesPatch = Partial<Omit<Preferences, 'automation' | 'codexServer' | 'update'>> &
+  { automation?: Partial<Preferences['automation']>; codexServer?: Partial<Preferences['codexServer']>; update?: Partial<Omit<Preferences['update'], 'lastCheckedAt'>> }
 
 export function patchPreferences(current: Preferences, value: unknown): Preferences {
   const patch = record(value)
   if (value === null || typeof value !== 'object' || Array.isArray(value) ||
-      Object.keys(patch).some(key => !['mode', 'theme', 'watchSessions', 'automation', 'codexServer'].includes(key))) throw new Error('无效的配置')
+      Object.keys(patch).some(key => !['mode', 'theme', 'watchSessions', 'automation', 'codexServer', 'update'].includes(key))) throw new Error('无效的配置')
   if ('theme' in patch && !isTheme(patch.theme)) throw new Error('无效的外观主题')
   const server = record(patch.codexServer)
   if ('codexServer' in patch && (patch.codexServer === null || typeof patch.codexServer !== 'object' || Array.isArray(patch.codexServer) ||
@@ -84,7 +99,14 @@ export function patchPreferences(current: Preferences, value: unknown): Preferen
   }
   if ('fallback' in auto && auto.fallback !== 'manual' && auto.fallback !== 'first') throw new Error('无效的问题回答规则')
   if ('codexUrl' in auto && (typeof auto.codexUrl !== 'string' || !isLocalCodexUrl(auto.codexUrl))) throw new Error('请填写本机 WebSocket 地址，例如 ws://127.0.0.1:4500')
-  return normalizePreferences({ ...current, ...patch, automation: { ...current.automation, ...auto }, codexServer: { ...current.codexServer, ...server } })
+  // lastCheckedAt is main-process bookkeeping. A renderer must not be able to postpone or force checks.
+  const update = record(patch.update)
+  if ('update' in patch && (patch.update === null || typeof patch.update !== 'object' || Array.isArray(patch.update) ||
+      Object.keys(update).some(key => !['enabled', 'skippedVersion'].includes(key)))) throw new Error('无效的更新检查配置')
+  if ('enabled' in update && typeof update.enabled !== 'boolean') throw new Error('无效的更新检查开关')
+  if ('skippedVersion' in update && (typeof update.skippedVersion !== 'string' || update.skippedVersion.length > 40)) throw new Error('无效的跳过版本')
+  return normalizePreferences({ ...current, ...patch, automation: { ...current.automation, ...auto }, codexServer: { ...current.codexServer, ...server },
+    update: { ...current.update, ...update } })
 }
 
 export interface AutomationEntry {
@@ -108,5 +130,6 @@ export interface SettingsSnapshot {
   codexStatus: 'disabled' | 'connecting' | 'connected' | 'error'
   codexDetail: string
   history: AutomationEntry[]
+  update: UpdateState
   preview?: boolean
 }

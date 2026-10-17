@@ -20,6 +20,8 @@ async function fixture() {
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
   app.getVersion = () => require('../package.json').version
   app.getAppPath = () => path.resolve('.')
+  // Update checks are packaged-only; the fixture serves its own feed on 127.0.0.1.
+  Object.defineProperty(app, 'isPackaged', { get: () => process.env.ISLAND_FAKE_PACKAGED === '1' })
   let trayMenu = []
   const buildMenu = Menu.buildFromTemplate.bind(Menu)
   Menu.buildFromTemplate = template => { if (template.some(item => item.label === '托管模式')) trayMenu = template; return buildMenu(template) }
@@ -46,6 +48,7 @@ async function fixture() {
   const errors = []
   settings.webContents.on('console-message', (_event, level, message) => { if (level === 3) errors.push(message) })
   const state = () => evaluate('window.island.getSettings()')
+  const launcherFile = path.join(app.getPath('userData'), 'hooks', `cute-island-remote-hook.${process.platform === 'win32' ? 'cmd' : 'sh'}`)
   if (process.env.ISLAND_SETTINGS_PHASE === 'restore') {
     const restored = await state()
     assert.equal(restored.preferences.mode, 'managed')
@@ -53,8 +56,14 @@ async function fixture() {
     assert.equal(restored.preferences.automation.fallback, 'first')
     assert.equal(restored.preferences.theme, 'dark')
     assert.equal(nativeTheme.themeSource, 'dark')
+    assert.equal(restored.preferences.update.skippedVersion, '', 'A cancelled skip survives the restart')
     await until(() => evaluate('document.body.dataset.theme === "dark"'))
-    console.log('Settings restart persistence passed')
+    // An application update moves the Electron runner, so the launcher is rewritten on boot.
+    assert.ok(restored.remoteHooks.claude.installed, 'The hook left installed is still registered')
+    const launcher = await fs.readFile(launcherFile, 'utf8')
+    assert.ok(!launcher.includes('STALE-RUNNER'), 'A stale launcher is replaced on boot')
+    assert.ok(launcher.includes(process.execPath) && launcher.includes('remote hook'), launcher)
+    console.log('Settings restart persistence and hook launcher refresh passed')
     app.quit()
     return
   }
@@ -288,6 +297,89 @@ async function fixture() {
     settings.setContentSize(920, 700)
   }
   console.log('Theme switching, native background, system changes, explicit override, keyboard and all themed sections passed')
+
+  // Version checks: the switch, the environment override and a newer release, all against a local feed.
+  await click('常规')
+  const current = require('../package.json').version
+  const next = current.replace(/(\d+)$/, (_, patch) => String(Number(patch) + 1))
+  assert.equal((await state()).update.status, 'disabled', 'Unpackaged builds never query a release feed')
+  assert.equal(await evaluate('!!document.querySelector(".update-available")'), false)
+  let feedRequests = 0
+  let feedBody = JSON.stringify({ tag_name: `v${next}`, html_url: `https://github.com/xihadance/cute-island/releases/tag/v${next}`,
+    body: `## v${next}\n\n- 冒烟替身版本说明`, published_at: '2026-02-01T10:00:00Z' })
+  const feed = require('node:http').createServer((request, response) => {
+    feedRequests++
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(feedBody)
+  })
+  feed.listen(0, '127.0.0.1')
+  await once(feed, 'listening')
+  process.env.CUTE_ISLAND_UPDATE_FEED = `http://127.0.0.1:${feed.address().port}/releases/latest`
+  process.env.ISLAND_FAKE_PACKAGED = '1'
+  await evaluate('window.island.updateSettings({ update: { enabled: false } })')
+  await until(async () => (await state()).update.status === 'disabled')
+  await evaluate('window.island.settingsAction("update-check")')
+  await delay(200)
+  assert.equal(feedRequests, 0, 'A disabled switch suppresses the request')
+  await evaluate('window.island.updateSettings({ update: { enabled: true } })')
+  await until(async () => (await state()).update.status === 'idle')
+  await evaluate('window.island.settingsAction("update-check")')
+  await until(async () => (await state()).update.status === 'available')
+  assert.equal(feedRequests, 1)
+  assert.deepEqual((await state()).update.available, { version: next, tag: `v${next}`,
+    url: `https://github.com/xihadance/cute-island/releases/tag/v${next}`, notes: `## v${next}\n\n- 冒烟替身版本说明`, publishedAt: Date.parse('2026-02-01T10:00:00Z') })
+  await until(() => evaluate('!!document.querySelector(".update-available")'))
+  assert.ok((await evaluate('document.querySelector(".update-notes").textContent')).includes('冒烟替身版本说明'))
+  assert.ok((await evaluate('document.querySelector(".settings-update-link").textContent')).includes(next))
+  await capture('settings-update-available')
+  assert.ok((await state()).preferences.update.lastCheckedAt > 0, 'The check time is persisted')
+  await click('跳过此版本')
+  await until(async () => (await state()).update.status === 'idle')
+  assert.equal(await evaluate('!!document.querySelector(".update-available")'), false)
+  assert.equal(await evaluate('!!document.querySelector(".settings-update-link")'), false)
+  assert.equal((await state()).preferences.update.skippedVersion, next)
+  await click(`取消跳过 ${next}`)
+  await until(async () => (await state()).update.status === 'available')
+  // A malformed or hostile payload must leave the offer untouched rather than prompting.
+  for (const hostile of [JSON.stringify({ tag_name: `v${next}`, html_url: 'https://github.com/attacker/cute-island/releases/tag/v9.9.9' }), '{broken']) {
+    feedBody = hostile
+    await evaluate('window.island.settingsAction("update-check")')
+    await until(async () => (await state()).update.status !== 'checking')
+    assert.equal((await state()).update.available.version, next, 'A rejected payload keeps the last valid release')
+  }
+  // Auto-install is offered on Windows and AppImage only, and never acts on an unstaged update.
+  const expectedAutoInstall = process.platform === 'win32'
+  assert.equal((await state()).update.autoInstall, expectedAutoInstall)
+  assert.equal(await evaluate('!!Array.from(document.querySelectorAll("button")).find(el => el.textContent.trim() === "下载更新")'), expectedAutoInstall)
+  assert.equal(await evaluate('!!Array.from(document.querySelectorAll("button")).find(el => el.textContent.trim() === "前往下载")'), !expectedAutoInstall)
+  const updateActionError = async name => {
+    const message = await settings.webContents.executeJavaScript(
+      `window.island.settingsAction(${JSON.stringify(name)}).then(() => '', error => String(error && error.message || error))`, true)
+    assert.ok(message, `${name} should have been refused`)
+    return message
+  }
+  assert.match(await updateActionError('update-install'), /更新尚未下载完成/)
+  if (expectedAutoInstall) {
+    // The release feed decides what is offered; a feed without matching installer metadata must fail loudly.
+    assert.match(await updateActionError('update-download'), /发布页|安装包|不一致|ENOTFOUND|404|HttpError|net::|yml/)
+    await until(async () => (await state()).update.status !== 'downloading')
+    assert.equal((await state()).update.available.version, next, 'A failed download keeps the offer')
+    assert.match(await updateActionError('update-install'), /更新尚未下载完成/)
+  }
+
+  process.env.CUTE_ISLAND_UPDATE = '0'
+  await evaluate('window.island.updateSettings({ update: { enabled: true } })')
+  await until(async () => (await state()).update.status === 'disabled')
+  const quiet = feedRequests
+  await evaluate('window.island.settingsAction("update-check")')
+  await delay(200)
+  assert.equal(feedRequests, quiet, 'CUTE_ISLAND_UPDATE=0 outranks the interface switch')
+  delete process.env.CUTE_ISLAND_UPDATE
+  delete process.env.CUTE_ISLAND_UPDATE_FEED
+  process.env.ISLAND_FAKE_PACKAGED = '0'
+  await new Promise(resolve => feed.close(resolve))
+  console.log('Update checking, switch precedence, skip, hostile payload rejection and persistence passed')
+
   await click('自动审批')
   await evaluate('document.querySelector("[role=switch]").click()')
   await until(async () => !(await state()).preferences.automation.enabled)
@@ -306,6 +398,10 @@ async function fixture() {
   assert.equal(BrowserWindow.getAllWindows().length, 2, 'Settings is a singleton')
   await assert.rejects(island.webContents.executeJavaScript('window.island.updateSettings({ automation: { enabled: true } })'))
   assert.deepEqual(errors, [])
+  // Leave a hook installed with a stale launcher; the restore phase checks the boot refresh.
+  await evaluate('window.island.setRemoteIntegration("claude", true)')
+  await until(async () => (await state()).remoteHooks.claude.installed)
+  await fs.writeFile(launcherFile, 'STALE-RUNNER\n')
   console.log('Settings, tray sync, Claude native approval/answer, pause, integration, history, window lifecycle and responsive layout passed')
   app.quit()
 }

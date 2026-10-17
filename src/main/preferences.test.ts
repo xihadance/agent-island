@@ -52,3 +52,29 @@ it('rejects malformed IPC patches without accepting remote or credential-bearing
   }
   expect(patchPreferences(preferences, { automation: { codexUrl: 'ws://[::1]:4500' } }).automation.codexUrl).toBe('ws://[::1]:4500')
 })
+
+it('keeps update checking on by default and refuses renderer-owned check bookkeeping', () => {
+  const preferences = normalizePreferences(undefined)
+  expect(preferences.update).toEqual({ enabled: true, skippedVersion: '', lastCheckedAt: 0 })
+  expect(normalizePreferences({ update: { enabled: 'yes', skippedVersion: 7, lastCheckedAt: -5 } }).update).toEqual({ enabled: true, skippedVersion: '', lastCheckedAt: 0 })
+  expect(normalizePreferences({ update: { lastCheckedAt: 1_700_000_000_000 } }).update.lastCheckedAt).toBe(1_700_000_000_000)
+  expect(patchPreferences(preferences, { update: { enabled: false } }).update.enabled).toBe(false)
+  expect(patchPreferences(preferences, { update: { skippedVersion: ' 0.1.18 ' } }).update.skippedVersion).toBe('0.1.18')
+  for (const patch of [{ update: null }, { update: [] }, { update: { lastCheckedAt: 1 } }, { update: { enabled: 'true' } },
+    { update: { skippedVersion: 1 } }, { update: { skippedVersion: 'v'.repeat(41) } }, { update: { extra: true } }]) {
+    expect(() => patchPreferences(preferences, patch as never)).toThrow()
+  }
+})
+
+it('preserves an existing check timestamp across unrelated patches', () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'island-mode-'))
+  try {
+    const file = path.join(directory, 'preferences.json')
+    savePreferences(file, normalizePreferences({ update: { lastCheckedAt: 1_700_000_000_000, skippedVersion: '0.1.18' } }))
+    const next = patchPreferences(readPreferences(file), { theme: 'dark' })
+    expect(next.update).toEqual({ enabled: true, skippedVersion: '0.1.18', lastCheckedAt: 1_700_000_000_000 })
+  } finally {
+    if (path.dirname(directory) !== path.resolve(os.tmpdir()) || !path.basename(directory).startsWith('island-mode-')) throw new Error('Unexpected temporary path')
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
