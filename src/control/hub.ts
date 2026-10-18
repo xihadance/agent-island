@@ -44,8 +44,8 @@ export class ControlHub {
   constructor(readonly store: ControlStore, private readonly log: (message: string) => void = console.error) {}
   attach(sessionId: string, adapter: AgentControlAdapter): void { this.adapters.set(sessionId, adapter) }
   setResumer(resumer: SessionResumer, source: (id: string) => SessionSource | undefined = () => undefined): void { this.resumer = resumer; this.source = source }
-  recoveryActions(sessionId: string): InterventionRequest['actions'] {
-    const session = this.store.snapshot().sessions.find(s => s.id === sessionId)
+  recoveryActions(sessionId: string, sessions = this.store.sessions()): InterventionRequest['actions'] {
+    const session = sessions.find(s => s.id === sessionId)
     return session && this.resumer?.available(session) ? ['resume', 'ack'] : ['ack']
   }
   async addChannel(channel: ChannelAdapter): Promise<void> {
@@ -81,7 +81,7 @@ export class ControlHub {
     check(!this.closed, '远程接管已停用', 409)
     if (decision.action === 'resume') return this.resume(id, revision, by)
     const request = this.store.get(id)
-    const session = this.store.snapshot().sessions.find(s => s.id === request.sessionId)
+    const session = this.store.sessions().find(s => s.id === request.sessionId)
     check(decision.action === 'ack' || session?.connected, '会话未连接，无法提交操作', 409)
     const next = this.store.decide(id, revision, decision, by)
     if (next.origin === 'codex') {
@@ -96,7 +96,7 @@ export class ControlHub {
     check(!this.closed, '远程接管已停用', 409)
     string(text, '继续指令', 16000)
     const request = this.store.get(id)
-    const session = this.store.snapshot().sessions.find(s => s.id === request.sessionId)
+    const session = this.store.sessions().find(s => s.id === request.sessionId)
     check(request.kind === 'error' && request.actions.includes('resume') && session && this.resumer, '此通知不支持恢复会话', 409)
     check(request.status === 'pending' && request.revision === revision && request.expiresAt > this.store.now(), '请求已处理、已失效或版本已变化', 409)
     const key = `${session.agent}:${session.nativeId}`
@@ -133,7 +133,7 @@ export class ControlHub {
   }
   async send(sessionId: string, text: string, by: string): Promise<Guidance> {
     check(!this.closed, '远程接管已停用', 409)
-    const session = this.store.snapshot().sessions.find(s => s.id === sessionId)
+    const session = this.store.sessions().find(s => s.id === sessionId)
     check(session?.connected && session.capabilities.includes('message'), '该会话尚未接管或不支持追加指令', 409)
     string(text, '消息', 16000)
     check(this.store.snapshot().guidance.filter(m => m.status === 'queued').length < 100, '指导消息队列已满', 429)
@@ -271,8 +271,12 @@ export class ControlHub {
   observe(activities: readonly Activity[]): void {
     if (this.closed) return
     const found = new Set<string>()
+    // One read per scan instead of one per activity: this runs on every store emit,
+    // and a full snapshot clones the whole seen/automated history with it. Only our
+    // own writes below can invalidate it, so each of them re-reads explicitly.
+    let state = { sessions: this.store.sessions(), requests: this.store.requests() }
+    const reread = (): void => { state = { sessions: this.store.sessions(), requests: this.store.requests() } }
     for (const activity of activities) {
-      const state = this.store.snapshot()
       const controlled = state.sessions.find(s => s.adapter !== 'observation' && activityId(s.agent, s.nativeId) === activity.id)
       const issues: { key: string; kind: 'approval' | 'input' | 'error'; title: string; detail: string }[] = []
       if (!controlled?.connected || !state.requests.some(r => r.sessionId === controlled.id && ACTIVE_STATUSES.includes(r.status))) {
@@ -296,15 +300,16 @@ export class ControlHub {
         found.add(fingerprint)
         if (state.requests.some(r => r.origin === 'observation' && r.toolKey === fingerprint && r.status !== 'cancelled')) continue
         const source = this.source(activity.id)
-        if (source?.cwd && controlled && !controlled.cwd) this.store.change(next => { next.sessions.find(s => s.id === controlled.id)!.cwd = source.cwd })
+        if (source?.cwd && controlled && !controlled.cwd) { this.store.change(next => { next.sessions.find(s => s.id === controlled.id)!.cwd = source.cwd }); reread() }
         const sessionId = controlled?.id ?? `observe:${source ? `${source.agent}:${source.nativeId}` : activity.id}`
         if (issue.key === 'error' && state.requests.some(r => r.sessionId === sessionId && r.kind === 'error' && !r.toolKey && r.createdAt >= activity.startedAt && r.expiresAt > this.store.now())) continue
-        if (!controlled && !state.sessions.some(s => s.id === sessionId)) this.store.session({ id: sessionId, nativeId: source?.nativeId ?? activity.id, cwd: source?.cwd, agent: inferAgent(source?.agent ?? activity.agent), adapter: 'observation', label: activity.agent, capabilities: [], connected: false })
-        const actions = issue.key === 'error' && (source || controlled) ? this.recoveryActions(sessionId) : ['ack' as const]
+        if (!controlled && !state.sessions.some(s => s.id === sessionId)) { this.store.session({ id: sessionId, nativeId: source?.nativeId ?? activity.id, cwd: source?.cwd, agent: inferAgent(source?.agent ?? activity.agent), adapter: 'observation', label: activity.agent, capabilities: [], connected: false }); reread() }
+        const actions = issue.key === 'error' && (source || controlled) ? this.recoveryActions(sessionId, state.sessions) : ['ack' as const]
         this.store.create({ sourceKey: `observe:${uid()}`, sessionId, origin: 'observation', kind: issue.kind, title: issue.title, failureStartedAt: activity.startedAt, detail: actions.includes('resume') ? issue.detail : `${issue.detail}\n仅通知；此事件没有可用的原生控制请求。`, toolKey: fingerprint, questions: [], actions, expiresAt: this.store.now() + 24 * 3600000 })
+        reread()
       }
     }
-    for (const r of this.store.snapshot().requests) if (r.origin === 'observation' && r.toolKey && !found.has(r.toolKey) && r.decision?.action !== 'resume' && !['cancelled', 'expired'].includes(r.status)) this.store.mark(r.id, 'cancelled')
+    for (const r of this.store.requests()) if (r.origin === 'observation' && r.toolKey && !found.has(r.toolKey) && r.decision?.action !== 'resume' && !['cancelled', 'expired'].includes(r.status)) this.store.mark(r.id, 'cancelled')
   }
 }
 function inferAgent(label: string): ControlSession['agent'] {

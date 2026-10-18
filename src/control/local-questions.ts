@@ -2,7 +2,8 @@ import { activityId, AGENT_LABEL } from '../agents/parse'
 import type { QuestionRequest } from '../shared/question-request'
 import { ACTIVE_STATUSES, type ControlState } from './types'
 
-export function localQuestions(state: ControlState): QuestionRequest[] {
+/** Takes only the two lists it reads, so callers on the publish path can skip a full snapshot. */
+export function localQuestions(state: Pick<ControlState, 'sessions' | 'requests'>): QuestionRequest[] {
   const sessions = new Map(state.sessions.map(session => [session.id, session]))
   return state.requests.flatMap(request => {
     const session = sessions.get(request.sessionId)

@@ -182,6 +182,21 @@ describe('remote routing and delivery', () => {
     hub.observe([]); hub.observe(activities.list()); expect(store.snapshot().requests).toHaveLength(4)
     activities.dispose()
   })
+  it('bounds cloned history while scanning many sessions, and still separates their issues', () => {
+    const { store, hub } = setup()
+    store.change(state => { for (let i = 0; i < 2000; i++) state.seen.push(`tg/event-${i}`) })
+    const activities = Array.from({ length: 12 }, (_, i) => ({ id: `claude-${i}`, agent: 'Claude Code', state: 'error' as const,
+      title: `会话 ${i} 失败`, detail: '退出码 1', steps: [], startedAt: 1, updatedAt: 2 }))
+    const snapshot = vi.spyOn(store, 'snapshot')
+    try { hub.observe(activities) } finally { snapshot.mockRestore() }
+    // Each failing session owns a request, but the seen history is not re-cloned per activity.
+    expect(store.snapshot().requests).toHaveLength(activities.length)
+    expect(new Set(store.snapshot().requests.map(r => r.sessionId)).size).toBe(activities.length)
+    expect(snapshot.mock.results.reduce((sum, result) => sum + (result.type === 'return' ? result.value.seen.length : 0), 0)).toBeLessThan(2000)
+    // A repeat scan recognizes every fingerprint and adds nothing.
+    hub.observe(activities)
+    expect(store.snapshot().requests).toHaveLength(activities.length)
+  })
   it('raises nothing for a recorded exit and retires what the dead session was waiting on', () => {
     const { store, hub } = setup()
     const activities = new ActivityStore()

@@ -29,6 +29,8 @@ import { localQuestions } from '../control/local-questions'
 import { withQuestionRequests } from '../shared/question-request'
 import { UpdateChecker } from './updater'
 import { createAutoInstaller } from './auto-update'
+import { launchAtLoginStatus, setLaunchAtLogin, type LaunchAtLoginOptions } from './launch-at-login'
+import type { LaunchAtLoginStatus } from '../shared/launch-at-login'
 import { installBlockedReason, releaseApiUrl, releasesPageUrl, supportsAutoInstall } from '../shared/update'
 import { createChannelTransport } from '../control/proxy'
 
@@ -53,6 +55,7 @@ let islandMode: IslandMode = 'focus'
 let preferences = normalizePreferences(undefined)
 let codex: CodexAutomation | undefined
 let claudeInstalled = false
+let launchAtLogin: LaunchAtLoginStatus = { supported: false, enabled: false, detail: '' }
 let hostedCodex: ManagedCodexServer | undefined
 let updater: UpdateChecker | undefined
 let quitting = false
@@ -135,6 +138,7 @@ async function boot(): Promise<void> {
   try { writeCodexLaunchConfig(codexCommandOptions(), `http://127.0.0.1:${server.port}/v1/codex/launch`, codexLaunchToken) }
   catch { console.error('Codex 命令接入需要重新安装，请在 Agent 接入中检查') }
   refreshHookLauncher()
+  syncLaunchAtLogin()
   syncWatcher()
   preferredPosition = readWindowPosition(positionFile())
   claudeInstalled = hasClaudeIntegration(claudeSettingsFile(), server.port)
@@ -299,7 +303,8 @@ function currentBehavior(): IslandBehavior {
 }
 
 function visibleActivities(activities = store?.list() ?? []) {
-  return withQuestionRequests(activities, control?.status().enabled ? localQuestions(control.hub.store.snapshot()) : [])
+  const hub = control?.status().enabled ? control.hub.store : undefined
+  return withQuestionRequests(activities, hub ? localQuestions({ sessions: hub.sessions(), requests: hub.requests() }) : [])
 }
 
 function publishActivities(activities = store?.list() ?? []): void {
@@ -376,6 +381,26 @@ function remoteHookOptions(agent: HookAgent) {
   return { file, agent, config: remoteConfigFile(), runner: [path.join(app.getPath('userData'), 'hooks', `cute-island-remote-hook.${process.platform === 'win32' ? 'cmd' : 'sh'}`)] }
 }
 
+function launchAtLoginOptions(): LaunchAtLoginOptions {
+  return { platform: process.platform, packaged: app.isPackaged, execPath: process.execPath, appImage: process.env.APPIMAGE,
+    loginItem: { get: () => app.getLoginItemSettings(), set: settings => app.setLoginItemSettings(settings) } }
+}
+
+/**
+ * An update moves the executable the login item points at, so re-apply the stored
+ * preference on boot exactly as the Hook launcher and Codex command script do.
+ * The result is cached: the snapshot is rebuilt on every notify, and reading the
+ * system login item each time would hit the registry on Windows.
+ */
+function syncLaunchAtLogin(): void {
+  const options = launchAtLoginOptions()
+  if (preferences.launchAtLogin) {
+    try { setLaunchAtLogin(options, true) }
+    catch { console.error('开机启动登记刷新失败，请在配置的常规页重新设置') }
+  }
+  launchAtLogin = launchAtLoginStatus(options)
+}
+
 function codexCommandOptions(): CodexCommandOptions {
   return { directory: path.join(app.getPath('userData'), 'codex-command'), runner: [process.execPath, path.join(app.getAppPath(), 'out', 'cli.cjs')] }
 }
@@ -396,7 +421,7 @@ function settingsSnapshot(): SettingsSnapshot {
   return { codexCommand: codexCommandStatus(codexCommandOptions()), codexServer: hostedCodex?.state ?? { status: 'stopped', url: '', detail: '' },
     remoteHooks: { claude: remoteIntegrationStatus(remoteHookOptions('claude')), cursor: remoteIntegrationStatus(remoteHookOptions('cursor')), gemini: remoteIntegrationStatus(remoteHookOptions('gemini')) },
     remote: remoteSettings(remoteConfigFile(), control?.status(), controlLoadError), preferences, version: app.getVersion(), port: server?.port ?? readPort(),
-    watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled,
+    watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled, launchAtLogin,
     codexStatus: codex?.status ?? 'disabled', codexDetail: codex?.detail ?? '', history: [...history],
     update: updater?.state ?? { status: 'disabled', current: app.getVersion(), autoInstall: false } }
 }
@@ -467,7 +492,7 @@ function autoInstallSupported(): boolean {
 function updateBlockedReason(): string {
   const activities = visibleActivities()
   return installBlockedReason({
-    pendingRequests: control?.status().enabled ? control.hub.store.snapshot().requests.filter(request => request.status === 'pending').length : 0,
+    pendingRequests: control?.status().enabled ? control.hub.store.requests().filter(request => request.status === 'pending').length : 0,
     attentionIds: attention.pendingIds(),
     activeSessions: activities.filter(activity => ['running', 'thinking', 'waiting', 'approval'].includes(activity.state)).length
   })
@@ -524,6 +549,11 @@ function syncWatcher(): void {
 
 function updatePreferences(patch: unknown): SettingsSnapshot {
   const next = patchPreferences(preferences, patch)
+  // Register with the system first: a stored preference the OS refused would lie to the user.
+  if (next.launchAtLogin !== preferences.launchAtLogin) {
+    setLaunchAtLogin(launchAtLoginOptions(), next.launchAtLogin)
+    launchAtLogin = launchAtLoginStatus(launchAtLoginOptions())
+  }
   savePreferences(preferencesFile(), next)
   preferences = next
   nativeTheme.themeSource = next.theme
@@ -569,6 +599,8 @@ function openSettings(): void {
     settingsWindow.show()
     settingsWindow.focus()
     claudeInstalled = hasClaudeIntegration(claudeSettingsFile(), server?.port ?? readPort())
+    // The user may have removed the login item outside the application.
+    launchAtLogin = launchAtLoginStatus(launchAtLoginOptions())
     notifySettings()
     return
   }

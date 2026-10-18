@@ -259,7 +259,7 @@ Settings save automatically to `preferences.json` in the Electron user data dire
 
 | Page | Contents |
 | --- | --- |
-| **General** | Theme (light / dark / follow system), display mode, session detection, restore position, version and updates |
+| **General** | Theme (light / dark / follow system), display mode, session detection, launch at login, restore position, version and updates |
 | **Auto-approval** | Master switch, permission approvals, multiple-choice answers, policy when there is no recommendation |
 | **Agent integration** | Install status, Codex app-server, command integration |
 | **Remote takeover** | Message channels, Codex connections, agent Hooks, global proxy |

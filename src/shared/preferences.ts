@@ -1,4 +1,5 @@
 import { isIslandMode, type IslandMode } from './island-behavior'
+import type { LaunchAtLoginStatus } from './launch-at-login'
 import type { RemoteSettings } from './remote-settings'
 import type { CodexCommandStatus } from './codex-launch'
 import type { UpdateState } from './update'
@@ -11,6 +12,7 @@ export interface Preferences {
   codexServer: { enabled: boolean; port: number; executable: string }
   mode: IslandMode
   watchSessions: boolean
+  launchAtLogin: boolean
   automation: {
     enabled: boolean
     approvePermissions: boolean
@@ -31,7 +33,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   codexServer: { enabled: false, port: 4500, executable: '' },
   mode: 'focus',
   watchSessions: true,
-  automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' },
+  launchAtLogin: false,
+  automation:{ enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' },
   update: { enabled: true, skippedVersion: '', lastCheckedAt: 0 }
 }
 
@@ -60,6 +63,7 @@ export function normalizePreferences(value: unknown): Preferences {
       executable: typeof server.executable === 'string' ? server.executable.trim() : '' },
     mode: isIslandMode(source.mode) ? source.mode : 'focus',
     watchSessions: typeof source.watchSessions === 'boolean' ? source.watchSessions : true,
+    launchAtLogin: source.launchAtLogin === true,
     automation: {
       enabled: automation.enabled === true,
       approvePermissions: typeof automation.approvePermissions === 'boolean' ? automation.approvePermissions : true,
@@ -81,7 +85,7 @@ export type PreferencesPatch = Partial<Omit<Preferences, 'automation' | 'codexSe
 export function patchPreferences(current: Preferences, value: unknown): Preferences {
   const patch = record(value)
   if (value === null || typeof value !== 'object' || Array.isArray(value) ||
-      Object.keys(patch).some(key => !['mode', 'theme', 'watchSessions', 'automation', 'codexServer', 'update'].includes(key))) throw new Error('无效的配置')
+      Object.keys(patch).some(key => !['mode', 'theme', 'watchSessions', 'launchAtLogin', 'automation', 'codexServer', 'update'].includes(key))) throw new Error('无效的配置')
   if ('theme' in patch && !isTheme(patch.theme)) throw new Error('无效的外观主题')
   const server = record(patch.codexServer)
   if ('codexServer' in patch && (patch.codexServer === null || typeof patch.codexServer !== 'object' || Array.isArray(patch.codexServer) ||
@@ -91,6 +95,7 @@ export function patchPreferences(current: Preferences, value: unknown): Preferen
   if ('executable' in server && (typeof server.executable !== 'string' || /[\r\n\0]/.test(server.executable))) throw new Error('无效的 Codex 程序路径')
   if ('mode' in patch && !isIslandMode(patch.mode)) throw new Error('无效的显示模式')
   if ('watchSessions' in patch && typeof patch.watchSessions !== 'boolean') throw new Error('无效的会话识别设置')
+  if ('launchAtLogin' in patch && typeof patch.launchAtLogin !== 'boolean') throw new Error('无效的开机启动设置')
   const auto = record(patch.automation)
   if ('automation' in patch && (patch.automation === null || typeof patch.automation !== 'object' || Array.isArray(patch.automation) ||
       Object.keys(auto).some(key => !['enabled', 'approvePermissions', 'answerQuestions', 'fallback', 'codexUrl'].includes(key)))) throw new Error('无效的自动审批配置')
@@ -127,6 +132,7 @@ export interface SettingsSnapshot {
   port: number
   watchDisabledByEnvironment: boolean
   claudeInstalled: boolean
+  launchAtLogin: LaunchAtLoginStatus
   codexStatus: 'disabled' | 'connecting' | 'connected' | 'error'
   codexDetail: string
   history: AutomationEntry[]

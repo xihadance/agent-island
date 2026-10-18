@@ -38,6 +38,12 @@ export class ControlStore {
     }
   }
   snapshot(): ControlState { return structuredClone(this.state) }
+  /**
+   * Readers for the hot paths. A full snapshot also clones `seen` (10k entries) and
+   * `automated` (4k), which the watcher tick and the observe scan never look at.
+   */
+  sessions(): ControlSession[] { return structuredClone(this.state.sessions) }
+  requests(): InterventionRequest[] { return structuredClone(this.state.requests) }
   wasAutomated(sourceKey: string, fingerprint: string): boolean {
     const previous = this.state.automated?.[sourceKey]
     if (previous === undefined) return false

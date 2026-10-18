@@ -282,6 +282,9 @@ async function fixture() {
   await settings.webContents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 })
   await settings.webContents.debugger.sendCommand('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 })
   await until(async () => (await state()).preferences.theme === 'dark')
+  // The stored preference lands one tick before the form re-enables; a click on a
+  // still-disabled radio is dropped, which a real user cannot do.
+  await settled()
   await evaluate('document.querySelector("[data-testid=theme-system]").click()')
   await until(async () => (await state()).preferences.theme === 'system')
   assert.equal(nativeTheme.themeSource, 'system')

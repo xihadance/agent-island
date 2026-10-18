@@ -41,6 +41,20 @@ it('migrates old files and preserves automation when the tray switches modes', (
   }
 })
 
+it('keeps launch at login off unless a stored boolean asks for it', () => {
+  expect(normalizePreferences(undefined).launchAtLogin).toBe(false)
+  // An older preferences file has no such field, and a malformed one never enables it.
+  for (const value of [{}, { launchAtLogin: 'true' }, { launchAtLogin: 1 }, { launchAtLogin: null }]) {
+    expect(normalizePreferences(value).launchAtLogin).toBe(false)
+  }
+  expect(normalizePreferences({ launchAtLogin: true }).launchAtLogin).toBe(true)
+  const preferences = normalizePreferences(undefined)
+  expect(patchPreferences(preferences, { launchAtLogin: true }).launchAtLogin).toBe(true)
+  for (const patch of [{ launchAtLogin: 'yes' }, { launchAtLogin: 1 }, { launchAtLogin: null }]) {
+    expect(() => patchPreferences(preferences, patch as never)).toThrow()
+  }
+})
+
 it('rejects malformed IPC patches without accepting remote or credential-bearing URLs', () => {
   const preferences = normalizePreferences(undefined)
   for (const patch of [null, [], { mode: 'auto' }, { theme: 'sepia' }, { theme: null }, { arbitrary: true }, { automation: null }, { automation: { enabled: 'true' } },

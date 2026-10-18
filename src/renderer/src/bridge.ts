@@ -33,6 +33,7 @@ function createMockBridge(): IslandApi {
     remoteHooks: { claude: { installed: false, file: '~/.claude/settings.json' }, cursor: { installed: false, file: '~/.cursor/hooks.json' }, gemini: { installed: false, file: '~/.gemini/settings.json' } },
     remote: { configured: false, enabled: false, running: false, configFile: '~/.cute-island/remote.json', revision: '', channels: [], codex: [], missingCredentials: [] },
     claudeInstalled: false, codexStatus: 'disabled', codexDetail: '', history: [],
+    launchAtLogin: { supported: false, enabled: false, detail: '浏览器预览不注册开机启动' },
     update: { status: 'disabled', current: '预览', autoInstall: false }, preview: true })
   const save = (): SettingsSnapshot => {
     mode = preferences.mode
