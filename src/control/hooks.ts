@@ -5,9 +5,14 @@ import { ACTIVE_STATUSES, type AgentKind, type InterventionRequest, type Questio
 import { formAnswers, formQuestions } from './forms'
 
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24)
-export interface HookReply { requestId?: string; deadline?: number; output?: Record<string, unknown>; guidanceIds?: string[] }
+export interface HookReply { requestId?: string; deadline?: number; output?: Record<string, unknown>; guidanceIds?: string[]; handled?: string }
+/**
+ * Local automation's answer for one hook event, consulted before anything is sent
+ * out. `undefined` means it declined, so the request escalates to the channels.
+ */
+export type HookAutomation = (agent: AgentKind, event: Record<string, unknown>) => { output: Record<string, unknown>; summary: string } | undefined
 export class HookController {
-  constructor(private readonly hub: ControlHub) {}
+  constructor(private readonly hub: ControlHub, private readonly automate?: HookAutomation) {}
   handle(body: unknown): HookReply {
     const input = record(body)
     const agent = string(input.agent, 'agent') as AgentKind
@@ -40,7 +45,7 @@ export class HookController {
     if (agent === 'claude' && eventName === 'Elicitation' && event.mode !== 'url') {
       questions = formQuestions(event.requested_schema) ?? []
       if (questions.length) kind = 'input'
-    } else if (agent === 'claude' && eventName === 'PreToolUse' && name === 'AskUserQuestion') {
+    } else if (agent === 'claude' && ['PreToolUse', 'PermissionRequest'].includes(eventName) && name === 'AskUserQuestion') {
       kind = 'input'
       check(Array.isArray(args.questions) && args.questions.length > 0 && args.questions.length <= 4, '问题列表无效')
       questions = args.questions.map((q: unknown, i: number) => {
@@ -50,17 +55,28 @@ export class HookController {
           options: value.options.map((o: unknown) => string(record(o).label, '选项', 1000)),
           descriptions: value.options.map((o: unknown) => typeof record(o).description === 'string' ? String(record(o).description).slice(0, 2000) : '') }
       })
-    } else if (agent === 'claude' && eventName === 'PreToolUse' && name === 'ExitPlanMode') kind = 'plan'
+    } else if (agent === 'claude' && ['PreToolUse', 'PermissionRequest'].includes(eventName) && name === 'ExitPlanMode') kind = 'plan'
     else if (agent === 'claude' && eventName === 'PermissionRequest') kind = 'approval'
     else if (agent === 'cursor' && ['beforeShellExecution', 'beforeMCPExecution'].includes(eventName)) kind = 'approval'
     else if (agent === 'gemini' && eventName === 'BeforeTool') kind = 'approval'
     if (kind) {
       const detail = JSON.stringify(args, null, 2)
       check(detail.length <= 48000, '请求内容过长，请在原 Agent 中处理')
-      const existing = store.snapshot().requests.find(r => r.sourceKey === `hook:${agent}:${invocation}`)
+      const sourceKey = `hook:${agent}:${invocation}`
+      const fingerprint = digest(event)
+      check(!store.wasAutomated(sourceKey, fingerprint), '自动处理结果已提交或待确认，请在原 Agent 中处理', 409)
+      const existing = store.snapshot().requests.find(r => r.sourceKey === sourceKey)
       if (existing) {
         check(existing.sessionId === id && existing.toolKey === toolKey, 'Hook 标识已绑定其他操作', 409)
         return { requestId: existing.id, deadline: existing.expiresAt }
+      }
+      // Local automation decides first. Escalating only what it declines keeps a
+      // channel notification from ever arriving for an already-settled request.
+      const automated = this.automate?.(agent, event)
+      if (automated) {
+        // A lost response must never replay an approval after a restart or rule change.
+        store.recordAutomation(sourceKey, fingerprint)
+        return { output: automated.output, handled: automated.summary }
       }
       const request = store.create({ sourceKey: `hook:${agent}:${invocation}`, sessionId: id, nativeRequestId: invocation,
         origin: 'hook', kind, toolKey, title: kind === 'input' ? '需要你回答' : kind === 'plan' ? '确认执行方案' : `确认 ${name || '工具调用'}`,
@@ -108,9 +124,10 @@ export function hookDecision(agent: string, event: Record<string, unknown>, deci
   const approved = decision?.action === 'approve' || decision?.action === 'answer'
   if (agent === 'claude') {
     if (event.hook_event_name === 'Elicitation') return { hookSpecificOutput: { hookEventName: 'Elicitation', action: decision?.action === 'answer' ? 'accept' : 'cancel', ...(decision?.answers ? { content: formAnswers(questions, decision.answers) } : {}) } }
-    if (event.hook_event_name === 'PermissionRequest') return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: approved ? 'allow' : 'deny', ...(!approved ? { message: '远程拒绝、取消或请求失效' } : {}) } } }
     const original = record(event.tool_input ?? {})
     const updatedInput = decision?.action === 'answer' ? { ...original, answers: Object.fromEntries(questions.map(q => [q.text, decision.answers![q.id].join(', ')])) } : original
+    if (event.hook_event_name === 'PermissionRequest') return { hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: approved ? 'allow' : 'deny',
+      ...(decision?.action === 'answer' ? { updatedInput } : {}), ...(!approved ? { message: '远程拒绝、取消或请求失效' } : {}) } } }
     return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: approved ? 'allow' : 'deny', ...(approved ? { updatedInput } : { permissionDecisionReason: '远程拒绝、取消或请求失效' }) } }
   }
   if (agent === 'cursor') return { permission: approved ? 'allow' : 'deny', user_message: approved ? '远程确认已收到' : '远程请求未获批准' }

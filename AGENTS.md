@@ -102,7 +102,7 @@ npm run island -- push --agent Cursor --state running --title "改登录页"
 
 1. **状态只凭证据**。不能根据等待时长或自然语言猜测会话状态。没有审批日志就不标「需要审批」,日志静默不等于失败——等待用户回答或审批的会话保持原状态,普通会话静默过久标 `stale: true` 而不是失败。
 2. **读日志不能用来批准**。自动审批和远程接管必须走原生交互通道回传,不能伪装成工具执行成功。`main/index.ts` 的处理记录也遵守这条。
-3. **远程接管优先于自动审批**。两者同时开启时,自动审批保留用户设置但暂停响应(见 `shared/codex-launch.ts` 的 `codexLaunchRoute`)。
+3. **远程接管统一回传**。两者同时开启时,独立自动审批通道暂停响应,由远程入口先按 Claude/Codex 自动规则决定,无法处理的请求才创建远程待办。命令路由仍以远程接管优先(见 `shared/codex-launch.ts` 的 `codexLaunchRoute`),避免两个通道重复回复。
 4. **凭据只存环境变量名**,不存值。配置表单里填 `CUTE_ISLAND_TELEGRAM_TOKEN` 这样的名字,实际值从进程环境读(`control/config.ts` 的 `secret()` / `validateCredentialName()`)。
 5. **外发内容先脱敏**。任何发往消息渠道的文本都要过 `control/hub.ts` 的 `redact()`,它处理 Authorization 头、常见 token 格式、私钥块。
 6. **只监听 127.0.0.1**。状态服务和控制接口都绑本机。状态 token(`CUTE_ISLAND_TOKEN`)和接管 token(`controlToken`)相互独立,不能互相顶替。Hook 端点拒绝带 `Origin` 的请求,防止浏览器页面提交审批。

@@ -5,8 +5,10 @@ import { check, uid } from './store'
 import type { ControlHub } from './hub'
 import { ACTIVE_STATUSES, type AgentControlAdapter, type ControlSession, type Guidance, type InterventionRequest, type Question } from './types'
 import { formAnswers, formQuestions } from './forms'
+import type { Decision } from '../shared/automation'
 
 export interface CodexConnection { id: string; url: string; threads: string[]; token?: string; agent?: Agent }
+export type CodexDecision = (method: string, params: Record<string, unknown>) => Decision
 interface NativeRequest { method: string; params: Record<string, any> }
 export class CodexAdapter implements AgentControlAdapter {
   private socket?: WebSocket
@@ -21,7 +23,8 @@ export class CodexAdapter implements AgentControlAdapter {
   private sessions = new Map<string, string>()
   private native = new Map<string, NativeRequest>()
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
-  constructor(private readonly hub: ControlHub, private readonly config: CodexConnection, private readonly requestsChanged: (created: boolean) => void = () => {}) {
+  constructor(private readonly hub: ControlHub, private readonly config: CodexConnection, private readonly requestsChanged: (created: boolean) => void = () => {},
+    private readonly automate?: CodexDecision, private readonly report: (decision: Decision) => void = () => {}) {
     const url = new URL(config.url)
     check(url.protocol === 'wss:' || url.protocol === 'ws:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname), 'Codex 仅允许本机 ws 或远程 wss')
     check(!url.username && !url.password, 'Codex 认证请通过 tokenEnv 配置')
@@ -162,7 +165,23 @@ export class CodexAdapter implements AgentControlAdapter {
     ]
     const detail = JSON.stringify(params, null, 2)
     const tooLarge = detail.length > 48000
-    const r = this.hub.store.create({ sourceKey: `codex:${this.config.id}:${this.generation}:${message.id}`, sessionId, turnId: params.turnId, nativeRequestId: message.id,
+    const sourceKey = `codex:${this.config.id}:${this.generation}:${message.id}`
+    // Native turn/request identity survives reconnects; socket generations do not.
+    const automaticKey = `codex-auto:${createHash('sha256').update(JSON.stringify([
+      this.config.id, this.config.url, params.threadId, params.turnId ?? this.generation, message.id
+    ])).digest('hex')}`
+    const fingerprint = createHash('sha256').update(JSON.stringify([message.method, params])).digest('hex')
+    if (this.hub.store.wasAutomated(automaticKey, fingerprint) || this.hub.store.snapshot().requests.some(r => r.sourceKey === sourceKey)) return
+    const decision = tooLarge ? undefined : this.automate?.(message.method, params)
+    if (decision?.response) {
+      // Record before sending. An ambiguous socket failure must not trigger a retry or escalation.
+      this.hub.store.recordAutomation(automaticKey, fingerprint)
+      void this.write({ id: message.id, result: decision.response }).then(() => this.report(decision), () => {
+        this.report({ action: 'manual', summary: '回复发送失败，结果待确认，请在原客户端处理' })
+      })
+      return
+    }
+    const r = this.hub.store.create({ sourceKey, sessionId, turnId: params.turnId, nativeRequestId: message.id,
       origin: 'codex', kind: input || elicitation && questions.length ? 'input' : elicitation ? 'authentication' : 'approval',
       title: input ? 'Codex 需要你回答' : elicitation ? questions.length ? 'MCP 表单需要你回答' : 'MCP 请求，请通过原生界面完成' : 'Codex 请求审批',
       detail: tooLarge ? `内容过长，请通过原生界面处理；下方仅为摘要。\n${detail.slice(0, 47000)}` : detail,

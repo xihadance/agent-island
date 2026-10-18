@@ -2,19 +2,31 @@ import { createChannelTransport, type ChannelTransport, type SystemProxyResolver
 import type { ActivityStore } from '../shared/activity'
 import { check, ControlStore } from './store'
 import { ControlHub } from './hub'
-import { HookController } from './hooks'
+import { HookController, type HookAutomation } from './hooks'
 import { readRemoteConfig, saveRemoteEnabled, secret, type ChannelConfig, type RemoteConfig } from './config'
-import { CodexAdapter } from './codex'
+import { CodexAdapter, type CodexDecision } from './codex'
+import type { Decision } from '../shared/automation'
 import { NativeSessionResumer } from './resume'
 import type { ChannelAdapter } from './types'
 
 export interface ControlStatus { enabled: boolean; running: boolean; error?: string }
 
-export function createControlRuntime(initial: RemoteConfig, activities: ActivityStore, options: { configFile?: string; resolveSystemProxy?: SystemProxyResolver; onChange?: () => void; onRequestsChange?: () => void; managedCodexUrl?: () => string } = {}) {
+interface RuntimeOptions {
+  configFile?: string
+  resolveSystemProxy?: SystemProxyResolver
+  onChange?: () => void
+  onRequestsChange?: () => void
+  managedCodexUrl?: () => string
+  automate?: HookAutomation
+  automateCodex?: CodexDecision
+  onCodexDecision?: (decision: Decision) => void
+}
+
+export function createControlRuntime(initial: RemoteConfig, activities: ActivityStore, options: RuntimeOptions = {}) {
   let config = initial
   const store = new ControlStore(config.stateFile)
   const stopRequests = store.subscribe(() => options.onRequestsChange?.())
-  let group = createConnections(config, activities, store, options.resolveSystemProxy, options.configFile)
+  let group = createConnections(config, activities, store, options)
   let enabled = config.enabled !== false
   let running = false
   let closed = false
@@ -65,7 +77,7 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
         store.releaseControl()
         persist(true)
         group.close()
-        group = createConnections(config, activities, store, options.resolveSystemProxy, options.configFile)
+        group = createConnections(config, activities, store, options)
         enabled = true
         start()
       }
@@ -78,9 +90,10 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
   }
 }
 
-function createConnections(config: RemoteConfig, activities: ActivityStore, store: ControlStore, resolveSystemProxy?: SystemProxyResolver, configFile?: string) {
+function createConnections(config: RemoteConfig, activities: ActivityStore, store: ControlStore, options: RuntimeOptions) {
+  const { resolveSystemProxy, configFile, automate } = options
   const hub = new ControlHub(store)
-  const hooks = new HookController(hub)
+  const hooks = new HookController(hub, automate)
   let stop = () => {}
   const connections: CodexAdapter[] = []
   const codexEntries = new Map<string, { key: string; adapter: CodexAdapter; transport: ChannelTransport }>()
@@ -105,7 +118,7 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
       const adapter = new CodexAdapter(hub, { ...connection, agent: transport.agent, token: connection.tokenEnv ? secret(connection.tokenEnv) : undefined }, created => {
         if (created) hub.observe(activities.list())
         void hub.flush()
-      })
+      }, options.automateCodex, options.onCodexDecision)
       codexEntries.set(connection.id, { key: JSON.stringify(connection), adapter, transport })
       connections.push(adapter)
       if (started) adapter.start()

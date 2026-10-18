@@ -73,6 +73,7 @@ export interface ControlState {
   deliveries: Record<string, Delivery>
   cursors: Record<string, number>
   seen: string[]
+  automated?: Record<string, string>
   answerDrafts?: Record<string, { revision: number; answers: Record<string, string[]> }>
 }
 export interface AgentControlAdapter {

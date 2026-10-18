@@ -3,9 +3,128 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ControlStore } from './store'
 import { ControlHub } from './hub'
 import { CodexAdapter } from './codex'
+import { decideCodex } from '../shared/automation'
+import { DEFAULT_PREFERENCES, type Preferences } from '../shared/preferences'
 
 const cleanup: (() => void)[] = []
 afterEach(() => { for (const close of cleanup.splice(0)) close(); vi.useRealTimers() })
+
+async function automationFixture(rules: Partial<Preferences['automation']> = {}) {
+  const server = new WebSocketServer({ port: 0, host: '127.0.0.1' })
+  await new Promise<void>(resolve => server.once('listening', resolve))
+  cleanup.push(() => { for (const client of server.clients) client.terminate(); server.close() })
+  let peer: WebSocket
+  const received: Record<string, any>[] = []
+  server.on('connection', socket => {
+    peer = socket
+    socket.on('message', bytes => {
+      const m = JSON.parse(bytes.toString())
+      received.push(m)
+      if (m.method && m.id !== undefined) socket.send(JSON.stringify({ id: m.id, result:
+        m.method === 'thread/loaded/list' ? { data: ['t'] } : m.method === 'thread/resume' ? { thread: { turns: [] } } : {} }))
+    })
+  })
+  const store = new ControlStore()
+  const hub = new ControlHub(store)
+  const channel = { id: 'test', destination: 'chat', allowedUsers: ['owner'], start: vi.fn(), send: vi.fn(async () => 'msg'), update: vi.fn(), close: vi.fn() }
+  await hub.addChannel(channel)
+  const preferences = { ...DEFAULT_PREFERENCES, automation: { ...DEFAULT_PREFERENCES.automation, enabled: true, fallback: 'manual' as const, ...rules } }
+  const report = vi.fn()
+  const connect = () => new CodexAdapter(hub, { id: 'local', url: `ws://127.0.0.1:${(server.address() as { port: number }).port}`, threads: ['t'] },
+    () => {}, (method, params) => decideCodex(method, params, preferences), report)
+  const adapter = connect()
+  cleanup.unshift(() => hub.close())
+  adapter.start()
+  await vi.waitFor(() => expect(received.some(m => m.method === 'thread/resume')).toBe(true))
+  const send = (method: string, params: Record<string, unknown>, id: string | number = 'request') => peer!.send(JSON.stringify({ id, method, params: { threadId: 't', turnId: 'turn', ...params } }))
+  const reconnect = async () => {
+    adapter.close()
+    const next = connect()
+    cleanup.unshift(() => next.close())
+    next.start()
+    await vi.waitFor(() => expect(received.filter(m => m.method === 'thread/resume')).toHaveLength(2))
+  }
+  return { store, hub, channel, received, report, send, preferences, adapter, reconnect }
+}
+
+it('does not replay an automatic native request after reconnecting, but accepts a new turn', async () => {
+  const f = await automationFixture()
+  const method = 'item/commandExecution/requestApproval'
+  f.send(method, {})
+  await vi.waitFor(() => expect(f.report).toHaveBeenCalledOnce())
+  await f.reconnect()
+  f.send(method, {})
+  f.send(method, {}, 'barrier')
+  await vi.waitFor(() => expect(f.report).toHaveBeenCalledTimes(2))
+  expect(f.received.filter(m => m.id === 'request' && !m.method)).toHaveLength(1)
+  f.send(method, { turnId: 'next-turn' })
+  await vi.waitFor(() => expect(f.report).toHaveBeenCalledTimes(3))
+  expect(f.received.filter(m => m.id === 'request' && !m.method)).toHaveLength(2)
+  expect(f.store.snapshot().requests).toHaveLength(0)
+})
+
+it.each([
+  ['item/commandExecution/requestApproval', { command: 'npm test', availableDecisions: ['accept', 'decline'] }, { decision: 'accept' }],
+  ['item/fileChange/requestApproval', { availableDecisions: ['accept', 'decline'] }, { decision: 'accept' }],
+  ['item/permissions/requestApproval', { permissions: { network: { enabled: true } } }, { permissions: { network: { enabled: true } }, scope: 'turn' }],
+  ['item/tool/requestUserInput', { questions: [{ id: 'q', question: '哪种方案？', options: [{ label: 'A（推荐）' }, { label: 'B' }] }] }, { answers: { q: { answers: ['A（推荐）'] } } }]
+])('automates %s through the native connection without notifying channels or replaying', async (method, params, result) => {
+  const f = await automationFixture()
+  f.send(method, params)
+  f.send(method, params)
+  await vi.waitFor(() => expect(f.report).toHaveBeenCalledOnce())
+  expect(f.received.filter(m => m.id === 'request' && !m.method)).toEqual([{ id: 'request', result }])
+  expect(f.store.snapshot().requests).toHaveLength(0)
+  f.hub.observe([{ id: 'codex-t', agent: 'Codex', state: method.includes('requestUserInput') ? 'waiting' : 'approval',
+    title: '测试请求', operation: { kind: 'tool', name: method.includes('requestUserInput') ? 'request_user_input' : 'exec_command' },
+    steps: [], startedAt: 1, updatedAt: 2 }])
+  await f.hub.flush()
+  expect(f.channel.send).not.toHaveBeenCalled()
+  f.preferences.automation.enabled = false
+  f.send(method, params)
+  f.send('item/commandExecution/requestApproval', { command: 'next' }, 'next')
+  await vi.waitFor(() => expect(f.store.snapshot().requests).toHaveLength(1))
+  expect(f.store.snapshot().requests[0].nativeRequestId).toBe('next')
+  expect(f.report).toHaveBeenCalledOnce()
+})
+
+it.each([
+  ['rule disabled', 'item/commandExecution/requestApproval', {}, { approvePermissions: false }],
+  ['automation paused', 'item/commandExecution/requestApproval', {}, { enabled: false }],
+  ['no recommendation', 'item/tool/requestUserInput', { questions: [{ id: 'q', question: '选择', options: [{ label: 'A' }, { label: 'B' }] }] }, {}],
+  ['free text', 'item/tool/requestUserInput', { questions: [{ id: 'q', question: '请输入路径' }] }, {}],
+  ['unsupported form', 'mcpServer/elicitation/request', { mode: 'url' }, {}],
+  ['accept disallowed', 'item/commandExecution/requestApproval', { availableDecisions: ['decline', 'cancel'] }, {}],
+  ['oversized content', 'item/commandExecution/requestApproval', { command: 'x'.repeat(49000) }, {}]
+])('escalates %s exactly once', async (_label, method, params, rules) => {
+  const f = await automationFixture(rules)
+  f.send(method, params)
+  f.send(method, params)
+  await vi.waitFor(() => expect(f.store.snapshot().requests).toHaveLength(1))
+  await f.hub.flush()
+  expect(f.channel.send).toHaveBeenCalledOnce()
+  expect(f.report).not.toHaveBeenCalled()
+  expect(f.received.some(m => m.id === 'request' && !m.method)).toBe(false)
+  f.preferences.automation.enabled = true
+  f.preferences.automation.approvePermissions = true
+  f.send(method, params)
+  f.send('item/commandExecution/requestApproval', {}, 'barrier')
+  await vi.waitFor(() => expect(f.report).toHaveBeenCalledOnce())
+  expect(f.received.some(m => m.id === 'request' && !m.method)).toBe(false)
+})
+
+it('keeps an ambiguous native send failure from escalating or retrying', async () => {
+  const f = await automationFixture()
+  vi.spyOn(f.adapter as unknown as { write(value: unknown): Promise<void> }, 'write').mockRejectedValue(new Error('连接中断'))
+  f.send('item/commandExecution/requestApproval', {})
+  await vi.waitFor(() => expect(f.report).toHaveBeenCalledOnce())
+  expect(f.report).toHaveBeenCalledWith(expect.objectContaining({ action: 'manual', summary: expect.stringContaining('待确认') }))
+  f.send('item/commandExecution/requestApproval', {})
+  f.send('item/commandExecution/requestApproval', {}, 'next')
+  await vi.waitFor(() => expect(f.report).toHaveBeenCalledTimes(2))
+  expect(f.store.snapshot().requests).toHaveLength(0)
+  expect(f.received.some(m => m.id === 'request' && !m.method)).toBe(false)
+})
 it('takes over only loaded threads, captures approvals during subscribe, and sends scoped steering', async () => {
   const server = new WebSocketServer({ port: 0, host: '127.0.0.1' })
   await new Promise<void>(resolve => server.once('listening', resolve))

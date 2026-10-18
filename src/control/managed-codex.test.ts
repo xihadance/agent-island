@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import WebSocket, { WebSocketServer } from 'ws'
 import { ActivityStore } from '../shared/activity'
+import { decideCodex } from '../shared/automation'
+import { DEFAULT_PREFERENCES } from '../shared/preferences'
 import { createControlRuntime, managedCodexConnections } from './runtime'
 import { TelegramChannel } from './channels/telegram'
 import type { RemoteConfig } from './config'
@@ -9,7 +11,7 @@ import type { InterventionRequest, RemoteMessage } from './types'
 const cleanup: (() => void)[] = []
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close(); vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
-it('forwards managed approvals to configured messaging channels while keeping the terminal subscribed', async () => {
+it.each([false, true])('forwards managed approvals while keeping the terminal subscribed, with automation %s', async automated => {
   const server = new WebSocketServer({ port: 0, host: '127.0.0.1' })
   await new Promise<void>(resolve => server.once('listening', resolve))
   cleanup.push(() => { for (const peer of server.clients) peer.terminate(); server.close() })
@@ -50,7 +52,10 @@ it('forwards managed approvals to configured messaging channels while keeping th
   const activities = new ActivityStore()
   cleanup.push(() => activities.dispose())
   let hostedUrl = ''
-  const runtime = createControlRuntime(config, activities, { managedCodexUrl: () => hostedUrl })
+  const preferences = { ...DEFAULT_PREFERENCES, automation: { ...DEFAULT_PREFERENCES.automation, enabled: automated } }
+  const report = vi.fn()
+  const runtime = createControlRuntime(config, activities, { managedCodexUrl: () => hostedUrl,
+    automateCodex: (method, params) => decideCodex(method, params, preferences), onCodexDecision: report })
   cleanup.push(() => runtime.close())
   await runtime.start()
   await vi.waitFor(() => expect(receive).toBeTypeOf('function'))
@@ -64,6 +69,14 @@ it('forwards managed approvals to configured messaging channels while keeping th
   const broadcast = (id: number) => {
     for (const peer of subscribers) peer.send(JSON.stringify({ id, method: 'item/commandExecution/requestApproval',
       params: { threadId: 'native', turnId: 'turn', itemId: `tool-${id}`, command: 'npm test', availableDecisions: ['accept', 'decline'] } }))
+  }
+  if (automated) {
+    broadcast(899)
+    await vi.waitFor(() => expect(report).toHaveBeenCalledOnce())
+    expect(replies).toEqual([{ id: 899, result: { decision: 'accept' } }])
+    expect(sent).toHaveLength(0)
+    replies.length = 0
+    preferences.automation.enabled = false
   }
   activities.upsert({ id: 'codex-native', agent: 'Codex', state: 'approval', title: '执行测试', operation: { kind: 'command', command: 'npm test' } })
   broadcast(900)
@@ -98,6 +111,13 @@ it('forwards managed approvals to configured messaging channels while keeping th
   await vi.waitFor(() => expect(subscribers.size).toBe(1))
   runtime.setEnabled(true)
   await vi.waitFor(() => expect(subscribers.size).toBe(2))
+  if (automated) {
+    preferences.automation.enabled = true
+    broadcast(902)
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(2))
+    expect(replies.at(-1)).toEqual({ id: 902, result: { decision: 'accept' } })
+    expect(sent.some(request => request.nativeRequestId === 902)).toBe(false)
+  }
   expect(config.codex).toEqual([])
 })
 

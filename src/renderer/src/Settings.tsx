@@ -99,14 +99,14 @@ export function Settings() {
       {!snapshot || !auto ? <p role="status">正在读取配置…</p> : <>
         {snapshot.preview && <p className="settings-preview">浏览器预览 · 设置仅保存在此浏览器，实际审批与 Agent 接入请使用桌面应用。</p>}
         {section === 'automation' && <>
-          <div className="automation-master" data-enabled={auto.enabled && !snapshot.remote.enabled}>
-            <Switch prominent title="自动审批模式" description={snapshot.remote.enabled ? '远程接管已开启，自动审批和自动回答均暂停；关闭接管后恢复。已接管的问题可在灵动岛或远程渠道回答。' : auto.enabled ? '已开启。按下方规则处理已接入 Agent 的请求。' : '当前已暂停，所有请求由你在原 Agent 中处理。'} checked={auto.enabled} disabled={busy}
+          <div className="automation-master" data-enabled={auto.enabled}>
+            <Switch prominent title="自动审批模式" description={snapshot.remote.enabled ? auto.enabled ? '已开启。Claude Code 和 Codex 先按下方规则处理，无法自动处理的请求交给远程接管。' : '当前已暂停，已接管的请求由你在灵动岛或远程渠道处理。' : auto.enabled ? '已开启。按下方规则处理已接入 Agent 的请求。' : '当前已暂停，所有请求由你在原 Agent 中处理。'} checked={auto.enabled} disabled={busy}
               onChange={enabled => update({ automation: { enabled } })} />
-            <div className="automation-master-foot"><span className="connection-dot" data-active={auto.enabled && !snapshot.remote.enabled} />{snapshot.remote.enabled ? '远程接管优先' : auto.enabled ? (snapshot.claudeInstalled || snapshot.codexStatus === 'connected' ? '规则已生效' : '等待接入 Agent') : '需要时可随时开启'}<button type="button" onClick={() => setSection('connections')}>管理接入 <span aria-hidden="true">→</span></button></div>
+            <div className="automation-master-foot"><span className="connection-dot" data-active={auto.enabled} />{snapshot.remote.enabled ? auto.enabled ? '先自动处理，再转远程' : '由你处理远程请求' : auto.enabled ? (snapshot.claudeInstalled || snapshot.codexStatus === 'connected' ? '规则已生效' : '等待接入 Agent') : '需要时可随时开启'}<button type="button" onClick={() => setSection('connections')}>管理接入 <span aria-hidden="true">→</span></button></div>
           </div>
           <section className="settings-section" aria-labelledby="rules-title"><h2 id="rules-title">处理规则</h2>
-            <Switch title="自动批准权限请求" description={snapshot.remote.enabled ? '当前因远程接管暂停，保留此设置。关闭远程接管后批准命令执行、文件修改等工具权限。' : '批准命令执行、文件修改等工具权限。仅批准当前请求。'} checked={auto.approvePermissions} disabled={busy} onChange={approvePermissions => update({ automation: { approvePermissions } })} />
-            <Switch title="自动回答选择题" description={snapshot.remote.enabled ? '当前因远程接管暂停，保留此设置。关闭远程接管后自动选择推荐项。' : '选择标注「推荐」或「Recommended」的选项并提交回答。'} checked={auto.answerQuestions} disabled={busy} onChange={answerQuestions => update({ automation: { answerQuestions } })} />
+            <Switch title="自动批准权限请求" description="批准命令执行、文件修改等工具权限。仅批准当前请求。" checked={auto.approvePermissions} disabled={busy} onChange={approvePermissions => update({ automation: { approvePermissions } })} />
+            <Switch title="自动回答选择题" description="选择标注「推荐」或「Recommended」的选项并提交回答。" checked={auto.answerQuestions} disabled={busy} onChange={answerQuestions => update({ automation: { answerQuestions } })} />
             <div className="setting-row"><div className="setting-copy"><label htmlFor="question-fallback">没有推荐选项时</label><p>仅适用于有明确选项的问题。</p></div><select id="question-fallback" value={auto.fallback} disabled={busy || !auto.answerQuestions}
               onChange={event => update({ automation: { fallback: event.target.value as 'manual' | 'first' } })}><option value="manual">保留手动回答</option><option value="first">选择第一个选项</option></select></div>
           </section>

@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ActivityStore } from '../shared/activity'
+import { decideClaude } from '../shared/automation'
+import { DEFAULT_PREFERENCES, type Preferences } from '../shared/preferences'
 import { startStatusServer, type StatusServer } from '../main/server'
 import { ControlStore } from './store'
 import { ControlHub, redact } from './hub'
@@ -193,6 +195,162 @@ describe('remote routing and delivery', () => {
     expect(store.get(pending[0].id).status).toBe('cancelled')
     expect(store.snapshot().requests.filter(r => r.status === 'pending')).toHaveLength(0)
     activities.dispose()
+  })
+})
+
+describe('automation before escalation', () => {
+  /** The real decider, so this gate and the standalone hook can never disagree. */
+  const automate = (rules: Partial<Preferences['automation']> = {}) => (agent: string, event: Record<string, unknown>) => {
+    if (agent !== 'claude') return undefined
+    const decision = decideClaude(event, { ...DEFAULT_PREFERENCES,
+      automation: { ...DEFAULT_PREFERENCES.automation, enabled: true, fallback: 'manual', ...rules } })
+    return decision.response ? { output: decision.response, summary: decision.summary } : undefined
+  }
+  const hookEvent = (event: Record<string, unknown>) => ({ agent: 'claude', invocationId: 'inv-1',
+    event: { session_id: 'native', cwd: 'D:/project', ...event } })
+  const permission = { hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'npm test' } }
+  const ask = (options: Array<Record<string, unknown>>) => ({ hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion',
+    tool_input: { questions: [{ question: '用哪种方案？', options }] } })
+
+  it('settles locally without creating a request the channels would announce', () => {
+    const store = new ControlStore()
+    const hub = new ControlHub(store, () => {})
+    const reply = new HookController(hub, automate()).handle(hookEvent(permission))
+    expect(reply.handled).toBe('已批准 Bash')
+    expect(reply.output).toMatchObject({ hookSpecificOutput: { decision: { behavior: 'allow' } } })
+    // Nothing to notify, nothing to retire: the request was never born.
+    expect(reply.requestId).toBeUndefined()
+    expect(store.snapshot().requests).toHaveLength(0)
+  })
+
+  it('escalates exactly what automation declines', () => {
+    const store = new ControlStore()
+    const hooks = new HookController(new ControlHub(store, () => {}), automate())
+    // No option is marked recommended, so there is nothing to choose.
+    const reply = hooks.handle(hookEvent(ask([{ label: '方案 A' }, { label: '方案 B' }])))
+    expect(reply.handled).toBeUndefined()
+    expect(reply.requestId).toBeDefined()
+    expect(store.get(reply.requestId!)).toMatchObject({ kind: 'input', status: 'pending' })
+  })
+
+  it('answers a question that has a single recommendation', () => {
+    const store = new ControlStore()
+    const hooks = new HookController(new ControlHub(store, () => {}), automate())
+    const reply = hooks.handle(hookEvent(ask([{ label: '方案 A（推荐）' }, { label: '方案 B' }])))
+    expect(reply.handled).toBe('方案 A（推荐）')
+    expect(store.snapshot().requests).toHaveLength(0)
+  })
+
+  it.each([
+    ['plan confirmation', { hook_event_name: 'PreToolUse', tool_name: 'ExitPlanMode', tool_input: {} }],
+    ['a non-Claude agent', undefined]
+  ])('always escalates %s', (_label, event) => {
+    const store = new ControlStore()
+    const hooks = new HookController(new ControlHub(store, () => {}), automate())
+    const reply = event
+      ? hooks.handle(hookEvent(event))
+      : hooks.handle({ agent: 'cursor', invocationId: 'inv-2',
+        event: { session_id: 'native', cwd: 'D:/project', hook_event_name: 'beforeShellExecution', tool_input: { command: 'ls' } } })
+    expect(reply.handled).toBeUndefined()
+    expect(reply.requestId).toBeDefined()
+  })
+
+  it('escalates everything when the user turned a rule off', () => {
+    const store = new ControlStore()
+    const hooks = new HookController(new ControlHub(store, () => {}), automate({ approvePermissions: false }))
+    const reply = hooks.handle(hookEvent(permission))
+    expect(reply.handled).toBeUndefined()
+    expect(store.get(reply.requestId!)).toMatchObject({ kind: 'approval' })
+  })
+
+  it('keeps every request remote when no automation is wired in', () => {
+    const store = new ControlStore()
+    const reply = new HookController(new ControlHub(store, () => {})).handle(hookEvent(permission))
+    expect(reply.handled).toBeUndefined()
+    expect(store.get(reply.requestId!)).toMatchObject({ kind: 'approval' })
+  })
+
+  it('does not notify channels for automated requests and only announces the fallback', async () => {
+    const store = new ControlStore()
+    const hub = new ControlHub(store, () => {})
+    const c = channel()
+    await hub.addChannel(c)
+    const hooks = new HookController(hub, automate())
+    hooks.handle(hookEvent(permission))
+    hub.observe([{ id: 'claude-native', agent: 'Claude Code', state: 'approval', title: '运行测试',
+      operation: { kind: 'command', name: 'Bash', command: 'npm test' }, steps: [], startedAt: 1, updatedAt: 2 }])
+    await hub.flush()
+    expect(c.send).not.toHaveBeenCalled()
+    hooks.handle({ ...hookEvent(ask([{ label: 'A' }, { label: 'B' }])), invocationId: 'fallback' })
+    await hub.flush()
+    expect(c.send).toHaveBeenCalledOnce()
+    hub.close()
+  })
+
+  it('retains observation-only notifications for disconnected gates and unsupported questions', () => {
+    const store = new ControlStore()
+    const hub = new ControlHub(store, () => {})
+    new HookController(hub, automate()).handle(hookEvent(permission))
+    const activity = { id: 'claude-native', agent: 'Claude Code', state: 'waiting' as const, title: '请输入路径',
+      operation: { kind: 'tool' as const, name: 'ask_user' }, steps: [], startedAt: 1, updatedAt: 2 }
+    hub.observe([activity])
+    expect(store.snapshot().requests).toHaveLength(1)
+    store.change(state => { state.sessions[0].connected = false })
+    hub.observe([{ ...activity, state: 'approval', operation: { kind: 'command', name: 'Bash' } }])
+    expect(store.snapshot().requests.filter(r => r.status === 'pending')).toHaveLength(1)
+  })
+
+  it('never replays an automatic reply, including after a restart or rule change', () => {
+    const file = path.join(folder(), 'state.json')
+    const store = new ControlStore(file)
+    const hooks = new HookController(new ControlHub(store, () => {}), automate())
+    expect(hooks.handle(hookEvent(permission)).output).toBeDefined()
+    expect(() => hooks.handle(hookEvent(permission))).toThrow('结果已提交或待确认')
+    const restarted = new ControlStore(file)
+    const next = new HookController(new ControlHub(restarted, () => {}), automate({ enabled: false }))
+    expect(() => next.handle(hookEvent(permission))).toThrow('结果已提交或待确认')
+    expect(() => next.handle(hookEvent({ ...permission, tool_input: { command: 'npm run build' } }))).toThrow('绑定其他操作')
+    expect(restarted.snapshot().requests).toHaveLength(0)
+  })
+
+  it('does not return an automatic reply when persisting the receipt fails', () => {
+    const store = new ControlStore()
+    vi.spyOn(store, 'recordAutomation').mockImplementation(() => { throw new Error('状态写入失败') })
+    const hooks = new HookController(new ControlHub(store, () => {}), automate())
+    expect(() => hooks.handle(hookEvent(permission))).toThrow('状态写入失败')
+  })
+
+  it('keeps an existing remote request remote after a rule is enabled', () => {
+    const store = new ControlStore()
+    let enabled = false
+    const hooks = new HookController(new ControlHub(store, () => {}), (agent, event) => automate({ enabled })(agent, event))
+    const pending = hooks.handle(hookEvent(permission))
+    enabled = true
+    expect(hooks.handle(hookEvent(permission))).toEqual(pending)
+    expect(store.get(pending.requestId!).status).toBe('pending')
+  })
+
+  it.each(['PreToolUse', 'PermissionRequest'])('escalates unanswered questions and plan confirmation from %s', hook_event_name => {
+    const store = new ControlStore()
+    const hooks = new HookController(new ControlHub(store, () => {}), automate())
+    const question = hooks.handle(hookEvent({ ...ask([{ label: 'A' }, { label: 'B' }]), hook_event_name }))
+    expect(store.get(question.requestId!)).toMatchObject({ kind: 'input', actions: ['answer', 'cancel'] })
+    const plan = hooks.handle({ ...hookEvent({ hook_event_name, tool_name: 'ExitPlanMode', tool_input: {} }), invocationId: 'plan' })
+    expect(store.get(plan.requestId!)).toMatchObject({ kind: 'plan' })
+  })
+
+  it('returns remote question answers in the PermissionRequest native response', async () => {
+    const store = new ControlStore()
+    const hub = new ControlHub(store, () => {})
+    const hooks = new HookController(hub, automate())
+    const event = { ...hookEvent(ask([{ label: 'A' }, { label: 'B' }])).event, hook_event_name: 'PermissionRequest' }
+    const reply = hooks.handle({ agent: 'claude', invocationId: 'question', event })
+    const request = store.get(reply.requestId!)
+    await hub.respond(request.id, request.revision, { action: 'answer', answers: { q1: ['B'] } }, 'owner')
+    const polled = hooks.poll(request.id, 'question')
+    expect(hookDecision('claude', event, polled.decision, polled.questions)).toMatchObject({
+      hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow', updatedInput: { answers: { '用哪种方案？': 'B' } } } }
+    })
   })
 })
 

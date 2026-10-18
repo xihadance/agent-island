@@ -16,7 +16,7 @@ import { readWindowPosition, saveWindowPosition } from './window-position'
 import { AttentionTracker, isIslandMode, isPassive, islandAttention, shouldIgnoreMouse, type IslandBehavior, type IslandMode } from '../shared/island-behavior'
 import { readPreferences, savePreferences } from './preferences'
 import { normalizePreferences, patchPreferences, type AutomationEntry, type SettingsSnapshot } from '../shared/preferences'
-import { decideClaude, type Decision } from '../shared/automation'
+import { decideClaude, decideCodex, type Decision } from '../shared/automation'
 import { CodexAutomation } from './codex-automation'
 import { hasClaudeIntegration, setClaudeIntegration } from './claude-integration'
 import { remoteSettings, saveRemoteSettings } from './remote-settings'
@@ -252,6 +252,9 @@ function loadControl(): ControlRuntime | undefined {
   try {
     control = createControlRuntime(config, store, { configFile: remoteConfigFile(), resolveSystemProxy,
       managedCodexUrl: () => preferences.codexServer.enabled && hostedCodex?.state.status === 'running' ? hostedCodex.state.url : '',
+      automate: automateHookEvent,
+      automateCodex: (method, params) => decideCodex(method, params, escalationPreferences()),
+      onCodexDecision: decision => reportDecision('Codex', decision),
       onRequestsChange: () => publishActivities(), onChange: () => { publishActivities(); codex?.update(); if (tray) updateTrayMenu(tray); notifySettings() } })
   } catch { throw new ActivityError(503, reportControlLoadFailure()) }
   controlLoadError = undefined
@@ -335,9 +338,36 @@ function claudeSettingsFile(): string {
   return path.join(process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude'), 'settings.json')
 }
 
+/**
+ * Rules as the standalone paths see them. Remote takeover owns those events
+ * instead, because its own Hook is installed alongside and fires in parallel.
+ */
 function automationPreferences() {
-  return { ...preferences, automation: { ...preferences.automation, enabled: preferences.automation.enabled && !control?.status().enabled && !quitting,
+  return localAutomationPreferences(preferences.automation.enabled && !control?.status().enabled)
+}
+
+/**
+ * Rules for the escalation path inside the remote Hook. Takeover must not switch
+ * automation off here: that Hook consults it first and only sends out what it
+ * declines, so there is no parallel decision to lose a race with.
+ */
+function escalationPreferences() {
+  return localAutomationPreferences(preferences.automation.enabled)
+}
+
+function localAutomationPreferences(enabled: boolean) {
+  return { ...preferences, automation: { ...preferences.automation, enabled: enabled && !quitting,
     codexUrl: preferences.codexServer.enabled ? hostedCodex?.state.status === 'running' ? hostedCodex.state.url : '' : preferences.automation.codexUrl } }
+}
+
+/** Local automation's answer for a remote Hook event, or nothing to escalate it. */
+function automateHookEvent(agent: string, event: Record<string, unknown>) {
+  // Only Claude has a native decision shape here; other agents always escalate.
+  if (agent !== 'claude') return undefined
+  const decision = decideClaude(event, escalationPreferences())
+  if (!decision.response) return undefined
+  reportDecision('Claude Code', decision)
+  return { output: decision.response, summary: decision.summary }
 }
 
 function remoteHookOptions(agent: HookAgent) {

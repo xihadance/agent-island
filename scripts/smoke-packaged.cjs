@@ -70,12 +70,15 @@ async function main() {
   const old = new Date(Date.now() - 20 * 60_000)
   await fs.utimes(transcript, old, old)
   const agent = spawn(process.execPath, [agentScript], { windowsHide: true, stdio: 'ignore' })
+  const appEnv = { ...process.env, CUTE_ISLAND_REMOTE_CONFIG: path.join(temporary, 'remote.json'), CUTE_ISLAND_PORT: String(port), CUTE_ISLAND_WATCH: '1', CUTE_ISLAND_TOKEN: '', CUTE_ISLAND_UPDATE: '0',
+    CLAUDE_CONFIG_DIR: claude, CODEX_HOME: path.join(temporary, '.codex'),
+    GEMINI_CLI_HOME: path.join(temporary, '.gemini'), CURSOR_HOME: path.join(temporary, '.cursor') }
+  // The harness may run through Electron's Node mode; the packaged app needs its browser runtime.
+  delete appEnv.ELECTRON_RUN_AS_NODE
   const app = spawn(executable, [`--remote-debugging-port=${debugPort}`, `--user-data-dir=${path.join(temporary, 'profile')}`], {
     windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     // A packaged run would otherwise query the real release feed.
-    env: { ...process.env, CUTE_ISLAND_REMOTE_CONFIG: path.join(temporary, 'remote.json'), CUTE_ISLAND_PORT: String(port), CUTE_ISLAND_WATCH: '1', CUTE_ISLAND_TOKEN: '', CUTE_ISLAND_UPDATE: '0',
-      CLAUDE_CONFIG_DIR: claude, CODEX_HOME: path.join(temporary, '.codex'),
-      GEMINI_CLI_HOME: path.join(temporary, '.gemini'), CURSOR_HOME: path.join(temporary, '.cursor') }
+    env: appEnv
   })
   let logs = ''
   app.stderr.on('data', (data) => { logs += data })

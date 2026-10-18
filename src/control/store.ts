@@ -38,6 +38,21 @@ export class ControlStore {
     }
   }
   snapshot(): ControlState { return structuredClone(this.state) }
+  wasAutomated(sourceKey: string, fingerprint: string): boolean {
+    const previous = this.state.automated?.[sourceKey]
+    if (previous === undefined) return false
+    check(previous === fingerprint, '自动处理标识已绑定其他操作', 409)
+    return true
+  }
+  recordAutomation(sourceKey: string, fingerprint: string): void {
+    check(!this.wasAutomated(sourceKey, fingerprint), '自动处理结果已提交或待确认，请在原 Agent 中处理', 409)
+    this.change(state => {
+      state.automated ??= {}
+      state.automated[sourceKey] = fingerprint
+      const keys = Object.keys(state.automated)
+      for (const key of keys.slice(0, -4096)) delete state.automated[key]
+    })
+  }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
   change<T>(fn: (state: ControlState) => T): T {
     const next = structuredClone(this.state)

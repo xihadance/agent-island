@@ -276,8 +276,14 @@ export class ControlHub {
       const controlled = state.sessions.find(s => s.adapter !== 'observation' && activityId(s.agent, s.nativeId) === activity.id)
       const issues: { key: string; kind: 'approval' | 'input' | 'error'; title: string; detail: string }[] = []
       if (!controlled?.connected || !state.requests.some(r => r.sessionId === controlled.id && ACTIVE_STATUSES.includes(r.status))) {
-        if (activity.state === 'approval') issues.push({ key: 'approval', kind: 'approval', title: activity.title, detail: activity.operation?.command ?? activity.detail ?? '' })
-        if (['running', 'waiting'].includes(activity.state) && isUserInputTool(activity.operation?.name)) issues.push({ key: 'input', kind: 'input', title: '需要人工回答（尚未建立问题控制关联）', detail: activity.title })
+        // Connected Claude/Codex native gates own these requests. A delayed log
+        // must not announce a second, observation-only request after automation replied.
+        const nativeApproval = controlled?.connected && ['claude', 'codex'].includes(controlled.agent)
+        const tool = activity.operation?.name?.split(/[.:]/).pop()?.toLowerCase()
+        const nativeInput = controlled?.connected && (controlled.agent === 'claude' && tool === 'askuserquestion' ||
+          controlled.agent === 'codex' && tool === 'request_user_input')
+        if (activity.state === 'approval' && !nativeApproval) issues.push({ key: 'approval', kind: 'approval', title: activity.title, detail: activity.operation?.command ?? activity.detail ?? '' })
+        if (['running', 'waiting'].includes(activity.state) && isUserInputTool(activity.operation?.name) && !nativeInput) issues.push({ key: 'input', kind: 'input', title: '需要人工回答（尚未建立问题控制关联）', detail: activity.title })
       }
       if (activity.state === 'error') issues.push({ key: 'error', kind: 'error', title: activity.title, detail: activity.detail ?? '' })
       for (const task of activity.tasks ?? []) if (task.status === 'error' || (task.status === 'active' && task.state === 'approval')) {
