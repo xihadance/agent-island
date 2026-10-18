@@ -19,7 +19,7 @@ are doing right now. It speaks up when approval is needed, and you can take over
 <br />
 
 <a href="media/cute-island-intro.mp4">
-  <img src="media/intro-hero.gif" width="760" alt="The island expands from an idle bar to a compact state, then to full execution detail" />
+  <img src="media/intro-hero.gif" width="760" alt="Full walkthrough of Cute Island capsule morphing, details, approval alerts, and remote takeover" />
 </a>
 
 <sub>▶ [Watch the full intro video (60s)](media/cute-island-intro.mp4)</sub>

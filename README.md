@@ -19,7 +19,7 @@
 <br />
 
 <a href="media/cute-island-intro.mp4">
-  <img src="media/intro-hero.gif" width="760" alt="灵动岛从闲置细条展开为紧凑态,再展开显示执行详情" />
+  <img src="media/intro-hero.gif" width="760" alt="灵动岛形态变化、细节展开、审批提醒与远程接管完整演示" />
 </a>
 
 <sub>▶ [观看完整介绍视频(60 秒)](media/cute-island-intro.mp4)</sub>
