@@ -124,6 +124,8 @@ Cursor、Gemini 的“批准”只通过本次 Hook 门禁，保留 Agent 自己
 
 若希望始终直接输入 `codex`，在「Agent 接入 → 直接使用 codex 命令」安装命令接入，然后重新打开终端。开启远程接管且已配置消息渠道时，自动使用运行中的本机托管服务，无需添加 Codex 连接；未使用托管服务时，选择配置中第一条会话 ID 留空的 Codex 连接，全部连接均指定 ID 时不会自动添加参数。远程接管关闭后，若自动审批开启则使用审批服务地址；两者都关闭则恢复普通启动。无需在切换开关时手动增删 `--remote`，已启动会话保持原连接。
 
+`codex` 使用默认配置,`codex -p agentrouter` 或 `--profile agentrouter` 自动读取对应 profile,无需在灵动岛设置名称。服务使用终端的 Codex 配置目录、工作目录和环境变量,通过原生 `-c` 启动参数应用 profile（优先于项目配置）,再应用命令中的显式 `-c`。相同配置复用实例,不同配置同时运行;修改配置文件后新命令自动使用新实例,原会话保持连接。全部实例自动关联原生审批与问答通道,只在运行时管理,不写入 `remote.json`。停止托管服务或退出应用关闭全部实例。外部服务不能自动加载 profile 时提示并保留普通启动。已运行的独立会话需先退出原客户端,再通过 `codex -p agentrouter resume <会话ID>` 恢复。
+
 命令接入支持 PowerShell、Bash / Zsh，保留显式参数；灵动岛或目标服务不可用时恢复普通启动。认证连接的 `tokenEnv` 必须也在终端环境中可用。安装器备份 Shell 配置，移除时保留其他内容；常规 Codex CLI 更新沿用原安装入口，VS Code 插件独立运行。
 
 只连接已经承载目标会话的 App-server。配置显式指定原生 thread ID：
@@ -249,6 +251,7 @@ node scripts/smoke-remote-toggle.cjs
 node scripts/smoke-connectivity.cjs
 node scripts/smoke-codex-command.cjs
 node scripts/smoke-managed-codex.cjs
+node scripts/smoke-codex-profile.cjs <Codex原生程序绝对路径>
 ```
 
 自动测试使用本机 HTTP／WebSocket 和模拟 Bot API，验证原生 Hook 回传、Codex 关联、重复回复、失效请求、崩溃恢复、渠道授权及重试。`smoke-remote-toggle.cjs` 使用隔离配置和真实 Electron 托盘回调，验证启停、编译后的 CLI Hook 释放、旧审批失效、显示模式独立和重启持久化，不连接实际渠道。真实 Bot、飞书应用、企业微信租户、Discord 权限和实际 Agent 版本仍需在配置自己的账号后进行联调。

@@ -72,8 +72,12 @@ function commandScript(options: CodexCommandOptions, executable: string): string
   return `function global:codex {
   [string[]]$islandCodexArguments = @($args)
   $islandPreviousRunAsNode = [Environment]::GetEnvironmentVariable('ELECTRON_RUN_AS_NODE', 'Process')
+  $islandPreviousRuntimeMarker = [Environment]::GetEnvironmentVariable('CUTE_ISLAND_CODEX_RUN_AS_NODE_SET', 'Process')
+  $islandPreviousRuntimeValue = [Environment]::GetEnvironmentVariable('CUTE_ISLAND_CODEX_ORIGINAL_RUN_AS_NODE', 'Process')
   try {
     if ((Test-Path -LiteralPath ${psQuote(file.manifest)}) -and (Test-Path -LiteralPath ${psQuote(file.config)})) {
+      $env:CUTE_ISLAND_CODEX_RUN_AS_NODE_SET = if ($null -ne $islandPreviousRunAsNode) { 'x' } else { 'unset' }
+      $env:CUTE_ISLAND_CODEX_ORIGINAL_RUN_AS_NODE = $islandPreviousRunAsNode
       $env:ELECTRON_RUN_AS_NODE = '1'
       # Windows PowerShell native argument quoting loses embedded quotes and empty values.
       $islandEncodedArguments = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $islandCodexArguments -Compress)))
@@ -81,6 +85,7 @@ function commandScript(options: CodexCommandOptions, executable: string): string
       $islandPlanOutput = & ${psQuote(runtime)} ${psQuote(cli)} codex-launch plan --config ${psQuote(file.config)} --args-base64 $islandEncodedArguments | Out-String
       if ($LASTEXITCODE -eq 0) {
         $islandPlan = ($islandPlanOutput -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
+        if ($islandPlan.notice) { [Console]::Error.WriteLine([string]$islandPlan.notice) }
         if ($null -ne $islandPlan.args) { $islandCodexArguments = @($islandPlan.args) }
       }
     }
@@ -88,6 +93,8 @@ function commandScript(options: CodexCommandOptions, executable: string): string
     # An unavailable app or launcher falls back to the original Codex command.
   } finally {
     [Environment]::SetEnvironmentVariable('ELECTRON_RUN_AS_NODE', $islandPreviousRunAsNode, 'Process')
+    [Environment]::SetEnvironmentVariable('CUTE_ISLAND_CODEX_RUN_AS_NODE_SET', $islandPreviousRuntimeMarker, 'Process')
+    [Environment]::SetEnvironmentVariable('CUTE_ISLAND_CODEX_ORIGINAL_RUN_AS_NODE', $islandPreviousRuntimeValue, 'Process')
   }
   if ($MyInvocation.ExpectingInput) {
     $input | & ${psQuote(executable)} @islandCodexArguments

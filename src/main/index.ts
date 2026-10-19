@@ -17,11 +17,11 @@ import { AttentionTracker, isIslandMode, isPassive, islandAttention, shouldIgnor
 import { readPreferences, savePreferences } from './preferences'
 import { normalizePreferences, patchPreferences, type AutomationEntry, type SettingsSnapshot } from '../shared/preferences'
 import { decideClaude, decideCodex, type Decision } from '../shared/automation'
-import { CodexAutomation } from './codex-automation'
+import { CodexAutomationGroup } from './codex-automation-group'
 import { hasClaudeIntegration, setClaudeIntegration } from './claude-integration'
 import { remoteSettings, saveRemoteSettings } from './remote-settings'
 import { testRemoteConnection } from '../control/connectivity'
-import { ManagedCodexServer } from './codex-server'
+import { ManagedCodexPool } from './codex-pool'
 import { remoteIntegrationStatus, setRemoteIntegration, writeHookLauncher, type HookAgent } from './remote-integration'
 import { codexCommandStatus, setCodexCommandIntegration, writeCodexLaunchConfig, type CodexCommandOptions } from './codex-command'
 import { codexLaunchRoute } from '../shared/codex-launch'
@@ -53,10 +53,10 @@ let preferredPosition: WindowPosition | undefined
 let dockCollapsed = true
 let islandMode: IslandMode = 'focus'
 let preferences = normalizePreferences(undefined)
-let codex: CodexAutomation | undefined
+let codex: CodexAutomationGroup | undefined
 let claudeInstalled = false
 let launchAtLogin: LaunchAtLoginStatus = { supported: false, enabled: false, detail: '' }
-let hostedCodex: ManagedCodexServer | undefined
+let hostedCodex: ManagedCodexPool | undefined
 let updater: UpdateChecker | undefined
 let quitting = false
 let historySequence = 0
@@ -106,8 +106,9 @@ async function boot(): Promise<void> {
   nativeTheme.themeSource = preferences.theme
   nativeTheme.on('updated', syncSettingsBackground)
   islandMode = preferences.mode
-  hostedCodex = new ManagedCodexServer(() => { control?.syncManagedCodex(); codex?.update(); notifySettings() })
-  codex = new CodexAutomation(automationPreferences, notifySettings, decision => reportDecision('Codex', decision))
+  hostedCodex = new ManagedCodexPool(() => { control?.syncManagedCodex(); codex?.update(); notifySettings() })
+  codex = new CodexAutomationGroup(automationPreferences, () => preferences.codexServer.enabled ? hostedCodex?.urls ?? [] : [preferences.automation.codexUrl],
+    notifySettings, decision => reportDecision('Codex', decision))
   let config: RemoteConfig | undefined
   try { config = readRemoteConfig(remoteConfigFile()) }
   catch { reportControlLoadFailure() }
@@ -116,7 +117,7 @@ async function boot(): Promise<void> {
     server = await startStatusServer(store, {
       port,
       token: process.env.CUTE_ISLAND_TOKEN,
-      codexLaunch: { token: codexLaunchToken, route: currentCodexLaunchRoute },
+      codexLaunch: { token: codexLaunchToken, route: currentCodexLaunchRoute, prepare: prepareCodexLaunch },
       control: loadControl,
       claudeHook: payload => {
         const decision = decideClaude(payload, automationPreferences())
@@ -255,7 +256,7 @@ function loadControl(): ControlRuntime | undefined {
   if (server && config.port !== server.port) throw new ActivityError(503, reportControlLoadFailure('接管配置端口已修改，请重启应用后开启接管'))
   try {
     control = createControlRuntime(config, store, { configFile: remoteConfigFile(), resolveSystemProxy,
-      managedCodexUrl: () => preferences.codexServer.enabled && hostedCodex?.state.status === 'running' ? hostedCodex.state.url : '',
+      managedCodexUrls: () => hostedCodex?.urls ?? [],
       automate: automateHookEvent,
       automateCodex: (method, params) => decideCodex(method, params, escalationPreferences()),
       onCodexDecision: decision => reportDecision('Codex', decision),
@@ -415,6 +416,24 @@ function currentCodexLaunchRoute() {
     catch { return { enabled: false } }
   }
   return codexLaunchRoute(preferences, hostedUrl)
+}
+
+async function prepareCodexLaunch(request: unknown) {
+  const route = currentCodexLaunchRoute()
+  if (!route.enabled || !route.managed || !hostedCodex) return { enabled: false }
+  try {
+    const url = await hostedCodex.ensure(request)
+    control?.syncManagedCodex(); codex?.update()
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const current = currentCodexLaunchRoute()
+      if (!current.enabled || !current.managed || !hostedCodex.urls.includes(url)) return { enabled: false }
+      if (control?.status().enabled ? control.codexConnected(url) : codex?.connected(url)) {
+        return { enabled: true, url, profile: (request as { profile?: string }).profile }
+      }
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+  } catch { /* Native errors can contain configuration or environment values. */ }
+  return { enabled: false, notice: '灵动岛未接入：对应配置的服务或审批连接未就绪，本次按原命令启动。请检查 Codex 配置后重试。' }
 }
 
 function settingsSnapshot(): SettingsSnapshot {
@@ -893,7 +912,7 @@ function wireIpc(activityStore: ActivityStore): void {
     else if (action === 'hide') mainWindow?.hide()
     else if (action === 'reset-position') resetPosition()
     else if (action === 'remote-file') return configureRemote()
-    else if (action === 'remote-docs') return shell.openExternal('https://github.com/xihadance/cute-island/blob/main/REMOTE_CONTROL.md')
+    else if (action === 'remote-docs') return shell.openExternal('https://github.com/xihadance/agent-island/blob/main/REMOTE_CONTROL.md')
     else if (action === 'update-check') void updater?.check(true)
     // Only a URL that already passed release validation is opened; otherwise the plain releases page.
     else if (action === 'update-page') return shell.openExternal(updater?.state.available?.url ?? releasesPageUrl())

@@ -124,7 +124,7 @@ export interface AutomationEntry {
 
 export interface SettingsSnapshot {
   codexCommand: CodexCommandStatus
-  codexServer: { status: 'stopped' | 'starting' | 'running' | 'error'; url: string; detail: string }
+  codexServer: { status: 'stopped' | 'starting' | 'running' | 'error'; url: string; detail: string; instances?: number }
   remoteHooks: Record<'claude' | 'cursor' | 'gemini', { installed: boolean; file: string; error?: string }>
   remote: RemoteSettings
   preferences: Preferences

@@ -23,7 +23,7 @@ export interface UpdateState {
   blockedReason?: string
 }
 
-export const UPDATE_REPOSITORY = 'xihadance/cute-island'
+export const UPDATE_REPOSITORY = 'xihadance/agent-island'
 export const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000
 export const UPDATE_NOTES_LIMIT = 4000
 

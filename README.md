@@ -9,7 +9,7 @@
 一条黑胶囊贴在屏幕顶部,实时显示 Claude Code、Codex、Gemini、Cursor 正在做什么。<br />
 需要审批时主动提醒,人不在电脑前还能从手机接管。
 
-[![Release](https://img.shields.io/github/v/release/xihadance/cute-island?style=flat-square&color=78db9c)](https://github.com/xihadance/cute-island/releases)
+[![Release](https://img.shields.io/github/v/release/xihadance/agent-island?style=flat-square&color=78db9c)](https://github.com/xihadance/agent-island/releases)
 [![License](https://img.shields.io/badge/license-MIT-78b9ff?style=flat-square)](#许可)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-c2afff?style=flat-square)](#安装)
 [![Electron](https://img.shields.io/badge/Electron-44-f3c76a?style=flat-square)](https://www.electronjs.org/)
@@ -50,7 +50,7 @@ Agent 在后台跑的时候,你没法一直盯着终端。Cute Island 把它们�
 
 ## 安装
 
-到 [Releases](https://github.com/xihadance/cute-island/releases) 下载对应平台的安装包:
+到 [Releases](https://github.com/xihadance/agent-island/releases) 下载对应平台的安装包:
 
 | 平台 | 包格式 | 应用内更新 |
 | --- | --- | :---: |
@@ -178,7 +178,11 @@ codex --remote ws://127.0.0.1:4500
 codex app-server --listen ws://127.0.0.1:4500
 ```
 
-Windows 接入 PowerShell,macOS / Linux 接入 Bash / Zsh。安装前备份 Shell 配置,移除时保留其他内容。带 `-p` / `--profile` 的命令按普通方式启动,这类会话不经过自动审批。
+Windows 接入 PowerShell,macOS / Linux 接入 Bash / Zsh。安装前备份 Shell 配置,移除时保留其他内容。
+
+安装命令接入并启动托管服务后,直接运行 `codex` 使用默认配置,运行 `codex -p agentrouter` 自动读取对应 profile,无需在灵动岛重复填写。支持 `--profile agentrouter`、`--profile=agentrouter` 和 `codex -p agentrouter resume <会话ID>`。先退出原会话客户端再恢复,已运行的独立会话不会自动迁入。
+
+服务自动读取终端的 `$CODEX_HOME/<名称>.config.toml`（新版）或 `config.toml` 的 `[profiles.<名称>]`（旧版）,并使用终端的工作目录和环境变量。profile 仍作为原生 `-c` 服务启动参数应用,优先于项目配置;命令中的显式 `-c` 覆盖 profile。相同配置复用实例;不同 profile、工作目录、环境或配置内容使用独立实例,配置更新后下次运行命令即可生效,已有会话不受影响。原配置不改写,终端环境只在本机内存中传递,不写入设置或日志。停止托管服务或退出灵动岛会关闭全部实例。外部 app-server 无法自动加载 profile 时保留原命令启动并提示原因。
 
 灵动岛作为另一个协议客户端,**只加入服务已加载的会话**,不启动任务,也不修改会话原有的沙箱或审批策略。仅支持本机无认证的 `ws://` 服务。
 

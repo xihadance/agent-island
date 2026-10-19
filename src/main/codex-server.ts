@@ -6,6 +6,8 @@ import os from 'node:os'
 import WebSocket from 'ws'
 import type { Preferences, SettingsSnapshot } from '../shared/preferences'
 
+export interface CodexServerContext { args: string[]; cwd: string; env: NodeJS.ProcessEnv }
+
 /** Locate the native binary, including npm installations, without executing a shell shim. */
 export function findCodexExecutable(configured = '', env = process.env): string {
   const suffix = process.platform === 'win32' ? '.exe' : ''
@@ -45,9 +47,9 @@ export class ManagedCodexServer {
   private generation = 0
   private key = ''
   private queue: Promise<void> = Promise.resolve()
-  constructor(private changed: () => void, private launch = (exe: string, args: string[]) => spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }), private resolve = findCodexExecutable) {}
+  constructor(private changed: () => void, private launch = (exe: string, args: string[], context?: CodexServerContext) => spawn(exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: context?.cwd, env: context?.env }), private resolve = findCodexExecutable) {}
 
-  configure(config: Preferences['codexServer']): Promise<void> {
+  configure(config: Preferences['codexServer'], context?: CodexServerContext): Promise<void> {
     const key = JSON.stringify(config)
     if (key === this.key) return this.queue
     this.key = key
@@ -60,10 +62,10 @@ export class ManagedCodexServer {
       const url = `ws://127.0.0.1:${config.port}`
       this.set('starting', url, '正在启动本机 Codex 服务…')
       try {
-        const executable = this.resolve(config.executable)
+        const executable = this.resolve(config.executable, context?.env)
         await this.checkPort(config.port)
         if (generation !== this.generation) return
-        const child = this.launch(executable, ['app-server', '--listen', url])
+        const child = this.launch(executable, ['app-server', ...(context?.args ?? []), '--listen', url], context)
         this.child = child
         child.stdout?.resume(); child.stderr?.resume()
         let failed = false
@@ -78,7 +80,7 @@ export class ManagedCodexServer {
         const deadline = Date.now() + 12000
         while (generation === this.generation && !failed && Date.now() < deadline) {
           if (await this.probe(url)) {
-            if (generation === this.generation && !failed) this.set('running', url, '服务已启动。使用下方命令连接 Codex CLI 后，再开启自动审批')
+            if (generation === this.generation && !failed) this.set('running', url, '服务已启动。安装命令接入后，codex 和 codex -p 会自动选择对应配置的服务')
             return
           }
           await new Promise(resolve => setTimeout(resolve, 150))

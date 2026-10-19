@@ -71,7 +71,7 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     }
   })
   shell.stderr.on('data', bytes => { diagnostic += bytes })
-  const launch = async (args = ['-m', 'gpt-5'], version = 1) => {
+  const launch = async (args = ['-m', 'gpt-5'], version = 1, notice = '') => {
     const result = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => { resolveLaunch = undefined; reject(new Error(`Codex launcher timed out: ${diagnostic}`)) }, 10000)
       resolveLaunch = value => { clearTimeout(timeout); resolve(value) }
@@ -79,7 +79,8 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     })
     assert.equal(result.runtime, 'original-value')
     assert.equal(result.version, version)
-    assert.equal(diagnostic, '', 'Command launcher stderr')
+    if (notice) { await until(() => diagnostic.includes(notice)); diagnostic = '' }
+    else assert.equal(diagnostic, '', 'Command launcher stderr')
     return result.args
   }
   const args = ['-m', 'gpt-5', '保持空格 $() `literal 和 "引号"', '']
@@ -90,25 +91,59 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     await until(async () => (await state()).codexServer.status === 'running' && (await state()).codexStatus === 'connected')
     const launchConfig = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'codex-command', 'launch.json'), 'utf8'))
     const route = await fetch(launchConfig.statusUrl, { headers: { authorization: `Bearer ${launchConfig.token}` } })
-    assert.deepEqual(await route.json(), { enabled: true, url: hostedUrl })
+    assert.deepEqual(await route.json(), { enabled: true, url: hostedUrl, managed: true })
     const planner = nativeSpawn(process.execPath, [path.join(app.getAppPath(), 'out', 'cli.cjs'), 'codex-launch', 'plan', '--config', path.join(app.getPath('userData'), 'codex-command', 'launch.json'), '--', ...args], { windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'pipe', 'pipe'] })
     let planned = '', planError = ''
     planner.stdout.on('data', b => { planned += b }); planner.stderr.on('data', b => { planError += b })
     const [planCode] = await once(planner, 'exit')
     assert.equal(planCode, 0, planError)
-    assert.deepEqual(JSON.parse(planned).args, ['--remote', hostedUrl, ...args], 'Bundled Electron planner')
-    assert.deepEqual(await launch(args), ['--remote', hostedUrl, ...args])
+    assert.equal(JSON.parse(planned).args[0], '--remote', 'Bundled Electron planner')
+    assert.deepEqual(JSON.parse(planned).args.slice(2), args)
+    const defaultRouted = await launch(args)
+    const defaultUrl = defaultRouted[1]
+    assert.equal(defaultRouted[0], '--remote')
+    assert.deepEqual(defaultRouted.slice(2), args)
+    assert.deepEqual(await launch(args), defaultRouted)
     await evaluate('window.island.updateSettings({automation:{enabled:false}})')
     assert.deepEqual(await launch(args), args)
     await evaluate('window.island.updateSettings({automation:{enabled:true}})')
     assert.deepEqual(await launch(['--remote', 'ws://127.0.0.1:1']), ['--remote', 'ws://127.0.0.1:1'])
     assert.deepEqual(await launch(['--no-daemon']), ['--no-daemon'])
-    assert.deepEqual(await launch(['-p', 'anyrouter']), ['-p', 'anyrouter'], 'Profiles launch natively')
+    assert.deepEqual(await launch(['-p', 'anyrouter'], 1, '对应配置'), ['-p', 'anyrouter'], 'Unmatched profiles keep native startup with an explanation')
     assert.deepEqual(await launch(['exec', 'prompt']), ['exec', 'prompt'])
+    assert.equal(await evaluate('document.querySelector("#codex-server-profile") === null'), true)
+    assert.equal(await evaluate('document.querySelector("#codex-connect-command").value'), `codex --remote ${hostedUrl}`)
+    const profileArgs = ['-p', 'agentrouter']
+    const routedProfile = await launch(profileArgs)
+    const profileUrl = routedProfile[1]
+    assert.equal(routedProfile[0], '--remote')
+    assert.notEqual(profileUrl, defaultUrl)
+    assert.deepEqual(routedProfile.slice(2), profileArgs)
+    for (const otherArgs of [['--profile=agentrouter'], ['resume', '--last', '--profile', 'agentrouter']]) {
+      assert.deepEqual(await launch(otherArgs), ['--remote', profileUrl, ...otherArgs])
+    }
+    assert.deepEqual(await launch(args), ['--remote', defaultUrl, ...args])
+    const profileFile = path.join(process.env.CODEX_HOME, 'agentrouter.config.toml')
+    await fs.writeFile(profileFile, 'model = "changed-fixture"\n')
+    const updated = await launch(profileArgs)
+    assert.equal(updated[0], '--remote')
+    assert.notEqual(updated[1], profileUrl)
+    assert.deepEqual(updated.slice(2), profileArgs)
+    const probe = async url => {
+      const WebSocket = require('ws')
+      const socket = new WebSocket(url)
+      await once(socket, 'open')
+      socket.terminate()
+    }
+    await probe(profileUrl)
+    await probe(defaultUrl)
+    const saved = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'preferences.json'), 'utf8'))
+    assert.equal(Object.hasOwn(saved.codexServer, 'profile'), false)
     const captureDir = path.resolve('.impeccable/review'); await fs.mkdir(captureDir, { recursive: true })
-    const capture = async (name, width, height) => {
+    const capture = async (name, width, height, target = 'command') => {
       settings.setMinimumSize(360, 480); settings.setContentSize(width, height)
-      await evaluate('Array.from(document.querySelectorAll("strong")).find(e=>e.textContent==="直接使用 codex 命令").scrollIntoView({block:"center"})')
+      await evaluate(target === 'profile' ? 'document.querySelector(".hosted-codex").scrollIntoView({block:"start"})'
+        : 'Array.from(document.querySelectorAll("strong")).find(e=>e.textContent==="直接使用 codex 命令").scrollIntoView({block:"center"})')
       await delay(300)
       assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false)
       await fs.writeFile(path.join(captureDir, `${name}.png`), (await settings.webContents.capturePage()).toPNG())
@@ -118,6 +153,8 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
       await until(() => evaluate(`document.body.dataset.theme === ${JSON.stringify(theme)}`))
       await capture(`codex-command-${theme}-desktop`, 1040, 800)
       await capture(`codex-command-${theme}-narrow`, 640, 700)
+      await capture(`codex-profile-${theme}-desktop`, 1040, 800, 'profile')
+      await capture(`codex-profile-${theme}-narrow`, 640, 700, 'profile')
     }
     const { WebSocketServer } = require('ws')
     const remote = new WebSocketServer({ host: '127.0.0.1', port: 0 }); await once(remote, 'listening')
@@ -140,7 +177,7 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     await evaluate('window.island.setRemoteEnabled(false)')
     await evaluate('window.island.updateSettings({automation:{enabled:true}})')
     await fs.writeFile(path.join(process.env.ISLAND_COMMAND_BIN, 'codex.ps1'), fakeCodex(2), 'utf8')
-    assert.deepEqual(await launch(args, 2), ['--remote', hostedUrl, ...args])
+    assert.deepEqual(await launch(args, 2), ['--remote', defaultUrl, ...args])
     await click('移除命令接入')
     await until(async () => !(await state()).codexCommand.installed)
     assert.deepEqual(await launch(args, 2), args, 'Loaded function falls back after removal')
@@ -161,6 +198,8 @@ async function main() {
   await fs.mkdir(bin); await fs.mkdir(path.join(documents, 'PowerShell'), { recursive: true })
   await fs.writeFile(path.join(bin, 'codex.ps1'), fakeCodex(1), 'utf8')
   await fs.writeFile(path.join(documents, 'PowerShell', 'profile.ps1'), '# existing shell settings\r\n')
+  await fs.mkdir(path.join(profile, 'codex'))
+  await fs.writeFile(path.join(profile, 'codex', 'agentrouter.config.toml'), 'model = "fixture-profile"\n')
   const env = {
     ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, ELECTRON_RENDERER_URL: '', CUTE_ISLAND_DISABLE_GPU: '1', CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '',
     CUTE_ISLAND_PORT: String(await freePort()), CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_POWERSHELL_DOCUMENTS: documents,
@@ -171,7 +210,7 @@ async function main() {
   try {
     const child = spawn(require('electron'), [__filename, `--user-data-dir=${profile}`, '--settings'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
     let logs = ''; child.stdout.on('data', b => { logs += b }); child.stderr.on('data', b => { logs += b })
-    const timeout = setTimeout(() => child.kill(), 60000)
+    const timeout = setTimeout(() => child.kill(), 120000)
     const [code] = await once(child, 'exit'); clearTimeout(timeout); console.log(logs); assert.equal(code, 0)
   } finally {
     if (path.dirname(profile) !== path.resolve(os.tmpdir()) || !path.basename(profile).startsWith('island-command-')) throw new Error('Unexpected temporary path')

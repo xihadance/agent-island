@@ -12,7 +12,7 @@ const wait = async (check: () => boolean): Promise<void> => {
   throw new Error('Timed out')
 }
 
-it('joins loaded threads, returns native responses exactly once, and leaves manual requests for the original client', async () => {
+it.each(['item/tool/requestUserInput', 'tool/requestUserInput'])('joins loaded threads, returns native responses exactly once, and leaves manual %s requests for the original client', async method => {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await once(server, 'listening')
   cleanup.push(() => new Promise<void>(resolve => { for (const socket of server.clients) socket.terminate(); server.close(() => resolve()) }))
@@ -41,7 +41,12 @@ it('joins loaded threads, returns native responses exactly once, and leaves manu
   peer!.send(JSON.stringify(approval))
   await wait(() => messages.some(message => message.id === 8))
   expect(messages.filter(message => message.id === 8)).toEqual([{ id: 8, result: { decision: 'accept' } }])
-  const question = { id: 9, method: 'item/tool/requestUserInput', params: { questions: [{ id: 'q', options: [{ label: 'A' }, { label: 'B' }] }] } }
+  const recommended = { id: 'recommended', method, params: { threadId: 'live-thread', questions: [{ id: 'q', options: [{ label: 'A' }, { label: 'B（推荐）' }] }] } }
+  peer!.send(JSON.stringify(recommended))
+  peer!.send(JSON.stringify(recommended))
+  await wait(() => messages.some(message => message.id === 'recommended'))
+  expect(messages.filter(message => message.id === 'recommended')).toEqual([{ id: 'recommended', result: { answers: { q: { answers: ['B（推荐）'] } } } }])
+  const question = { id: 9, method, params: { questions: [{ id: 'q', options: [{ label: 'A' }, { label: 'B' }] }] } }
   peer!.send(JSON.stringify(question))
   await wait(() => reports.some(report => report.action === 'manual'))
   expect(messages.some(message => message.id === 9)).toBe(false)
@@ -49,7 +54,7 @@ it('joins loaded threads, returns native responses exactly once, and leaves manu
   connector.update()
   await wait(() => messages.some(message => message.id === 9))
   expect(messages.find(message => message.id === 9)?.result).toEqual({ answers: { q: { answers: ['A'] } } })
-  peer!.send(JSON.stringify({ id: 10, method: 'item/tool/requestUserInput', params: { questions: [{ id: 'secret', isSecret: true, options: [{ label: 'A (Recommended)' }] }] } }))
+  peer!.send(JSON.stringify({ id: 10, method, params: { questions: [{ id: 'secret', isSecret: true, options: [{ label: 'A (Recommended)' }] }] } }))
   await wait(() => reports.filter(report => report.action === 'manual').length === 2)
   peer!.send(JSON.stringify({ method: 'serverRequest/resolved', params: { requestId: 10 } }))
   await new Promise(resolve => setTimeout(resolve, 20))

@@ -46,6 +46,8 @@ server.on('connection', peer=>{
       return
     }
     if(message.method==='fixture/approval') for(const client of subscribers) client.send(JSON.stringify({id:message.params.id,method:'item/commandExecution/requestApproval',params:{threadId:'hosted-thread',turnId:'turn',itemId:'tool-'+message.params.id,command:'npm test',availableDecisions:['accept','decline']}}))
+    if(message.method==='fixture/question') for(const client of subscribers) client.send(JSON.stringify({id:message.params.id,method:'tool/requestUserInput',params:{threadId:'hosted-thread',turnId:'turn',questions:[{id:'choice',question:'选择方案',options:[{label:'方案 A（推荐）'},{label:'方案 B'}]}]}}))
+    if(message.method==='fixture/reset') replies.length=0
     if(message.method==='thread/resume') subscribers.add(peer)
     if(message.id!==undefined) peer.send(JSON.stringify({id:message.id,result:message.method==='fixture/stats'?{subscribers:subscribers.size,replies}:message.method==='thread/loaded/list'?{data:['hosted-thread']}:message.method==='thread/resume'?{thread:{name:'托管审批测试',turns:[{id:'turn',status:'inProgress'}]}}:{}}))
   })
@@ -66,6 +68,14 @@ server.on('connection', peer=>{
     else if (!String(url).endsWith('/deleteWebhook') && !String(url).endsWith('/answerCallbackQuery')) throw new Error('测试不允许调用真实渠道')
     return { ok: true, json: async () => ({ ok: true, result }) }
   }
+  // Seed an isolated installation record; no real shell startup file is changed.
+  const integration = path.join(app.getPath('userData'), 'codex-command')
+  const syncFiles = require('node:fs')
+  syncFiles.mkdirSync(integration, { recursive: true })
+  const shellProfile = path.join(integration, 'fixture-profile')
+  const wrapper = path.join(integration, process.platform === 'win32' ? 'codex.ps1' : 'codex.sh')
+  syncFiles.writeFileSync(shellProfile, `# >>> Cute Island Codex >>>\n. '${wrapper.replace(/'/g, "''")}'\n# <<< Cute Island Codex <<<\n`)
+  syncFiles.writeFileSync(path.join(integration, 'installation.json'), JSON.stringify({ version: 1, executable: process.execPath, profiles: [shellProfile] }))
   require('../out/main/index.js')
   await app.whenReady()
   const settings = await until(() => BrowserWindow.getAllWindows().find(win => win.webContents.getURL().endsWith('#settings')))
@@ -100,7 +110,13 @@ server.on('connection', peer=>{
     await fs.writeFile(path.join(review, `managed-codex-${theme}-remote.png`), (await settings.webContents.capturePage()).toPNG())
     await evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent.trim() === "Agent 接入").click()')
   }
-  const terminal = new WebSocket(hostedUrl), messages = [], pending = new Map()
+  const launch = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'codex-command', 'launch.json'), 'utf8'))
+  const prepared = await fetch(launch.statusUrl, { method: 'POST', headers: { authorization: `Bearer ${launch.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ profile: 'agentrouter', cwd: process.cwd(), overrides: [], env: process.env }) }).then(response => response.json())
+  assert.equal(prepared.enabled, true)
+  assert.notEqual(prepared.url, hostedUrl)
+  await until(async () => (await snapshot()).sessions.filter(session => session.nativeId === 'hosted-thread' && session.connected).length === 2)
+  const terminal = new WebSocket(prepared.url), messages = [], pending = new Map()
   let sequence = 0
   await once(terminal, 'open')
   terminal.on('message', bytes => {
@@ -114,13 +130,24 @@ server.on('connection', peer=>{
   try {
     await rpc('initialize'); await rpc('thread/resume', { threadId: 'hosted-thread' })
     assert.equal((await rpc('fixture/stats')).subscribers, 2)
+    await rpc('fixture/approval', { id: 898 })
+    await rpc('fixture/question', { id: 899 })
+    await until(async () => (await rpc('fixture/stats')).replies.length === 2)
+    assert.deepEqual((await rpc('fixture/stats')).replies, [
+      { id: 898, result: { decision: 'accept' } },
+      { id: 899, result: { answers: { choice: { answers: ['方案 A（推荐）'] } } } }
+    ], '接管通道统一回传自动审批和推荐回答')
+    assert.equal((await snapshot()).requests.some(request => [898, 899].includes(request.nativeRequestId)), false)
+    assert.equal(sent.length, 0, '自动处理的请求不再发到消息渠道')
+    await evaluate('window.island.updateSettings({automation:{enabled:false}})')
+    await rpc('fixture/reset')
     await rpc('fixture/approval', { id: 900 })
     const first = await until(async () => (await snapshot()).requests.find(request => request.nativeRequestId === 900))
     const notification = await until(() => sent.find(message => message.text.includes(first.id)))
     assert.ok(notification.reply_markup.inline_keyboard.flat().some(button => button.callback_data.endsWith(':approve')))
     assert.equal(notification.text.includes('仅提醒'), false)
     assert.ok(messages.some(message => message.id === 900))
-    assert.deepEqual((await rpc('fixture/stats')).replies, [], '远程接管优先，自动审批不能抢答')
+    assert.deepEqual((await rpc('fixture/stats')).replies, [], '自动审批关闭后保留远程处理')
     callback(first, 1)
     await until(async () => (await snapshot()).requests.find(request => request.id === first.id)?.status === 'resolved')
     assert.deepEqual((await rpc('fixture/stats')).replies, [{ id: 900, result: { decision: 'accept' } }])
@@ -136,11 +163,26 @@ server.on('connection', peer=>{
     await evaluate('window.island.updateSettings({automation:{enabled:false}})')
     await evaluate('window.island.setRemoteEnabled(false)')
     await until(async () => (await rpc('fixture/stats')).subscribers === 1)
+    await evaluate('window.island.updateSettings({automation:{enabled:true}})')
+    await until(async () => (await rpc('fixture/stats')).subscribers === 2)
+    await rpc('fixture/reset')
+    await rpc('fixture/approval', { id: 903 })
+    await rpc('fixture/question', { id: 904 })
+    await until(async () => (await rpc('fixture/stats')).replies.length === 2)
+    assert.deepEqual((await rpc('fixture/stats')).replies, [
+      { id: 903, result: { decision: 'accept' } },
+      { id: 904, result: { answers: { choice: { answers: ['方案 A（推荐）'] } } } }
+    ], '关闭远程接管后自动审批通道接管同一 profile 实例')
     await evaluate('window.island.setRemoteEnabled(true)')
     await until(async () => (await rpc('fixture/stats')).subscribers === 2)
+    await rpc('fixture/reset')
+    await rpc('fixture/approval', { id: 905 })
+    await until(async () => (await rpc('fixture/stats')).replies.length === 1)
+    await delay(100)
+    assert.deepEqual((await rpc('fixture/stats')).replies, [{ id: 905, result: { decision: 'accept' } }], '切换回远程接管后无重复回复')
     assert.deepEqual(JSON.parse(await fs.readFile(process.env.CUTE_ISLAND_REMOTE_CONFIG, 'utf8')).codex, [])
     assert.ok(island && !island.isDestroyed())
-    console.log('通过：托管服务自动转发、消息渠道审批按钮、终端同步、任一端处理、重复拦截、自动审批让位、启停恢复及无额外连接配置。')
+    console.log('通过：接管通道自动审批及推荐回答、消息渠道审批按钮、终端同步、任一端处理、重复拦截、启停恢复及无额外连接配置。')
   } finally { terminal.terminate() }
   await evaluate('window.island.updateSettings({codexServer:{enabled:false}})')
   await until(async () => (await state()).codexServer.status === 'stopped')
@@ -155,6 +197,8 @@ server.on('connection', peer=>{
 
 async function main() {
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'island-managed-codex-'))
+  await fs.mkdir(path.join(profile, 'codex'))
+  await fs.writeFile(path.join(profile, 'codex', 'agentrouter.config.toml'), 'model = "profile-fixture"\n')
   const env = { ...process.env, CUTE_ISLAND_PORT: String(await freePort()), CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'),
     CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '', CUTE_ISLAND_DISABLE_GPU: '1', ELECTRON_RENDERER_URL: '', ISLAND_SMOKE_TELEGRAM_TOKEN: 'synthetic-token',
     CODEX_HOME: path.join(profile, 'codex'), CLAUDE_CONFIG_DIR: path.join(profile, 'claude'), CURSOR_HOME: path.join(profile, 'cursor'), GEMINI_CLI_HOME: path.join(profile, 'gemini') }

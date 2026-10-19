@@ -5,8 +5,8 @@ import { WebSocketServer } from 'ws'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ActivityStore } from '../shared/activity'
 import { startStatusServer, type StatusServer } from '../main/server'
-import { resolveCodexLaunch, runCodexLaunch } from './codex-launch'
-import type { CodexLaunchRoute } from '../shared/codex-launch'
+import { resolveCodexLaunch, resolveCodexLaunchPlan, runCodexLaunch } from './codex-launch'
+import type { CodexLaunchRequest, CodexLaunchRoute } from '../shared/codex-launch'
 
 const servers: StatusServer[] = []
 const peers: WebSocketServer[] = []
@@ -28,13 +28,15 @@ async function fixture() {
   })
   let route: CodexLaunchRoute = { enabled: true, url: `ws://127.0.0.1:${(ws.address() as { port: number }).port}` }
   const token = 'local-launch-token-'.repeat(3)
-  const status = await startStatusServer(new ActivityStore(), { port: 0, token: 'unrelated-token', codexLaunch: { token, route: () => route } }); servers.push(status)
+  const prepared: CodexLaunchRequest[] = []
+  const status = await startStatusServer(new ActivityStore(), { port: 0, token: 'unrelated-token', codexLaunch: { token, route: () => route,
+    prepare: async value => { const request = value as CodexLaunchRequest; prepared.push(request); return { enabled: true, url: route.url, profile: request.profile } } } }); servers.push(status)
   const dir = mkdtempSync(path.join(os.tmpdir(), 'island-codex-launch-')); directories.push(dir)
   const file = path.join(dir, 'launch.json')
   const statusUrl = `http://127.0.0.1:${status.port}/v1/codex/launch`
   const config = { version: 1, executable: process.execPath, statusUrl, token }
   writeFileSync(file, JSON.stringify(config))
-  return { file, config, statusUrl, methods, tokens, setRoute: (next: CodexLaunchRoute) => { route = next } }
+  return { file, config, statusUrl, methods, tokens, prepared, setRoute: (next: CodexLaunchRoute) => { route = next } }
 }
 
 it('uses live switches for every launch, falls back after exit, and never creates or resumes a thread', async () => {
@@ -62,13 +64,40 @@ it('protects launch status with its own token and returns no credentials', async
   expect(JSON.stringify(await response.json())).not.toContain(f.config.token)
 })
 
-it('keeps explicit choices and unsupported commands without contacting the app', async () => {
+it('keeps explicit choices and unsupported commands without subscribing to a service', async () => {
   const f = await fixture(); const args = ['--remote', 'wss://user.test']
   expect(await resolveCodexLaunch(args, f.file)).toEqual(args)
   expect(await resolveCodexLaunch(['exec', 'hello'], f.file)).toEqual(['exec', 'hello'])
   expect(await resolveCodexLaunch(['-p', 'luna'], f.file)).toEqual(['-p', 'luna'])
   expect(await resolveCodexLaunch([], f.file, { CUTE_ISLAND_CODEX_BYPASS: '1' })).toEqual([])
   expect(f.methods).toEqual([])
+})
+
+it('prepares the requested profile with terminal environment, cwd and overrides, preserving every client argument', async () => {
+  const f = await fixture()
+  const directory = path.dirname(f.file)
+  const url = (await resolveCodexLaunch([], f.file))[1]
+  const args = ['-p', 'agentrouter', '-C', directory, '-c', 'model="override"', 'resume', '--last']
+  const env = { CODEX_HOME: directory, PROVIDER_KEY: 'terminal-only-value', ELECTRON_RUN_AS_NODE: '1', CUTE_ISLAND_CODEX_RUN_AS_NODE_SET: '' }
+  f.setRoute({ enabled: true, url, managed: true })
+  expect(await resolveCodexLaunchPlan(args, f.file, env)).toEqual({ args: ['--remote', url, ...args] })
+  expect(f.prepared[0]).toEqual({ profile: 'agentrouter', cwd: directory, overrides: ['model="override"'], env: { CODEX_HOME: directory, PROVIDER_KEY: 'terminal-only-value' } })
+  expect(await resolveCodexLaunchPlan([], f.file, env)).toEqual({ args: ['--remote', url] })
+  expect(f.prepared[1].profile).toBeUndefined()
+  expect(readFileSync(f.file, 'utf8')).not.toContain('terminal-only-value')
+  f.setRoute({ enabled: false })
+  expect(await resolveCodexLaunchPlan(args, f.file, env)).toEqual({ args })
+  expect(f.prepared).toHaveLength(2)
+  expect(f.methods).toEqual(['initialize', 'initialize', 'initialize'])
+})
+
+it('requires the independent token and rejects browser requests before preparing a service', async () => {
+  const f = await fixture()
+  const attempts: Record<string, string>[] = [{}, { authorization: 'Bearer unrelated-token' }, { authorization: `Bearer ${f.config.token}`, origin: 'https://example.test' }]
+  for (const headers of attempts) {
+    expect((await fetch(f.statusUrl, { method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: '{}' })).status).toBe(403)
+  }
+  expect(f.prepared).toHaveLength(0)
 })
 
 it('decodes PowerShell argument arrays without losing quotes, Unicode or empty values', async () => {

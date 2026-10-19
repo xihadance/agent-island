@@ -67,7 +67,8 @@ it.each([
   ['item/commandExecution/requestApproval', { command: 'npm test', availableDecisions: ['accept', 'decline'] }, { decision: 'accept' }],
   ['item/fileChange/requestApproval', { availableDecisions: ['accept', 'decline'] }, { decision: 'accept' }],
   ['item/permissions/requestApproval', { permissions: { network: { enabled: true } } }, { permissions: { network: { enabled: true } }, scope: 'turn' }],
-  ['item/tool/requestUserInput', { questions: [{ id: 'q', question: '哪种方案？', options: [{ label: 'A（推荐）' }, { label: 'B' }] }] }, { answers: { q: { answers: ['A（推荐）'] } } }]
+  ['item/tool/requestUserInput', { questions: [{ id: 'q', question: '哪种方案？', options: [{ label: 'A（推荐）' }, { label: 'B' }] }] }, { answers: { q: { answers: ['A（推荐）'] } } }],
+  ['tool/requestUserInput', { questions: [{ id: 'q', question: '哪种方案？', options: [{ label: 'A（推荐）' }, { label: 'B' }] }] }, { answers: { q: { answers: ['A（推荐）'] } } }]
 ])('automates %s through the native connection without notifying channels or replaying', async (method, params, result) => {
   const f = await automationFixture()
   f.send(method, params)

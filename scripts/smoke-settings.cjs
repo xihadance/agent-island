@@ -55,6 +55,7 @@ async function fixture() {
     assert.equal(restored.preferences.automation.enabled, false)
     assert.equal(restored.preferences.automation.fallback, 'first')
     assert.equal(restored.preferences.theme, 'dark')
+    assert.equal(Object.hasOwn(restored.preferences.codexServer, 'profile'), false)
     assert.equal(nativeTheme.themeSource, 'dark')
     assert.equal(restored.preferences.update.skippedVersion, '', 'A cancelled skip survives the restart')
     await until(() => evaluate('document.body.dataset.theme === "dark"'))
@@ -109,6 +110,7 @@ async function fixture() {
   await capture('connections-server-running')
   await click('停止托管服务')
   await until(async () => (await state()).codexServer.status === 'stopped' && (await state()).codexStatus === 'disabled')
+  assert.equal(await evaluate('document.querySelector("#codex-server-profile") === null'), true)
   await evaluate('window.scrollTo(0, 0)')
   await capture('settings-connections')
   settings.setContentSize(640, 700)
@@ -337,7 +339,7 @@ async function fixture() {
   assert.equal((await state()).update.status, 'disabled', 'Unpackaged builds never query a release feed')
   assert.equal(await evaluate('!!document.querySelector(".update-available")'), false)
   let feedRequests = 0
-  let feedBody = JSON.stringify({ tag_name: `v${next}`, html_url: `https://github.com/xihadance/cute-island/releases/tag/v${next}`,
+  let feedBody = JSON.stringify({ tag_name: `v${next}`, html_url: `https://github.com/xihadance/agent-island/releases/tag/v${next}`,
     body: `## v${next}\n\n- 冒烟替身版本说明`, published_at: '2026-02-01T10:00:00Z' })
   const feed = require('node:http').createServer((request, response) => {
     feedRequests++
@@ -359,7 +361,7 @@ async function fixture() {
   await until(async () => (await state()).update.status === 'available')
   assert.equal(feedRequests, 1)
   assert.deepEqual((await state()).update.available, { version: next, tag: `v${next}`,
-    url: `https://github.com/xihadance/cute-island/releases/tag/v${next}`, notes: `## v${next}\n\n- 冒烟替身版本说明`, publishedAt: Date.parse('2026-02-01T10:00:00Z') })
+    url: `https://github.com/xihadance/agent-island/releases/tag/v${next}`, notes: `## v${next}\n\n- 冒烟替身版本说明`, publishedAt: Date.parse('2026-02-01T10:00:00Z') })
   await until(() => evaluate('!!document.querySelector(".update-available")'))
   assert.ok((await evaluate('document.querySelector(".update-notes").textContent')).includes('冒烟替身版本说明'))
   assert.ok((await evaluate('document.querySelector(".settings-update-link").textContent')).includes(next))

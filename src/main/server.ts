@@ -16,16 +16,23 @@ export interface StatusServer {
 export function startStatusServer(
   store: ActivityStore,
   options: { port: number; token?: string; claudeHook?: (payload: unknown) => unknown; control?: ControlRuntime | (() => ControlRuntime | undefined);
-    codexLaunch?: { token: string; route: () => CodexLaunchRoute } }
+    codexLaunch?: { token: string; route: () => CodexLaunchRoute; prepare?: (request: unknown) => Promise<CodexLaunchRoute> } }
 ): Promise<StatusServer> {
   const token = options.token?.trim() || undefined
   const sockets = new Set<WebSocket>()
   const httpServer = createServer((req, res) => {
     if (new URL(req.url ?? '/', 'http://127.0.0.1').pathname === '/v1/codex/launch') {
-      if (req.method !== 'GET' || !options.codexLaunch || req.headers.origin || !authorized(req, options.codexLaunch.token)) {
+      if (!['GET', 'POST'].includes(req.method ?? '') || !options.codexLaunch || req.headers.origin || !authorized(req, options.codexLaunch.token)) {
         sendJson(res, 403, { error: '命令接入需要独立令牌' }); return
       }
-      sendJson(res, 200, options.codexLaunch.route()); return
+      if (req.method === 'GET') { sendJson(res, 200, options.codexLaunch.route()); return }
+      const prepare = options.codexLaunch.prepare
+      if (!prepare || !req.headers['content-type']?.startsWith('application/json')) { sendJson(res, 400, { error: '命令接入需要 JSON 启动配置' }); return }
+      void readJson(req).then(prepare).then(route => sendJson(res, 200, route)).catch(() => {
+        // Never echo request bodies or native errors: terminal environments can contain credentials.
+        if (!res.headersSent) sendJson(res, 400, { error: '无法准备 Codex 服务，请检查配置后重试' })
+      })
+      return
     }
     void handleRequest(req, res, store, token, options.claudeHook, options.control).catch((error: unknown) => {
       if (res.headersSent) return

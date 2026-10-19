@@ -61,7 +61,7 @@ export function decideCodex(method: string, payload: unknown, preferences: Prefe
   const auto = preferences.automation
   const params = record(payload)
   if (!auto.enabled) return manual('自动审批已暂停')
-  if (method === 'item/tool/requestUserInput') {
+  if (method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput') {
     if (!auto.answerQuestions) return manual('自动回答已关闭')
     const answers = chooseAnswers(params.questions, auto.fallback, 'id')
     if (!answers) return manual('问题缺少明确选项或唯一推荐，保留手动回答')

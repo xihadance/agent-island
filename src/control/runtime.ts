@@ -17,6 +17,7 @@ interface RuntimeOptions {
   onChange?: () => void
   onRequestsChange?: () => void
   managedCodexUrl?: () => string
+  managedCodexUrls?: () => string[]
   automate?: HookAutomation
   automateCodex?: CodexDecision
   onCodexDecision?: (decision: Decision) => void
@@ -37,7 +38,7 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
   function start(): void {
     if (closed || !enabled || running) return
     try {
-      group.start(options.managedCodexUrl?.() ?? '')
+      group.start(options.managedCodexUrls?.() ?? options.managedCodexUrl?.() ?? '')
       running = true
       error = undefined
     } catch {
@@ -51,7 +52,8 @@ export function createControlRuntime(initial: RemoteConfig, activities: Activity
     get hub() { return group.hub },
     get hooks() { return group.hooks },
     status,
-    syncManagedCodex() { if (enabled && running && !closed) group.syncCodex(options.managedCodexUrl?.() ?? '') },
+    syncManagedCodex() { if (enabled && running && !closed) group.syncCodex(options.managedCodexUrls?.() ?? options.managedCodexUrl?.() ?? '') },
+    codexConnected(url: string) { return enabled && running && !closed && group.codexConnected(url) },
     async start() { start() },
     setEnabled(value: boolean): ControlStatus {
       check(!closed, '接管服务已退出', 409)
@@ -102,9 +104,11 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
   const retries = new Set<ReturnType<typeof setTimeout>>()
   let closed = false
   let started = false
-  function syncCodex(hostedUrl: string): void {
+  function syncCodex(hostedUrl: string | string[]): void {
     if (closed) return
-    const desired = managedCodexConnections(config.codex, config.channels.length ? hostedUrl : '')
+    const urls = typeof hostedUrl === 'string' ? [hostedUrl] : hostedUrl
+    const explicitlyManaged = config.codex.some(connection => !connection.threads.length && urls.includes(connection.url))
+    const desired = managedCodexConnections(config.codex, config.channels.length || explicitlyManaged ? hostedUrl : '')
     for (const [id, entry] of codexEntries) if (!desired.some(connection => connection.id === id && JSON.stringify(connection) === entry.key)) {
       entry.adapter.close()
       for (const session of store.snapshot().sessions) if (session.connectionId === id) store.settleSession(session.id, 'uncertain')
@@ -157,7 +161,8 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
   }
   return {
     hub, hooks, syncCodex,
-    start(hostedUrl: string) {
+    codexConnected: (url: string) => [...codexEntries.values()].some(entry => JSON.parse(entry.key).url === url && entry.adapter.connected),
+    start(hostedUrl: string | string[]) {
       if (started || closed) return
       // Validate synchronous setup before starting any background connection.
       syncCodex(hostedUrl)
@@ -173,7 +178,8 @@ function createConnections(config: RemoteConfig, activities: ActivityStore, stor
     close() { closed = true; for (const timer of retries) clearTimeout(timer); stop(); hub.close(); for (const connection of connections) connection.close(); for (const transport of transports) transport.close(); transports.clear() }
   }
 }
-export function managedCodexConnections(configured: RemoteConfig['codex'], hostedUrl: string): RemoteConfig['codex'] {
+export function managedCodexConnections(configured: RemoteConfig['codex'], hostedUrl: string | string[]): RemoteConfig['codex'] {
+  if (Array.isArray(hostedUrl)) return [...new Set(hostedUrl)].reduce((connections, url) => managedCodexConnections(connections, url), configured)
   if (!hostedUrl) return configured
   const hosted = new URL(hostedUrl)
   const matches = (url: string) => {
@@ -182,7 +188,7 @@ export function managedCodexConnections(configured: RemoteConfig['codex'], hoste
       ['127.0.0.1', 'localhost', '[::1]'].includes(candidate.hostname)
   }
   const previous = configured.find(connection => matches(connection.url))
-  let id = previous?.id ?? 'island-hosted'
+  let id = previous?.id ?? `island-hosted-${hosted.port}`
   while (!previous && configured.some(connection => connection.id === id)) id += '-local'
   return [...configured.filter(connection => !matches(connection.url)), { id, url: hostedUrl, threads: [], proxy: { mode: 'direct' } }]
 }

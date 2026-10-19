@@ -9,7 +9,7 @@
 A black capsule sits at the top of your screen showing what Claude Code, Codex, Gemini and Cursor<br />
 are doing right now. It speaks up when approval is needed, and you can take over from your phone.
 
-[![Release](https://img.shields.io/github/v/release/xihadance/cute-island?style=flat-square&color=78db9c)](https://github.com/xihadance/cute-island/releases)
+[![Release](https://img.shields.io/github/v/release/xihadance/agent-island?style=flat-square&color=78db9c)](https://github.com/xihadance/agent-island/releases)
 [![License](https://img.shields.io/badge/license-MIT-78b9ff?style=flat-square)](#license)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-c2afff?style=flat-square)](#install)
 [![Electron](https://img.shields.io/badge/Electron-44-f3c76a?style=flat-square)](https://www.electronjs.org/)
@@ -50,7 +50,7 @@ You can't watch a terminal all day while agents run in the background. Cute Isla
 
 ## Install
 
-Grab the package for your platform from [Releases](https://github.com/xihadance/cute-island/releases):
+Grab the package for your platform from [Releases](https://github.com/xihadance/agent-island/releases):
 
 | Platform | Format | In-app update |
 | --- | --- | :---: |
@@ -178,7 +178,11 @@ codex --remote ws://127.0.0.1:4500
 codex app-server --listen ws://127.0.0.1:4500
 ```
 
-Windows integrates with PowerShell; macOS / Linux with Bash / Zsh. Your shell profile is backed up before editing and other content is preserved on removal. Commands with `-p` / `--profile` start normally and those sessions skip auto-approval.
+Windows integrates with PowerShell; macOS / Linux with Bash / Zsh. Your shell profile is backed up before editing and other content is preserved on removal.
+
+After installing command integration and enabling the managed service, run `codex` for the default configuration or `codex -p agentrouter` for that profile. No duplicate profile setting is needed. `--profile agentrouter`, `--profile=agentrouter`, and `codex -p agentrouter resume <thread-id>` are supported. Exit the original client before resuming an existing thread; running standalone sessions do not migrate automatically.
+
+The service reads the terminal’s `$CODEX_HOME/<name>.config.toml` (current profiles), or `[profiles.<name>]` in `config.toml` (legacy profiles), and inherits its working directory and environment. Profiles are applied as native `-c` startup overrides, above project configuration; explicit command-line `-c` values override the profile. Matching configurations reuse an instance. Different profiles, working directories, environments, or changed files get separate instances, preserving existing sessions. Source configuration files stay unchanged; terminal environment values are passed only in local memory, never saved in settings or logs. Stopping managed services or exiting Cute Island closes all instances. An external app-server that cannot load the requested profile falls back to native startup with a notice.
 
 Cute Island is just another protocol client: it **only joins sessions already loaded in the service**, never starts tasks, and never changes a session's sandbox or approval policy. Only local, unauthenticated `ws://` services are supported.
 

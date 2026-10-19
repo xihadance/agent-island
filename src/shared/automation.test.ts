@@ -38,6 +38,15 @@ describe('automatic answers', () => {
 })
 
 describe('native automation responses', () => {
+  it.each(['item/tool/requestUserInput', 'tool/requestUserInput'])('answers %s only when question automation is enabled', method => {
+    expect(decideCodex(method, { questions: [question] }, enabled).response)
+      .toEqual({ answers: { framework: { answers: ['React (Recommended)'] } } })
+    for (const preferences of [normalizePreferences(undefined), patchPreferences(enabled, { automation: { answerQuestions: false } })]) {
+      expect(decideCodex(method, { questions: [question] }, preferences).response).toBeUndefined()
+    }
+    expect(decideCodex(method, { questions: [{ ...question, isSecret: true }] }, enabled).response).toBeUndefined()
+    expect(decideCodex(method, { questions: [{ id: 'free', question: '请输入路径' }] }, enabled).response).toBeUndefined()
+  })
   it('uses Claude question text as keys and preserves all other tool arguments', () => {
     expect(decideClaude(claude, enabled)).toMatchObject({ action: 'answered', response: { hookSpecificOutput: {
       hookEventName: 'PreToolUse', permissionDecision: 'allow', updatedInput: { metadata: 'keep', questions: [question], answers: { '使用哪种框架？': 'React (Recommended)' } }

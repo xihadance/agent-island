@@ -23,6 +23,7 @@ export class CodexAdapter implements AgentControlAdapter {
   private sessions = new Map<string, string>()
   private native = new Map<string, NativeRequest>()
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  get connected(): boolean { return !this.closed && this.initialized && this.socket?.readyState === WebSocket.OPEN }
   constructor(private readonly hub: ControlHub, private readonly config: CodexConnection, private readonly requestsChanged: (created: boolean) => void = () => {},
     private readonly automate?: CodexDecision, private readonly report: (decision: Decision) => void = () => {}) {
     const url = new URL(config.url)

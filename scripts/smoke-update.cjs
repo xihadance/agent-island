@@ -35,7 +35,7 @@ async function fixture() {
   proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening')
   const proxyUrl = `http://127.0.0.1:${proxy.address().port}`
   const feed = createServer((_request, response) => response.end(JSON.stringify({ tag_name: `v${next}`,
-    html_url: `https://github.com/xihadance/cute-island/releases/tag/v${next}` })))
+    html_url: `https://github.com/xihadance/agent-island/releases/tag/v${next}` })))
   feed.listen(0, '127.0.0.1'); await once(feed, 'listening')
   process.env.CUTE_ISLAND_UPDATE_FEED = `http://127.0.0.1:${feed.address().port}`
   const proxiedRequest = route => autoUpdater.httpExecutor.request({ protocol: 'http:', hostname: 'updates.invalid', path: `/${route}`, method: 'GET' })

@@ -41,7 +41,7 @@ it.each([
     installOnQuit: () => checker.installOnQuit })
   const checker = new UpdateChecker({ current: '0.1.17', enabled: () => enabled, skippedVersion: () => skipped,
     lastCheckedAt: () => 0, onCheckedAt: () => {}, onChange: () => {}, autoInstall: () => true, blockedReason: () => '', installer,
-    fetchRelease: async () => ({ tag_name: 'v0.1.18', html_url: 'https://github.com/xihadance/cute-island/releases/tag/v0.1.18' }) })
+    fetchRelease: async () => ({ tag_name: 'v0.1.18', html_url: 'https://github.com/xihadance/agent-island/releases/tag/v0.1.18' }) })
   await checker.check(true)
   await checker.download()
   expect(checker.state.status).toBe('downloaded')

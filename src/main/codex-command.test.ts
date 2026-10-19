@@ -70,7 +70,7 @@ it.skipIf(process.platform !== 'win32')('uses the same PowerShell session for dy
   const f = fixture()
   const enabled = path.join(f.dir, 'enabled.txt')
   writeFileSync(enabled, 'on')
-  writeFileSync(f.options.runner[1], `const fs=require('node:fs'); const args=JSON.parse(Buffer.from(process.argv[process.argv.indexOf('--args-base64')+1],'base64').toString('utf8')); console.log(JSON.stringify({args:fs.readFileSync(${JSON.stringify(enabled)},'utf8')==='on'?['--remote','ws://127.0.0.1:4500',...args]:args}));`)
+  writeFileSync(f.options.runner[1], `if(process.env.CUTE_ISLAND_CODEX_RUN_AS_NODE_SET!=='x'||process.env.CUTE_ISLAND_CODEX_ORIGINAL_RUN_AS_NODE!=='original-value')process.exit(2); const fs=require('node:fs'); const args=JSON.parse(Buffer.from(process.argv[process.argv.indexOf('--args-base64')+1],'base64').toString('utf8')); console.log(JSON.stringify({args:fs.readFileSync(${JSON.stringify(enabled)},'utf8')==='on'?['--remote','ws://127.0.0.1:4500',...args]:args}));`)
   const original = (version: number) => `$value = @{version=${version};args=@($args);runtime=$env:ELECTRON_RUN_AS_NODE;input=@($input)}; ConvertTo-Json -InputObject $value -Compress; exit 7\n`
   writeFileSync(f.executable, original(1))
   setCodexCommandIntegration(f.options, true)

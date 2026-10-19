@@ -163,7 +163,7 @@ export class CodexAutomation {
       return
     }
     if ((typeof message.id !== 'number' && typeof message.id !== 'string') || typeof message.method !== 'string') return
-    if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput'].includes(message.method)) return
+    if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(message.method)) return
     if (this.handled.has(message.id) || this.pending.has(message.id)) return
     const request = { id: message.id, method: message.method, params: message.params }
     if (this.pending.size >= 256) return

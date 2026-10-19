@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { UpdateChecker, type UpdateCheckerOptions } from './updater'
 
-const payload = (tag = 'v0.1.18') => ({ tag_name: tag, html_url: `https://github.com/xihadance/cute-island/releases/tag/${tag}`,
+const payload = (tag = 'v0.1.18') => ({ tag_name: tag, html_url: `https://github.com/xihadance/agent-island/releases/tag/${tag}`,
   body: '- 修复了一个问题', published_at: '2026-02-01T10:00:00Z' })
 
 interface Harness {

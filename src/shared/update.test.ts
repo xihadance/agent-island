@@ -2,7 +2,7 @@ import { expect, it } from 'vitest'
 import { UPDATE_NOTES_LIMIT, compareVersions, dueForCheck, installBlockedReason, newerRelease, parseRelease, releaseApiUrl, releasesPageUrl, supportsAutoInstall } from './update'
 
 const release = (overrides: Record<string, unknown> = {}) => ({
-  tag_name: 'v0.1.18', html_url: 'https://github.com/xihadance/cute-island/releases/tag/v0.1.18',
+  tag_name: 'v0.1.18', html_url: 'https://github.com/xihadance/agent-island/releases/tag/v0.1.18',
   body: '## v0.1.18\n\n- 修复了一个问题\n', published_at: '2026-02-01T10:00:00Z', ...overrides
 })
 
@@ -28,7 +28,7 @@ it.each([
 
 it('reads a well-formed release', () => {
   expect(parseRelease(release())).toEqual({
-    version: '0.1.18', tag: 'v0.1.18', url: 'https://github.com/xihadance/cute-island/releases/tag/v0.1.18',
+    version: '0.1.18', tag: 'v0.1.18', url: 'https://github.com/xihadance/agent-island/releases/tag/v0.1.18',
     notes: '## v0.1.18\n\n- 修复了一个问题', publishedAt: Date.parse('2026-02-01T10:00:00Z')
   })
 })
@@ -40,9 +40,9 @@ it.each([
   { label: 'non-numeric tag', value: release({ tag_name: 'nightly' }) },
   { label: 'prerelease tag', value: release({ tag_name: 'v0.1.18-rc.1' }) },
   { label: 'another repository', value: release({ html_url: 'https://github.com/attacker/cute-island/releases/tag/v0.1.18' }) },
-  { label: 'another host', value: release({ html_url: 'https://github.com.evil.test/xihadance/cute-island/releases/tag/v0.1.18' }) },
-  { label: 'credentials in URL', value: release({ html_url: 'https://user:pass@github.com/xihadance/cute-island/releases/tag/v0.1.18' }) },
-  { label: 'plain HTTP', value: release({ html_url: 'http://github.com/xihadance/cute-island/releases/tag/v0.1.18' }) },
+  { label: 'another host', value: release({ html_url: 'https://github.com.evil.test/xihadance/agent-island/releases/tag/v0.1.18' }) },
+  { label: 'credentials in URL', value: release({ html_url: 'https://user:pass@github.com/xihadance/agent-island/releases/tag/v0.1.18' }) },
+  { label: 'plain HTTP', value: release({ html_url: 'http://github.com/xihadance/agent-island/releases/tag/v0.1.18' }) },
   { label: 'missing URL', value: release({ html_url: undefined }) },
   { label: 'array', value: [release()] },
   { label: 'null', value: null },
@@ -111,6 +111,6 @@ it('reports the most urgent blocker first', () => {
 })
 
 it('builds feed and page URLs for this repository', () => {
-  expect(releaseApiUrl()).toBe('https://api.github.com/repos/xihadance/cute-island/releases/latest')
-  expect(releasesPageUrl()).toBe('https://github.com/xihadance/cute-island/releases/latest')
+  expect(releaseApiUrl()).toBe('https://api.github.com/repos/xihadance/agent-island/releases/latest')
+  expect(releasesPageUrl()).toBe('https://github.com/xihadance/agent-island/releases/latest')
 })

@@ -55,6 +55,12 @@ it('keeps launch at login off unless a stored boolean asks for it', () => {
   }
 })
 
+it('discards the obsolete hosted profile without changing the remaining service settings', () => {
+  const preferences = normalizePreferences({ codexServer: { enabled: true, port: 4567, profile: 'agentrouter' } })
+  expect(preferences.codexServer).toEqual({ enabled: true, port: 4567, executable: '' })
+  expect(() => patchPreferences(preferences, { codexServer: { profile: 'agentrouter' } })).toThrow('无效的 Codex 服务配置')
+})
+
 it('rejects malformed IPC patches without accepting remote or credential-bearing URLs', () => {
   const preferences = normalizePreferences(undefined)
   for (const patch of [null, [], { mode: 'auto' }, { theme: 'sepia' }, { theme: null }, { arbitrary: true }, { automation: null }, { automation: { enabled: 'true' } },
