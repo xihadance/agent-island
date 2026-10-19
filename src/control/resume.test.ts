@@ -10,8 +10,8 @@ import type { ChannelAdapter, SessionResumer } from './types'
 const cleanups: (() => void)[] = []
 afterEach(() => cleanups.splice(0).forEach(close => close()))
 const nativeId = '01234567-89ab-cdef-0123-456789abcdef'
-function fixture(file?: string) {
-  const store = new ControlStore(file)
+function fixture(file?: string, now: () => number = Date.now) {
+  const store = new ControlStore(file, now)
   const hub = new ControlHub(store)
   cleanups.push(() => hub.close())
   const run = vi.fn(async () => {})
@@ -19,15 +19,18 @@ function fixture(file?: string) {
   hub.setResumer(resumer)
   store.session({ id: 's', nativeId, agent: 'claude', adapter: 'hook', cwd: 'D:/project', label: '项目', connected: false, capabilities: [] })
   const request = store.create({ sourceKey: 'failure', sessionId: 's', origin: 'observation', kind: 'error', title: '会话异常中断', detail: '',
-    actions: ['resume', 'ack'], questions: [], expiresAt: Date.now() + 60000 })
+    actions: ['resume', 'ack'], questions: [], expiresAt: now() + 60000 })
   const channel: ChannelAdapter = { id: 'channel', destination: 'chat', allowedUsers: ['owner'], start: vi.fn(), send: vi.fn(async () => 'sent'), update: vi.fn(), close: vi.fn() }
   store.change(state => { state.deliveries[`channel/${request.id}`] = { messageId: 'sent', revision: 1, attempts: 0, retryAt: 0 } })
   return { store, hub, request, channel, run, resumer }
 }
 
 it('offers recovery only for top-level failures with original local metadata, never public pushes or silence', () => {
-  const { hub, store, resumer } = fixture()
-  const activities = new ActivityStore()
+  let now = 1000
+  const { hub, store, resumer } = fixture(undefined, () => now)
+  const activities = new ActivityStore(undefined, () => now)
+  // The fixture's previous failure must precede this round, even on coarse Windows clocks.
+  now++
   cleanups.push(() => activities.dispose())
   hub.setResumer(resumer, id => activities.sessionSource(id))
   activities.upsert({ id: 'public', agent: 'Claude Code', state: 'error', title: '异常' })
