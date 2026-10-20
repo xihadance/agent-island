@@ -278,6 +278,20 @@ describe('automation before escalation', () => {
     expect(store.get(reply.requestId!)).toMatchObject({ kind: 'approval' })
   })
 
+  it('keeps a blacklisted Claude approval pending until the user approves it', async () => {
+    const store = new ControlStore()
+    const hub = new ControlHub(store, () => {})
+    const hooks = new HookController(hub, automate({ blacklist: ['NPM TEST'] }))
+    const reply = hooks.handle(hookEvent(permission))
+    expect(reply.handled).toBeUndefined()
+    expect(reply.output).toBeUndefined()
+    const request = store.get(reply.requestId!)
+    expect(request).toMatchObject({ kind: 'approval', status: 'pending' })
+    await hub.respond(request.id, request.revision, { action: 'approve' }, 'owner')
+    expect(hookDecision('claude', permission, hooks.poll(request.id, 'inv-1').decision)).toMatchObject({ hookSpecificOutput: { decision: { behavior: 'allow' } } })
+    hub.close()
+  })
+
   it('keeps every request remote when no automation is wired in', () => {
     const store = new ControlStore()
     const reply = new HookController(new ControlHub(store, () => {})).handle(hookEvent(permission))

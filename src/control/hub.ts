@@ -7,6 +7,17 @@ import { ACTIVE_STATUSES, STATUS_LABEL, type AgentControlAdapter, type ChannelAd
 
 export const RESUME_PROMPT = '请继续上次异常中断的任务。先核对已有进度和执行结果，避免重复已完成的操作，再完成剩余工作。'
 
+export function recoveryHint(r: InterventionRequest, session?: ControlSession): string {
+  if (!r.actions.includes('resume')) return ''
+  if (r.status !== 'pending' && r.decision?.action !== 'resume') return '已关闭提醒。'
+  const status = r.status === 'pending' ? '选择“继续会话”恢复原会话并继续未完成的任务；“知道了”只关闭提醒。'
+    : r.status === 'resolved' ? '已确认接收继续指令，不代表任务已完成。'
+      : r.status === 'submitted' ? '已提交恢复请求，等待原生确认。'
+        : '恢复结果待确认，请检查会话日志；系统不会自动重试。'
+  if (session?.agent !== 'claude') return status
+  return `${status}\nClaude Code 在后台延续同一会话，原终端不会同步显示。请在灵动岛查看进度；后台执行结束后，可在本机使用 claude --resume ${session.nativeId} 查看会话。`
+}
+
 export function redact(text: string): string {
   // An unquoted Authorization header owns the rest of its line (e.g. Digest
   // can contain spaces, commas and quotes). Also handle headers inside JSON.
@@ -20,8 +31,8 @@ export function formatRequest(r: InterventionRequest, session?: ControlSession):
     `完整内容：/detail ${r.id}`, r.detail.length > 800 ? `${r.detail.slice(0, 800)}\n…内容较长，请查看完整内容后决定。` : r.detail]
   r.questions.forEach(q => text.push(`${q.id}: ${q.text}${q.multi ? '（多选）' : ''}`, ...q.options.map((s, i) => `  ${i + 1}. ${s}${q.descriptions?.[i] ? `：${q.descriptions[i]}` : ''}`)))
   if (r.decision?.answers) text.push('已提交回答：', ...r.questions.map(q => `${q.id}: ${r.decision!.answers![q.id]?.join('、') ?? ''}`))
+  text.push(recoveryHint(r, session))
   if (r.status === 'pending') {
-    if (r.actions.includes('resume')) text.push('可选择“继续会话”恢复原会话并继续未完成的任务；“知道了”只关闭提醒。')
     if (r.actions.includes('answer')) text.push(r.questions.length === 1 ? '引用此消息直接回答；多选请发送 JSON 答案。' : '回答格式：',
       `/answer ${r.id} ${JSON.stringify(Object.fromEntries(r.questions.map(q => [q.id, [q.options[0] ?? '你的回答']])) )}`)
     text.push(...r.actions.filter(a => a !== 'answer').map(a => `/${a} ${r.id}`))

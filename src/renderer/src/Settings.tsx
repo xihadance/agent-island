@@ -51,6 +51,9 @@ export function Settings() {
   const [message, setMessage] = useState('设置自动保存')
   const [error, setError] = useState('')
   const [codexUrl, setCodexUrl] = useState('')
+  const [blacklist, setBlacklist] = useState('')
+  const savedBlacklist = snapshot?.preferences.automation.blacklist.join('\n') ?? ''
+  const blacklistDirty = blacklist !== savedBlacklist
 
   useEffect(() => {
     let active = true
@@ -61,6 +64,7 @@ export function Settings() {
     return () => { active = false; stop() }
   }, [bridge])
   useEffect(() => { setCodexUrl(snapshot?.preferences.automation.codexUrl ?? '') }, [snapshot?.preferences.automation.codexUrl])
+  useEffect(() => { setBlacklist(savedBlacklist) }, [savedBlacklist])
 
   const run = async (action: () => Promise<unknown>, success = '已保存'): Promise<void> => {
     if (busyRef.current) return
@@ -73,6 +77,11 @@ export function Settings() {
     finally { busyRef.current = false; setBusy(false) }
   }
   const update = (patch: PreferencesPatch): void => { void run(async () => { setSnapshot(await bridge.updateSettings(patch)) }) }
+  const saveBlacklist = (): void => { void run(async () => {
+    const next = await bridge.updateSettings({ automation: { blacklist: blacklist.split(/\r?\n/) } })
+    setSnapshot(next)
+    setBlacklist(next.preferences.automation.blacklist.join('\n'))
+  }, '黑名单已保存') }
   const updateAction = (action: 'update-check' | 'update-page' | 'update-download' | 'update-install', success: string): void => { void run(() => bridge.settingsAction(action), success) }
   const auto = snapshot?.preferences.automation
   const title = sections.find(item => item.id === section)!.label
@@ -94,7 +103,7 @@ export function Settings() {
     </aside>
     <main className="settings-main" id="settings-main">
       <header className="settings-header"><div><h1>{title}</h1><p>{section === 'automation' ? '把重复确认交给灵动岛。' : section === 'general' ? '让灵动岛按你的习惯工作。' : section === 'connections' ? '连接可以接收审批和回答的 Agent。' : section === 'remote' ? '把已有会话接到你的消息渠道。' : '查看本次启动后的自动处理结果。'}</p></div>
-        <span className="settings-save-status" data-dirty={remoteDirty || !!error} role="status"><span className="save-status-dot" aria-hidden="true" />{remoteDirty ? '远程配置有未保存修改' : section === 'remote' ? '渠道配置需点击保存' : message}</span></header>
+        <span className="settings-save-status" data-dirty={remoteDirty || blacklistDirty || !!error} role="status"><span className="save-status-dot" aria-hidden="true" />{blacklistDirty ? '黑名单有未保存修改' : remoteDirty ? '远程配置有未保存修改' : section === 'remote' ? '渠道配置需点击保存' : message}</span></header>
       {error && <div className="settings-error" role="alert">{error}<button type="button" onClick={() => { void run(async () => setSnapshot(await bridge.getSettings()), '设置已重新加载') }}>重新读取设置</button></div>}
       {!snapshot || !auto ? <p role="status">正在读取配置…</p> : <>
         {snapshot.preview && <p className="settings-preview">浏览器预览 · 设置仅保存在此浏览器，实际审批与 Agent 接入请使用桌面应用。</p>}
@@ -109,6 +118,15 @@ export function Settings() {
             <Switch title="自动回答选择题" description="选择标注「推荐」或「Recommended」的选项并提交回答。" checked={auto.answerQuestions} disabled={busy} onChange={answerQuestions => update({ automation: { answerQuestions } })} />
             <div className="setting-row"><div className="setting-copy"><label htmlFor="question-fallback">没有推荐选项时</label><p>仅适用于有明确选项的问题。</p></div><select id="question-fallback" value={auto.fallback} disabled={busy || !auto.answerQuestions}
               onChange={event => update({ automation: { fallback: event.target.value as 'manual' | 'first' } })}><option value="manual">保留手动回答</option><option value="first">选择第一个选项</option></select></div>
+          </section>
+          <section className="settings-section" aria-labelledby="blacklist-title"><h2 id="blacklist-title">审批黑名单</h2>
+            <p className="settings-description">命中任一关键词时交给你处理，选择题也不会自动回答。开启远程接管后，命中的请求转为远程待办。</p>
+            <label className="settings-field-label" htmlFor="automation-blacklist">黑名单关键词</label>
+            <textarea id="automation-blacklist" className="settings-textarea" rows={4} value={blacklist} disabled={busy} spellCheck={false}
+              aria-describedby="blacklist-help" placeholder={'例如：git push\n生产环境\n.env'} onChange={event => setBlacklist(event.target.value)} />
+            <p className="settings-help" id="blacklist-help">每行一个关键词，忽略大小写，按包含匹配请求中的工具名、命令、路径、说明和问题内容。仅匹配 Agent 提供的内容；留空表示不设置黑名单。点击保存后生效。</p>
+            <div className="settings-actions"><button type="button" className="settings-button settings-button-primary" disabled={busy || !blacklistDirty} onClick={saveBlacklist}>保存黑名单</button>
+              <button type="button" className="settings-button" disabled={busy || !blacklistDirty} onClick={() => setBlacklist(savedBlacklist)}>撤销修改</button></div>
           </section>
           <div className="settings-note"><Icon><path d="M12 8h.01M11 12h1v4" /><circle cx="12" cy="12" r="9" /></Icon><p>自由输入、密码问题和无法确定答案的问题仍交给你处理。显示模式不影响自动审批规则。</p></div>
         </>}

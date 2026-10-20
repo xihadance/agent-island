@@ -134,11 +134,13 @@ export function residentScript(query: string): string {
     + `[Console]::Out.WriteLine('${SENTINEL}'); [Console]::Out.Flush() }`
 }
 
-const windowsShell = new ResidentShell()
+let windowsShell = new ResidentShell()
 
 /** Release the resident shell. Later queries start a new one. */
 export function stopProcessQueries(): void {
   windowsShell.dispose()
+  // Observation can be enabled again, and remote recovery also queries processes.
+  windowsShell = new ResidentShell()
 }
 
 /** One query provides both liveness and the ancestry needed for session client labels. */
@@ -148,15 +150,9 @@ export async function listProcessSnapshot(plugins: readonly AgentPlugin[] = BUIL
     return processSnapshotFrom(stdout, process.platform, plugins)
   }
   const script = windowsSnapshotScript(plugins)
-  let stdout: string
-  try {
-    stdout = await windowsShell.ask(script)
-  } catch {
-    // The resident shell died or wedged. Answer this round with a one-shot query;
-    // the next one spawns a fresh resident shell.
-    stdout = (await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-      { encoding: 'utf8', timeout: 5000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 })).stdout
-  }
+  // A failed query is not exit evidence. The watcher retains its previous snapshot;
+  // allocating a fallback console here steals focus from terminal IME composition.
+  const stdout = await windowsShell.ask(script)
   return processSnapshotFrom(stdout, process.platform, plugins)
 }
 

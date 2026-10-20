@@ -2,6 +2,25 @@ import { expect, it, vi } from 'vitest'
 import { ControlHub, formatRequest } from '../hub'
 import { ControlStore } from '../store'
 import { TelegramChannel } from './telegram'
+import { telegramRequest } from './telegram-format'
+
+it('explains background Claude recovery and distinguishes acknowledgement from task completion in every channel', () => {
+  const store = new ControlStore()
+  const session = store.session({ id: 's', nativeId: '01234567-89ab-cdef-0123-456789abcdef', agent: 'claude', adapter: 'hook', connected: false, label: '项目', capabilities: [] })
+  const request = store.create({ sourceKey: 'failed', sessionId: 's', origin: 'observation', kind: 'error', title: '会话中断', detail: '', actions: ['resume', 'ack'], questions: [], expiresAt: Date.now() + 60000 })
+  for (const format of [formatRequest, telegramRequest]) {
+    expect(format(request, session)).toContain('后台')
+    expect(format(request, session)).toContain('原终端不会同步显示')
+    expect(format(request, session)).toContain(session.nativeId)
+  }
+  store.decide(request.id, request.revision, { action: 'resume' }, 'owner')
+  store.mark(request.id, 'resolved')
+  for (const format of [formatRequest, telegramRequest]) {
+    expect(format(store.get(request.id), session)).toContain('已确认接收继续指令')
+    expect(format(store.get(request.id), session)).toContain('不代表任务已完成')
+    expect(format(store.get(request.id), session)).toContain('原终端不会同步显示')
+  }
+})
 
 it('delivers a recovery card, authorizes the real callback and removes the button after native acknowledgement', async () => {
   const store = new ControlStore()

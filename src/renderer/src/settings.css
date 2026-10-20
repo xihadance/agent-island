@@ -81,12 +81,12 @@ body[data-surface='settings'][data-theme='light'] {
 }
 .settings-shell { min-height: 100vh; display: grid; grid-template-columns: 210px minmax(0, 1fr); font-size: 14px; line-height: 1.65; }
 .settings-shell * { box-sizing: border-box; }
-.settings-shell :is(button, input, select) { font: inherit; }
+.settings-shell :is(button, input, select, textarea) { font: inherit; }
 .settings-shell button { cursor: pointer; }
-.settings-shell button:disabled, .settings-shell select:disabled, .settings-shell input:disabled { cursor: default; opacity: .5; }
-.settings-shell :is(button, input, select, a, summary):focus-visible { outline: 2px solid var(--settings-focus); outline-offset: 3px; }
+.settings-shell :is(button, select, input, textarea):disabled { cursor: default; opacity: .5; }
+.settings-shell :is(button, input, select, textarea, a, summary):focus-visible { outline: 2px solid var(--settings-focus); outline-offset: 3px; }
 .settings-shell ::selection { background: var(--settings-selection); color: var(--settings-text); }
-.settings-shell input { caret-color: var(--settings-accent); }
+.settings-shell :is(input, textarea) { caret-color: var(--settings-accent); }
 .settings-shell a { color: var(--settings-focus); text-underline-offset: 4px; }
 body[data-surface='settings'] { scrollbar-color: var(--settings-scrollbar) var(--settings-background); scrollbar-width: thin; }
 .settings-sidebar { display: flex; flex-direction: column; padding: 32px 16px 24px; background: var(--settings-sidebar); border-right: 1px solid var(--settings-line); position: sticky; top: 0; height: 100vh; }
@@ -169,6 +169,8 @@ body[data-surface='settings'] { scrollbar-color: var(--settings-scrollbar) var(-
 .connection-form { display: flex; gap: 10px; }
 .connection-form input { min-width: 0; flex: 1; padding: 9px 12px; border: 1px solid var(--settings-control-border); border-radius: var(--settings-control-radius); background: var(--settings-input); color: var(--settings-text); font-size: 13px; }
 .connection-form input::placeholder { color: var(--settings-placeholder); }
+.settings-textarea { display: block; width: 100%; min-width: 0; resize: vertical; padding: 9px 12px; border: 1px solid var(--settings-control-border); border-radius: var(--settings-control-radius); background: var(--settings-input); color: var(--settings-text); }
+.settings-textarea::placeholder { color: var(--settings-placeholder); }
 .connection-detail { color: var(--settings-warning-text); font-size: 12px; margin: 12px 0 0; overflow-wrap: anywhere; }
 .settings-error { margin-bottom: 18px; border: 1px solid var(--settings-error-border); border-radius: var(--settings-container-radius); background: var(--settings-error-surface); color: var(--settings-error-text); padding: 12px; overflow-wrap: anywhere; }
 .settings-error button { display: block; margin-top: 8px; background: none; border: 0; color: inherit; padding: 0; text-decoration: underline; text-underline-offset: 4px; }

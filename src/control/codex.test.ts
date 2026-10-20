@@ -92,6 +92,8 @@ it.each([
 it.each([
   ['rule disabled', 'item/commandExecution/requestApproval', {}, { approvePermissions: false }],
   ['automation paused', 'item/commandExecution/requestApproval', {}, { enabled: false }],
+  ['blacklisted command', 'item/commandExecution/requestApproval', { command: 'git PUSH origin main' }, { blacklist: ['git push'] }],
+  ['blacklisted path', 'item/fileChange/requestApproval', { grantRoot: '/production' }, { blacklist: ['production'] }],
   ['no recommendation', 'item/tool/requestUserInput', { questions: [{ id: 'q', question: '选择', options: [{ label: 'A' }, { label: 'B' }] }] }, {}],
   ['free text', 'item/tool/requestUserInput', { questions: [{ id: 'q', question: '请输入路径' }] }, {}],
   ['unsupported form', 'mcpServer/elicitation/request', { mode: 'url' }, {}],
@@ -112,6 +114,16 @@ it.each([
   f.send('item/commandExecution/requestApproval', {}, 'barrier')
   await vi.waitFor(() => expect(f.report).toHaveBeenCalledOnce())
   expect(f.received.some(m => m.id === 'request' && !m.method)).toBe(false)
+})
+
+it('lets a user explicitly approve a blacklisted request through the remote channel', async () => {
+  const f = await automationFixture({ blacklist: ['git push'] })
+  f.send('item/commandExecution/requestApproval', { command: 'git push origin main' })
+  await vi.waitFor(() => expect(f.store.snapshot().requests).toHaveLength(1))
+  const request = f.store.snapshot().requests[0]
+  await f.hub.respond(request.id, request.revision, { action: 'approve' }, 'owner')
+  await vi.waitFor(() => expect(f.received.some(m => m.id === 'request' && !m.method)).toBe(true))
+  expect(f.received.filter(m => m.id === 'request' && !m.method)).toEqual([{ id: 'request', result: { decision: 'accept' } }])
 })
 
 it('keeps an ambiguous native send failure from escalating or retrying', async () => {

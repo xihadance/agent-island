@@ -7,6 +7,21 @@ export interface Decision {
 }
 
 const manual = (summary: string): Decision => ({ action: 'manual', summary })
+
+function matchesBlacklist(blacklist: string[], ...content: unknown[]): boolean {
+  const keywords = blacklist.map(entry => entry.trim().toLowerCase()).filter(Boolean)
+  if (!keywords.length) return false
+  const pending = [...content]
+  while (pending.length) {
+    const value = pending.pop()
+    if (typeof value === 'string') {
+      const text = value.toLowerCase()
+      if (keywords.some(keyword => text.includes(keyword))) return true
+    } else if (Array.isArray(value)) pending.push(...value)
+    else if (value && typeof value === 'object') pending.push(...Object.values(value))
+  }
+  return false
+}
 const recommended = (option: Record<string, unknown>): boolean => option.recommended === true ||
   /(?:[（(\[【]\s*(?:recommended|推荐|建议)\s*[）)\]】]|\s[-—]\s*recommended\s*$)/i.test(String(option.label ?? ''))
 
@@ -34,6 +49,7 @@ export function decideClaude(payload: unknown, preferences: Preferences): Decisi
   const auto = preferences.automation
   const input = record(event.tool_input)
   if (!auto.enabled) return manual('自动审批已暂停')
+  if (matchesBlacklist(auto.blacklist, event.tool_name, input, event.cwd, event.reason, event.description)) return manual('命中自动审批黑名单，保留手动处理')
   if (event.tool_name === 'AskUserQuestion' && ['PreToolUse', 'PermissionRequest'].includes(String(event.hook_event_name))) {
     if (!auto.answerQuestions) return manual('自动回答已关闭')
     const answers = chooseAnswers(input.questions, auto.fallback, 'question')
@@ -61,6 +77,10 @@ export function decideCodex(method: string, payload: unknown, preferences: Prefe
   const auto = preferences.automation
   const params = record(payload)
   if (!auto.enabled) return manual('自动审批已暂停')
+  // Match request content, not opaque routing IDs or the list of possible replies.
+  const content = Object.fromEntries(Object.entries(params).filter(([key]) =>
+    !['threadId', 'turnId', 'itemId', 'approvalId', 'environmentId', 'startedAtMs', 'availableDecisions'].includes(key)))
+  if (matchesBlacklist(auto.blacklist, method, content)) return manual('命中自动审批黑名单，保留手动处理')
   if (method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput') {
     if (!auto.answerQuestions) return manual('自动回答已关闭')
     const answers = chooseAnswers(params.questions, auto.fallback, 'id')

@@ -17,6 +17,7 @@ export interface Preferences {
     enabled: boolean
     approvePermissions: boolean
     answerQuestions: boolean
+    blacklist: string[]
     fallback: 'manual' | 'first'
     codexUrl: string
   }
@@ -34,12 +35,27 @@ export const DEFAULT_PREFERENCES: Preferences = {
   mode: 'focus',
   watchSessions: true,
   launchAtLogin: false,
-  automation:{ enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' },
+  automation:{ enabled: false, approvePermissions: true, answerQuestions: true, blacklist: [], fallback: 'manual', codexUrl: '' },
   update: { enabled: true, skippedVersion: '', lastCheckedAt: 0 }
 }
 
 export function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function isBlacklist(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(entry => typeof entry === 'string')
+}
+
+export function normalizeBlacklist(value: unknown): string[] {
+  if (!isBlacklist(value)) return []
+  const seen = new Set<string>()
+  return value.flatMap(entry => entry.split(/\r?\n/)).map(entry => entry.trim()).filter(entry => {
+    const key = entry.toLowerCase()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 export function isLocalCodexUrl(value: string): boolean {
@@ -65,9 +81,11 @@ export function normalizePreferences(value: unknown): Preferences {
     watchSessions: typeof source.watchSessions === 'boolean' ? source.watchSessions : true,
     launchAtLogin: source.launchAtLogin === true,
     automation: {
-      enabled: automation.enabled === true,
+      // A damaged exclusion list must not silently turn into unrestricted automation.
+      enabled: automation.enabled === true && (!('blacklist' in automation) || isBlacklist(automation.blacklist)),
       approvePermissions: typeof automation.approvePermissions === 'boolean' ? automation.approvePermissions : true,
       answerQuestions: typeof automation.answerQuestions === 'boolean' ? automation.answerQuestions : true,
+      blacklist: normalizeBlacklist(automation.blacklist),
       fallback: automation.fallback === 'first' ? 'first' : 'manual',
       codexUrl: typeof automation.codexUrl === 'string' && isLocalCodexUrl(automation.codexUrl) ? automation.codexUrl : ''
     },
@@ -98,11 +116,12 @@ export function patchPreferences(current: Preferences, value: unknown): Preferen
   if ('launchAtLogin' in patch && typeof patch.launchAtLogin !== 'boolean') throw new Error('无效的开机启动设置')
   const auto = record(patch.automation)
   if ('automation' in patch && (patch.automation === null || typeof patch.automation !== 'object' || Array.isArray(patch.automation) ||
-      Object.keys(auto).some(key => !['enabled', 'approvePermissions', 'answerQuestions', 'fallback', 'codexUrl'].includes(key)))) throw new Error('无效的自动审批配置')
+      Object.keys(auto).some(key => !['enabled', 'approvePermissions', 'answerQuestions', 'blacklist', 'fallback', 'codexUrl'].includes(key)))) throw new Error('无效的自动审批配置')
   for (const key of ['enabled', 'approvePermissions', 'answerQuestions']) {
     if (key in auto && typeof auto[key] !== 'boolean') throw new Error('自动审批开关必须为布尔值')
   }
   if ('fallback' in auto && auto.fallback !== 'manual' && auto.fallback !== 'first') throw new Error('无效的问题回答规则')
+  if ('blacklist' in auto && !isBlacklist(auto.blacklist)) throw new Error('黑名单必须是关键词列表，每项为文本')
   if ('codexUrl' in auto && (typeof auto.codexUrl !== 'string' || !isLocalCodexUrl(auto.codexUrl))) throw new Error('请填写本机 WebSocket 地址，例如 ws://127.0.0.1:4500')
   // lastCheckedAt is main-process bookkeeping. A renderer must not be able to postpone or force checks.
   const update = record(patch.update)

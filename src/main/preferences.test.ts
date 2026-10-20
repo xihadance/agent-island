@@ -30,7 +30,7 @@ it('migrates old files and preserves automation when the tray switches modes', (
     const file = path.join(directory, 'preferences.json')
     writeFileSync(file, '{"mode":"managed"}')
     expect(readPreferences(file)).toMatchObject({ theme: 'system', mode: 'managed', automation: { enabled: false, fallback: 'manual' } })
-    const preferences = patchPreferences(readPreferences(file), { theme: 'light', automation: { enabled: true, fallback: 'first', codexUrl: 'ws://127.0.0.1:4500' } })
+    const preferences = patchPreferences(readPreferences(file), { theme: 'light', automation: { enabled: true, fallback: 'first', blacklist: ['git push', '.env'], codexUrl: 'ws://127.0.0.1:4500' } })
     savePreferences(file, preferences)
     saveIslandMode(file, 'focus')
     expect(readPreferences(file)).toEqual({ ...preferences, mode: 'focus' })
@@ -53,6 +53,19 @@ it('keeps launch at login off unless a stored boolean asks for it', () => {
   for (const patch of [{ launchAtLogin: 'yes' }, { launchAtLogin: 1 }, { launchAtLogin: null }]) {
     expect(() => patchPreferences(preferences, patch as never)).toThrow()
   }
+})
+
+it('normalizes blacklist keywords and preserves them across unrelated settings changes', () => {
+  expect(normalizePreferences({ automation: { enabled: true } }).automation).toMatchObject({ enabled: true, blacklist: [] })
+  const preferences = patchPreferences(normalizePreferences(undefined), { automation: { blacklist: [' git push ', '', 'GIT PUSH', '.env\r\n生产环境', '  '] } })
+  expect(preferences.automation.blacklist).toEqual(['git push', '.env', '生产环境'])
+  expect(patchPreferences(preferences, { automation: { enabled: true } }).automation.blacklist).toEqual(preferences.automation.blacklist)
+  expect(patchPreferences(preferences, { automation: { blacklist: [] } }).automation.blacklist).toEqual([])
+})
+
+it.each([null, 'git push', {}, [123], ['git push', false]])('rejects malformed blacklist patches and pauses automation for damaged stored lists: %j', blacklist => {
+  expect(() => patchPreferences(normalizePreferences(undefined), { automation: { blacklist } })).toThrow('黑名单')
+  expect(normalizePreferences({ automation: { enabled: true, blacklist } }).automation.enabled).toBe(false)
 })
 
 it('discards the obsolete hosted profile without changing the remaining service settings', () => {

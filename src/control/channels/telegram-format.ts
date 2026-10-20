@@ -1,4 +1,4 @@
-import { redact } from '../hub'
+import { recoveryHint, redact } from '../hub'
 import { STATUS_LABEL, type ControlSession, type InterventionRequest } from '../types'
 
 type Tag = 'b' | 'code' | 'pre' | 'blockquote' | 'blockquote expandable'
@@ -81,7 +81,7 @@ export function telegramRequest(request: InterventionRequest, session?: ControlS
     parts.push(part(clip(redact(questions), 900), 'blockquote expandable'), part('\n\n'))
   }
   if (recovery) {
-    parts.push(part(request.status === 'pending' ? '选择“继续会话”将恢复原会话并继续未完成的任务；“知道了”只关闭提醒。' : request.decision?.action === 'resume' ? '已请求恢复原会话；结果待确认时请检查原会话，系统不会自动重试。' : '已关闭提醒。', 'blockquote'), part('\n\n'))
+    parts.push(part(recoveryHint(request, session), 'blockquote'), part('\n\n'))
     if (request.status === 'pending') parts.push(part(`/resume ${request.id}`, 'code'), part('\n\n'))
   } else if (observation) {
     parts.push(part('此事件仅用于提醒，无法在这里批准或回答。请回到原会话处理；“知道了”只关闭提醒。', 'blockquote'), part('\n\n'))

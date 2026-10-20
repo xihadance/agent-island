@@ -38,6 +38,56 @@ describe('automatic answers', () => {
 })
 
 describe('native automation responses', () => {
+  it.each([
+    ['tool name', { tool_name: 'mcp__deploy__Publish' }, 'DEPLOY'],
+    ['command', { tool_input: { command: 'git PUSH origin main' } }, 'git push'],
+    ['Windows path', { tool_input: { file_path: 'C:\\Project\\.env.local' } }, 'c:\\project\\.env'],
+    ['working directory', { cwd: '/srv/Production' }, 'production'],
+    ['description', { tool_input: { description: '更新生产环境' } }, '生产环境'],
+    ['nested arguments', { tool_input: { operations: [{ target: '/app/.env' }] } }, '.env']
+  ])('keeps Claude %s matches manual without returning an allow or deny', (_label, payload, keyword) => {
+    const preferences = patchPreferences(enabled, { automation: { blacklist: ['unrelated', keyword] } })
+    const decision = decideClaude({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', ...payload }, preferences)
+    expect(decision).toEqual({ action: 'manual', summary: '命中自动审批黑名单，保留手动处理' })
+  })
+
+  it.each([
+    ['item/commandExecution/requestApproval', { command: 'git PUSH origin main' }, 'git push'],
+    ['item/commandExecution/requestApproval', { command: ['git', 'status'], cwd: 'C:\\Production' }, 'c:\\production'],
+    ['item/commandExecution/requestApproval', { commandActions: [{ type: 'read', path: '/app/.env' }] }, '.env'],
+    ['item/commandExecution/requestApproval', { networkApprovalContext: { host: 'API.example.com' } }, 'api.example'],
+    ['item/commandExecution/requestApproval', { additionalPermissions: { fileSystem: { write: ['/app/secret'] } } }, 'secret'],
+    ['item/fileChange/requestApproval', { grantRoot: '/app/Production' }, 'production'],
+    ['item/fileChange/requestApproval', { reason: '更新生产环境' }, '生产环境'],
+    ['item/permissions/requestApproval', { permissions: { fileSystem: { write: ['/app/.env'] } } }, '.env'],
+    ['item/commandExecution/requestApproval', {}, 'commandexecution']
+  ])('keeps matching Codex %s content manual', (method, payload, keyword) => {
+    const preferences = patchPreferences(enabled, { automation: { blacklist: [keyword] } })
+    expect(decideCodex(method, payload, preferences)).toEqual({ action: 'manual', summary: '命中自动审批黑名单，保留手动处理' })
+  })
+
+  it('applies the blacklist before recommended answers and first-option fallback', () => {
+    const preferences = patchPreferences(enabled, { automation: { blacklist: ['框架'], fallback: 'first' } })
+    for (const hook_event_name of ['PreToolUse', 'PermissionRequest']) {
+      expect(decideClaude({ ...claude, hook_event_name }, preferences).response).toBeUndefined()
+    }
+    for (const method of ['item/tool/requestUserInput', 'tool/requestUserInput']) {
+      expect(decideCodex(method, { questions: [question] }, preferences).response).toBeUndefined()
+      expect(decideCodex(method, { questions: [{ ...question, options: ['A', 'B'] }] }, preferences).response).toBeUndefined()
+    }
+  })
+
+  it('ignores empty entries and treats keywords literally without matching routing metadata', () => {
+    const preferences = patchPreferences(enabled, { automation: { blacklist: [' ', 'secret', '.*', 'a+b', 'decline'] } })
+    expect(decideClaude({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', session_id: 'secret', transcript_path: '/secret/log',
+      tool_input: { command: 'git status' } }, preferences).action).toBe('approved')
+    expect(decideCodex('item/commandExecution/requestApproval', { threadId: 'secret', turnId: 'secret', itemId: 'secret',
+      approvalId: 'secret', environmentId: 'secret', availableDecisions: ['accept', 'decline'], command: 'git status' }, preferences).action).toBe('approved')
+    expect(decideCodex('item/commandExecution/requestApproval', { command: 'echo a+b' }, preferences).response).toBeUndefined()
+    const cleared = patchPreferences(preferences, { automation: { blacklist: [] } })
+    expect(decideCodex('item/commandExecution/requestApproval', { command: 'echo secret' }, cleared).action).toBe('approved')
+  })
+
   it.each(['item/tool/requestUserInput', 'tool/requestUserInput'])('answers %s only when question automation is enabled', method => {
     expect(decideCodex(method, { questions: [question] }, enabled).response)
       .toEqual({ answers: { framework: { answers: ['React (Recommended)'] } } })
