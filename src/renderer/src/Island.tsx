@@ -10,6 +10,7 @@ import { attentionKind, type IslandMode } from '../../shared/island-behavior'
 import { QuestionAnswers } from './QuestionAnswers'
 
 interface IslandProps {
+  embedded?: boolean
   drag: ReturnType<typeof useIslandDrag>
   behaviorMode: IslandMode
   passive: boolean
@@ -28,7 +29,7 @@ interface IslandProps {
 
 const SPRING: Transition = { type: 'spring', stiffness: 520, damping: 38, mass: 0.72 }
 
-export function Island({ drag, behaviorMode, passive, attention, onAcknowledge, hovered, onHover, activities, expanded, selectedId, resting, onToggle, onSelect, onDismiss }: IslandProps) {
+export function Island({ embedded, drag, behaviorMode, passive, attention, onAcknowledge, hovered, onHover, activities, expanded, selectedId, resting, onToggle, onSelect, onDismiss }: IslandProps) {
   const reduced = useReducedMotion()
   const [focused, setFocused] = useState(false)
   const collapsed = drag.dock.collapsed && !attention
@@ -48,7 +49,7 @@ export function Island({ drag, behaviorMode, passive, attention, onAcknowledge, 
     <motion.div
       tabIndex={passive || (stacked && !collapsed) ? -1 : 0}
       inert={passive}
-      role={collapsed ? 'button' : undefined}
+      role={embedded ? 'group' : collapsed ? 'button' : undefined}
       data-testid="island"
       data-mode={mode}
       data-behavior={behaviorMode}
@@ -70,7 +71,7 @@ export function Island({ drag, behaviorMode, passive, attention, onAcknowledge, 
         if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false)
       }}
       className={`island ${activity ? `island-${activity.state}` : 'island-idle'}`}
-      aria-expanded={collapsed ? false : stacked ? selectedId !== null : expanded}
+      aria-expanded={embedded ? undefined : collapsed ? false : stacked ? selectedId !== null : expanded}
       title={collapsed ? '点击展开灵动岛，拖离边缘取消收纳' : undefined}
       aria-label={
         collapsed ? '展开灵动岛' : stacked

@@ -5,6 +5,7 @@ import { ACTIVE_STATUSES, type AgentKind, type InterventionRequest, type Questio
 import { formAnswers, formQuestions } from './forms'
 
 const digest = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 24)
+export const hookSessionId = (agent: string, nativeId: string): string => `hook-${agent}-${digest(nativeId)}`
 export interface HookReply { requestId?: string; deadline?: number; output?: Record<string, unknown>; guidanceIds?: string[]; handled?: string }
 /**
  * Local automation's answer for one hook event, consulted before anything is sent
@@ -21,7 +22,7 @@ export class HookController {
     const event = record(input.event)
     const nativeId = string(event.session_id ?? event.conversation_id, '原生会话 ID', 250)
     const eventName = string(event.hook_event_name, 'hook_event_name', 80)
-    const id = `hook-${agent}-${digest(nativeId)}`
+    const id = hookSessionId(agent, nativeId)
     const name = typeof event.tool_name === 'string' ? event.tool_name : eventName === 'beforeShellExecution' ? 'Shell' : ''
     const args = typeof event.tool_input === 'string' ? record(JSON.parse(event.tool_input)) : event.tool_input && typeof event.tool_input === 'object' ? record(event.tool_input) : event
     const originalArgs = { ...args }
@@ -30,10 +31,21 @@ export class HookController {
     const store = this.hub.store
     store.expire()
     const sessionEnd = ['SessionEnd', 'sessionEnd'].includes(eventName)
+    const previous = store.sessions().find(session => session.id === id)
     store.session({ id, agent, nativeId, label: typeof event.cwd === 'string' ? event.cwd.split(/[/\\]/).filter(Boolean).at(-1)! : nativeId.slice(0, 16), adapter: 'hook',
-      capabilities: agent === 'claude' ? ['approve', 'answer', 'message'] : ['approve', 'message'], connected: !sessionEnd,
+      capabilities: agent === 'claude' ? ['approve', 'answer', 'message'] : ['approve', 'message'],
+      connected: !sessionEnd && (!previous?.terminal || previous.connected && !!this.hub.terminal(id)),
+      ...(previous?.terminal ? { terminal: true } : {}),
       cwd: typeof event.cwd === 'string' ? event.cwd : store.snapshot().sessions.find(s => s.id === id)?.cwd })
-    if (sessionEnd) { store.settleSession(id); return { output: {} } }
+    if (sessionEnd) { this.hub.terminal(id)?.close(); store.settleSession(id); return { output: {} } }
+    if (agent === 'claude' && previous?.terminal && eventName === 'UserPromptSubmit') this.hub.store.change(state => {
+      const session = state.sessions.find(session => session.id === id)!
+      session.turnId = invocation
+    })
+    if (agent === 'claude' && ['Stop', 'StopFailure'].includes(eventName)) this.hub.store.change(state => {
+      const session = state.sessions.find(session => session.id === id)!
+      session.turnId = undefined
+    })
     if (['SessionStart', 'sessionStart', 'UserPromptSubmit', 'BeforeAgent', 'beforeSubmitPrompt'].includes(eventName)) store.settleSession(id, 'cancelled', true)
     if (['PostToolUse', 'PostToolUseFailure', 'AfterTool', 'postToolUse', 'postToolUseFailure', 'afterShellExecution', 'afterMCPExecution'].includes(eventName)) {
       const matching = store.snapshot().requests.filter(r => r.sessionId === id && r.toolKey === toolKey && ACTIVE_STATUSES.includes(r.status))
@@ -88,7 +100,8 @@ export class HookController {
     if (failed) store.create({ sourceKey: `hook:${agent}:${invocation}:notice`, sessionId: id, origin: 'observation', kind: 'error', title: eventName === 'Notification' ? 'Agent 通知' : '执行异常',
       detail: JSON.stringify(event).slice(0, 16000), questions: [], actions: eventName === 'StopFailure' ? this.hub.recoveryActions(id) : ['ack'], expiresAt: store.now() + 86400000 })
     const contextEvents = agent === 'claude' ? ['UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'Stop'] : agent === 'gemini' ? ['BeforeAgent', 'AfterTool'] : ['postToolUse', 'postToolUseFailure', 'stop']
-    if (!contextEvents.includes(eventName)) return { output: {} }
+    // Channel messages reach the original TUI directly; never inject them again through a hook.
+    if (!contextEvents.includes(eventName) || previous?.terminal) return { output: {} }
     let length = 0
     const messages = store.snapshot().guidance.filter(m => {
       if (m.sessionId !== id || m.status !== 'queued' || length + m.text.length > 24000) return false

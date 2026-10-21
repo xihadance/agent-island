@@ -56,7 +56,23 @@ it('requires native acknowledgement and reports a later process failure as anoth
   child.stdout.write(JSON.stringify({ type: 'user', session_id: session.nativeId, message: { content: '继续' } }) + '\n')
   await result
   child.emit('close', 1)
-  expect(failed).toHaveBeenCalledWith(session, expect.stringContaining('456:'))
+  expect(failed).toHaveBeenCalledWith(session, expect.stringContaining('456:'), expect.stringContaining('退出码：1'))
+})
+
+it('retains native failure reasons from a final JSON row without a newline and a bounded stderr tail', async () => {
+  const { child, runner, failed } = processFixture()
+  const result = runner.start(session, '继续', { executable: 'claude.exe', args: [] })
+  child.stdout.write(JSON.stringify({ type: 'user', session_id: session.nativeId, message: { content: '继续' } }) + '\n')
+  await result
+  child.stderr.write('x'.repeat(20000) + '\n代理连接失败 🧪')
+  child.stdout.write(JSON.stringify({ type: 'result', session_id: session.nativeId, is_error: true, errors: ['认证已失效', '重试失败'] }))
+  child.emit('close', 0)
+  expect(failed).toHaveBeenCalledOnce()
+  const detail = failed.mock.calls[0][2] as string
+  expect(detail).toContain('认证已失效')
+  expect(detail).toContain('重试失败')
+  expect(detail).toContain('代理连接失败 🧪')
+  expect(detail.length).toBeLessThan(16000)
 })
 
 it('rejects a child that exits before acknowledgement and closes only its own recovery processes', async () => {

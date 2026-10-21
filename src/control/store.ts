@@ -151,9 +151,9 @@ export class ControlStore {
       for (const old of oldMessages) { const m = state.guidance.find(item => item.id === old.id)!; m.status = m.status === 'submitted' ? 'uncertain' : 'expired' }
     })
   }
-  settleSession(id: string, status: 'cancelled' | 'uncertain' = 'cancelled', preserveGuidance = false): void {
+  settleSession(id: string, status: 'cancelled' | 'uncertain' = 'cancelled', preserveGuidance = false, preserveRequestId?: string): void {
     this.change(state => {
-      for (const r of state.requests) if (r.sessionId === id && ACTIVE_STATUSES.includes(r.status) && r.decision?.action !== 'resume') { r.status = status; r.revision++ }
+      for (const r of state.requests) if (r.sessionId === id && r.id !== preserveRequestId && ACTIVE_STATUSES.includes(r.status) && r.decision?.action !== 'resume') { r.status = status; r.revision++ }
       if (!preserveGuidance) for (const m of state.guidance) if (m.sessionId === id && ['queued', 'submitted'].includes(m.status)) m.status = status
     })
   }

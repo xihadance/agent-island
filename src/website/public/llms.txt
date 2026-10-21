@@ -1,0 +1,14 @@
+# Cute Island
+
+Cute Island 是跨平台桌面灵动岛，显示本机 AI Agent 状态，并通过已接入的原生通道处理审批和问题。支持 Windows、macOS、Linux，采用 MIT 开源许可。
+
+## 项目入口
+
+- [GitHub 源码](https://github.com/xihadance/agent-island)：项目源码与使用说明。
+- [使用文档](https://github.com/xihadance/agent-island/blob/main/README.md)：安装、支持的 Agent 和功能边界。
+- [远程接管](https://github.com/xihadance/agent-island/blob/main/REMOTE_CONTROL.md)：消息渠道和原生接入配置。
+- [下载](https://github.com/xihadance/agent-island/releases/latest)：各平台安装包。
+
+## 边界
+
+状态观察只读本机日志。审批和回答必须通过 Agent 原生交互通道回传。自动审批默认关闭；远程接管需要配置渠道。页面演示使用示例数据，不连接真实 Agent。

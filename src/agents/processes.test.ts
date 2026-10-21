@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ResidentShell, clientForProcess, processSnapshotFrom, residentScript, type ProcessInfo } from './processes'
 
 const proc = (pid: number, parentPid: number, name: string, commandLine = ''): ProcessInfo => ({ pid, parentPid, name, commandLine })
@@ -31,9 +31,30 @@ const END = '@@CUTE_ISLAND_PROCESSES_END@@'
 const settled = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
 describe('resident process query shell', () => {
+  it('backs off repeated shell crashes and ignores late output from the replaced process', async () => {
+    const { spawns, launch } = fakeShell()
+    const now = vi.fn(() => 1000)
+    const shell = new ResidentShell(launch, now)
+    const first = shell.ask('Q')
+    const rejected = expect(first).rejects.toThrow('已退出')
+    await settled()
+    spawns[0].child.emit('exit', 1)
+    await rejected
+    await expect(shell.ask('Q')).rejects.toThrow('稍后重试')
+    expect(spawns).toHaveLength(1)
+    now.mockReturnValue(4000)
+    const next = shell.ask('Q')
+    await settled()
+    expect(spawns).toHaveLength(2)
+    spawns[0].say('old' + END + '\n')
+    spawns[0].child.emit('exit', 1)
+    spawns[1].say('new' + END + '\n')
+    expect(await next).toBe('new')
+    shell.dispose()
+  })
   it('reuses one shell across queries and reassembles answers split across chunks', async () => {
     const { spawns, launch } = fakeShell()
-    const shell = new ResidentShell(launch)
+    const shell = new ResidentShell(launch, () => 1000)
     const first = shell.ask('Q')
     await settled()
     expect(spawns).toHaveLength(1)
@@ -54,11 +75,13 @@ describe('resident process query shell', () => {
 
   it('starts a new shell after the old one dies, and rejects what was in flight', async () => {
     const { spawns, launch } = fakeShell()
-    const shell = new ResidentShell(launch)
+    let now = 1000
+    const shell = new ResidentShell(launch, () => now)
     const pending = shell.ask('Q')
     await settled()
     spawns[0].child.emit('exit', 1)
     await expect(pending).rejects.toThrow('已退出')
+    now += 3000
     const next = shell.ask('Q')
     await settled()
     expect(spawns).toHaveLength(2)

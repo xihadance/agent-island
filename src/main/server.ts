@@ -7,6 +7,8 @@ import { check, record, string } from '../control/store'
 import type { Decision } from '../control/types'
 import { hookPassthrough } from '../control/hooks'
 import type { CodexLaunchRoute } from '../shared/codex-launch'
+import { ClaudeTerminal } from '../control/claude-terminal'
+import path from 'node:path'
 
 export interface StatusServer {
   port: number
@@ -54,6 +56,20 @@ export function startStatusServer(
       socket.destroy()
       return
     }
+    if (pathname === '/v1/control/terminal') {
+      const control = typeof options.control === 'function' ? options.control() : options.control
+      const url = new URL(req.url!, 'http://127.0.0.1')
+      const nativeId = url.searchParams.get('session') || ''
+      const cwd = url.searchParams.get('cwd') || ''
+      if (req.headers.origin || !control?.status().enabled || !control.status().running || !authorized(req, control.token)
+        || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(nativeId) || !path.isAbsolute(cwd)) {
+        socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); socket.destroy(); return
+      }
+      wss.handleUpgrade(req, socket, head, ws => {
+        try { new ClaudeTerminal(control.hub, ws, nativeId, cwd) } catch { ws.close() }
+      })
+      return
+    }
     if (pathname !== '/v1/events') {
       socket.destroy()
       return
@@ -89,7 +105,7 @@ export function startStatusServer(
       let closing: Promise<void> | undefined
       resolve({
         port: address.port,
-        close: () => closing ??= closeServer(httpServer, wss, sockets, unsubscribe)
+        close: () => closing ??= closeServer(httpServer, wss, unsubscribe)
       })
     })
   })
@@ -232,11 +248,10 @@ function broadcast(sockets: Set<WebSocket>, activities: Activity[]): void {
 function closeServer(
   httpServer: HttpServer,
   wss: WebSocketServer,
-  sockets: Set<WebSocket>,
   unsubscribe: () => void
 ): Promise<void> {
   unsubscribe()
-  for (const socket of sockets) socket.terminate()
+  for (const socket of wss.clients) socket.terminate()
   wss.close()
   return new Promise((resolve, reject) => {
     httpServer.close((error) => {

@@ -15,6 +15,7 @@ export function recoveryHint(r: InterventionRequest, session?: ControlSession): 
       : r.status === 'submitted' ? '已提交恢复请求，等待原生确认。'
         : '恢复结果待确认，请检查会话日志；系统不会自动重试。'
   if (session?.agent !== 'claude') return status
+  if (session.terminal) return `${status}\n继续指令通过原生 Channels 发送到当前终端；收到 Agent 确认后更新状态。`
   return `${status}\nClaude Code 在后台延续同一会话，原终端不会同步显示。请在灵动岛查看进度；后台执行结束后，可在本机使用 claude --resume ${session.nativeId} 查看会话。`
 }
 
@@ -43,6 +44,7 @@ export function formatRequest(r: InterventionRequest, session?: ControlSession):
 
 export class ControlHub {
   private adapters = new Map<string, AgentControlAdapter>()
+  private terminals = new Map<string, AgentControlAdapter>()
   private channels: ChannelAdapter[] = []
   private startingChannels = new Set<ChannelAdapter>()
   private timer?: ReturnType<typeof setTimeout>
@@ -54,6 +56,16 @@ export class ControlHub {
   private source: (id: string) => SessionSource | undefined = () => undefined
   constructor(readonly store: ControlStore, private readonly log: (message: string) => void = console.error) {}
   attach(sessionId: string, adapter: AgentControlAdapter): void { this.adapters.set(sessionId, adapter) }
+  attachTerminal(sessionId: string, adapter: AgentControlAdapter): void {
+    check(!this.closed && !this.terminals.has(sessionId), '此会话已有终端接入，请勿重复连接', 409)
+    this.terminals.set(sessionId, adapter)
+  }
+  detachTerminal(sessionId: string, adapter: AgentControlAdapter): void {
+    if (this.terminals.get(sessionId) !== adapter) return
+    this.terminals.delete(sessionId)
+    this.store.change(state => { const session = state.sessions.find(session => session.id === sessionId); if (session) session.connected = false })
+  }
+  terminal(sessionId: string): AgentControlAdapter | undefined { return this.terminals.get(sessionId) }
   setResumer(resumer: SessionResumer, source: (id: string) => SessionSource | undefined = () => undefined): void { this.resumer = resumer; this.source = source }
   recoveryActions(sessionId: string, sessions = this.store.sessions()): InterventionRequest['actions'] {
     const session = sessions.find(s => s.id === sessionId)
@@ -87,6 +99,8 @@ export class ControlHub {
     for (const channel of this.startingChannels) channel.close()
     for (const channel of this.channels) channel.close()
     for (const adapter of new Set(this.adapters.values())) adapter.close()
+    for (const terminal of this.terminals.values()) terminal.close()
+    this.terminals.clear()
   }
   async respond(id: string, revision: number, decision: Decision, by: string): Promise<InterventionRequest> {
     check(!this.closed, '远程接管已停用', 409)
@@ -146,6 +160,8 @@ export class ControlHub {
     check(!this.closed, '远程接管已停用', 409)
     const session = this.store.sessions().find(s => s.id === sessionId)
     check(session?.connected && session.capabilities.includes('message'), '该会话尚未接管或不支持追加指令', 409)
+    const terminal = this.terminals.get(sessionId)
+    check(!session.terminal || terminal, '原生终端接入已断开，请重新连接', 409)
     string(text, '消息', 16000)
     check(this.store.snapshot().guidance.filter(m => m.status === 'queued').length < 100, '指导消息队列已满', 429)
     const message = this.store.change(state => {
@@ -154,8 +170,15 @@ export class ControlHub {
       state.guidance = [...state.guidance.filter(x => ['queued', 'submitted', 'uncertain'].includes(x.status)), ...state.guidance.filter(x => ['resolved', 'cancelled'].includes(x.status)).slice(-500)]
       return m
     })
-    if (session.adapter === 'codex') {
+    if (session.adapter === 'codex' || terminal) {
       this.store.change(state => { state.guidance.find(m => m.id === message.id)!.status = 'submitted' })
+      if (terminal) {
+        // Agent confirmation may require a remote approval. Keep the channel free to answer it.
+        void Promise.resolve().then(() => terminal.sendMessage(message)).catch(() => {
+          if (!this.closed) this.store.change(state => { state.guidance.find(m => m.id === message.id)!.status = 'uncertain' })
+        }).catch(() => this.log('原生终端接收结果记录失败，请检查原会话'))
+        return this.store.snapshot().guidance.find(m => m.id === message.id)!
+      }
       try { await this.adapters.get(sessionId)!.sendMessage(message) }
       catch { if (!this.closed) this.store.change(state => { state.guidance.find(m => m.id === message.id)!.status = 'uncertain' }); throw new Error('追加消息结果待确认') }
     }
@@ -201,7 +224,7 @@ export class ControlHub {
       const match = /^\/(\w+)(?:@\w+)?(?:\s+(\S+))?(?:\s+([\s\S]*))?$/.exec(text)
       if (match) {
         const [, command, id, tail] = match
-        if (command === 'sessions') return redact(this.store.snapshot().sessions.map(s => `${s.id}\n${s.agent} · ${s.label} · ${s.connected && s.adapter !== 'observation' ? '已接管' : '观察/离线'}${s.adapter === 'hook' ? '（指令在 Hook 处理点接收）' : ''}\n原生会话：${s.nativeId}`).join('\n\n')) || '暂无会话'
+        if (command === 'sessions') return redact(this.store.snapshot().sessions.map(s => `${s.id}\n${s.agent} · ${s.label} · ${s.connected && s.adapter !== 'observation' ? '已接管' : '观察/离线'}${s.terminal ? '（原生终端接入）' : s.adapter === 'hook' ? '（指令在 Hook 处理点接收）' : ''}\n原生会话：${s.nativeId}`).join('\n\n')) || '暂无会话'
         if (command === 'pending') {
           const state = this.store.snapshot()
           return [...state.requests.filter(r => ACTIVE_STATUSES.includes(r.status) || r.status === 'uncertain').map(r => formatRequest(r)),

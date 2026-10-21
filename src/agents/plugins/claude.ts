@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { cleanText, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, safeId, textOf, timestampEvents } from '../events'
+import { cleanText, errorText, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, safeId, textOf, timestampEvents } from '../events'
 import type { AgentEvent, AgentPlugin, ChildLink, ParsedTranscript, SessionRegistration } from '../types'
 
 /**
@@ -76,9 +76,10 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
         events.push(...timestampEvents([{ kind: 'done', title: '会话已续接' }], row))
         continue
       }
-      if (row.type === 'assistant' && row.isApiErrorMessage === true) {
+      if (row.type === 'assistant' && (row.isApiErrorMessage === true || !!errorText(row.error))) {
         // Synthetic API failures may also say stop_sequence; that is not success.
-        events.push(...timestampEvents([{ kind: 'error', title: cleanText(content) || textOf(row.error) || 'API 请求失败' }], row))
+        events.push(...timestampEvents([{ kind: 'error', title: cleanText(content) || errorText(row.error) || 'API 请求失败',
+          detail: [content, errorText(row.error)].filter(Boolean).join('\n') || undefined }], row))
         continue
       }
       if (row.type === 'user' && /^\[Request interrupted by user(?: for tool use)?\]$/.test(content.trim())) {

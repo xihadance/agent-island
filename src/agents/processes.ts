@@ -41,9 +41,11 @@ export class ResidentShell {
   private pending?: { resolve: (text: string) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
   private queue: Promise<unknown> = Promise.resolve()
   private disposed = false
+  private failures = 0
+  private retryAt = 0
 
   constructor(private readonly launch: (command: string, args: string[]) => ChildProcess =
-  (command, args) => spawn(command, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })) {}
+  (command, args) => spawn(command, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }), private readonly now = Date.now) {}
 
   /** Queries are serialized: one shell, one stdout stream, one answer at a time. */
   ask(script: string): Promise<string> {
@@ -60,17 +62,18 @@ export class ResidentShell {
 
   private exchange(script: string): Promise<string> {
     if (this.disposed) return Promise.reject(new Error('进程查询已停止'))
+    if (!this.child && this.now() < this.retryAt) return Promise.reject(new Error('进程查询暂不可用，请稍后重试'))
     const child = this.ensure(script)
     return new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         // A wedged shell must not stall every later scan; drop it and start over.
-        this.settle(new Error('进程查询超时'))
+        this.failed(new Error('进程查询超时'))
         this.kill()
       }, QUERY_TIMEOUT_MS)
       timer.unref?.()
       this.pending = { resolve, reject, timer }
       try { child.stdin!.write('\n') } catch (error) {
-        this.settle(error instanceof Error ? error : new Error('无法向进程查询发送指令'))
+        this.failed(error instanceof Error ? error : new Error('无法向进程查询发送指令'))
         this.kill()
       }
     })
@@ -79,15 +82,18 @@ export class ResidentShell {
   private ensure(script: string): ChildProcess {
     if (this.child && !this.child.killed && this.child.exitCode === null) return this.child
     this.buffer = ''
-    const child = this.launch('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', residentScript(script)])
+    let child: ChildProcess
+    try { child = this.launch('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', residentScript(script)]) }
+    catch { this.failed(new Error('进程查询进程启动失败')); throw new Error('进程查询进程启动失败') }
     this.child = child
     child.stderr?.resume()
     child.stdout?.setEncoding('utf8')
-    child.stdout?.on('data', (chunk: string) => this.receive(chunk))
-    child.once('error', () => { this.settle(new Error('进程查询进程启动失败')); if (this.child === child) this.child = undefined })
+    child.stdout?.on('data', (chunk: string) => { if (this.child === child) this.receive(chunk) })
+    child.once('error', () => { if (this.child !== child) return; this.failed(new Error('进程查询进程启动失败')); this.kill() })
     child.once('exit', () => {
-      this.settle(new Error('进程查询进程已退出'))
-      if (this.child === child) this.child = undefined
+      if (this.child !== child) return
+      this.failed(new Error('进程查询进程已退出'))
+      this.child = undefined
     })
     return child
   }
@@ -97,7 +103,7 @@ export class ResidentShell {
     const at = this.buffer.indexOf(SENTINEL)
     if (at < 0) {
       // Never let a silent or runaway shell grow without bound.
-      if (this.buffer.length > 8 * 1024 * 1024) { this.settle(new Error('进程查询返回内容过大')); this.kill() }
+      if (this.buffer.length > 8 * 1024 * 1024) { this.failed(new Error('进程查询返回内容过大')); this.kill() }
       return
     }
     const payload = this.buffer.slice(0, at)
@@ -105,8 +111,15 @@ export class ResidentShell {
     const pending = this.pending
     this.pending = undefined
     if (!pending) return
+    this.failures = 0; this.retryAt = 0
     clearTimeout(pending.timer)
     pending.resolve(payload)
+  }
+
+  private failed(error: Error): void {
+    // A broken PowerShell must not allocate a new console host on every watcher tick.
+    this.retryAt = this.now() + Math.min(30000, 3000 * 2 ** Math.min(this.failures++, 4))
+    this.settle(error)
   }
 
   private settle(error: Error): void {

@@ -50,6 +50,8 @@ export interface ControlSession {
   turnId?: string
   cwd?: string
   connectionId?: string
+  /** The session opted into the native Claude channel; never recover it with a second runner. */
+  terminal?: boolean
 }
 export interface SessionResumer {
   available(session: ControlSession): boolean

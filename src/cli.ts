@@ -42,6 +42,10 @@ export async function runCli(argv: readonly string[], io: CliIo = {}): Promise<n
     return command ? 0 : 0
   }
   try {
+    if (command === 'claude') {
+      const { runClaudeTerminal } = await import('./control/claude-terminal')
+      return await runClaudeTerminal(rest, io.env)
+    }
     if (command === 'codex-launch') {
       const { runCodexLaunch } = await import('./control/codex-launch')
       return await runCodexLaunch(rest, stdout, io.env)
@@ -196,6 +200,7 @@ async function readError(response: Response): Promise<string> {
 }
 
 const USAGE = `用法
+  cute-island claude [--resume 原生ID] [Claude 参数]
   cute-island push --agent Cursor --state running --title "正在修改登录页"
   cute-island end --id default --result success --summary "已完成"
   cute-island demo

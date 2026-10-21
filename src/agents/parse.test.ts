@@ -141,7 +141,7 @@ describe('parseTranscript', () => {
         })
       ].join('\n')
     )
-    expect(view).toMatchObject({ state: 'error', title: '工具执行失败', terminal: true })
+    expect(view).toMatchObject({ state: 'thinking', terminal: false })
     expect(view?.steps.at(-1)?.status).toBe('error')
   })
 

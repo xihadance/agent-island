@@ -80,11 +80,11 @@ describe('Codex MCP approval correlation', () => {
       .toMatchObject({ state: 'thinking' })
   })
 
-  it('preserves an error when the last candidate fails', () => {
+  it('keeps a failed tool step without terminating the turn when the last candidate fails', () => {
     const push = transcript()
     push(call('a', 'mcp__github__create_issue'), call('b', 'mcp__github__list_issues'), elicitation('github', 'e1'), result('a'))
     expect(push({ type: 'response_item', payload: { type: 'function_call_output', call_id: 'b', is_error: true, output: 'Failed' } }))
-      .toMatchObject({ state: 'error', terminal: true })
+      .toMatchObject({ state: 'thinking', terminal: false })
   })
 
   it.each(['missing', 'other'])('does not replace an invalid explicit owner (%s) with a different call', (id) => {

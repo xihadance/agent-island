@@ -38,7 +38,8 @@ export type AgentEvent = { at?: number } & (
   | { kind: 'thinking' | 'text'; title: string }
   | { kind: 'tool' | 'approval'; title: string; callId?: string; operation?: ActivityOperation; reason?: string }
   | { kind: 'tool_result'; title: string; ok: boolean; callId?: string }
-  | { kind: 'done' | 'error'; title: string }
+  | { kind: 'done'; title: string }
+  | { kind: 'error'; title: string; detail?: string }
   /** The agent recorded its own shutdown. Silence after this is not an interruption. */
   | { kind: 'exit' }
   | { kind: 'task_start'; taskId: string; task: TaskKind; label: string; detail?: string }

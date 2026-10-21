@@ -1,11 +1,11 @@
-/* Keep the prototype's treatment outside general settings and its appearance controls. */
-.settings-shell:not([data-section='general']) {
+/* All settings pages share the same layout and control treatment. */
+.settings-shell {
   --settings-control-radius: 10px;
   --settings-container-radius: 16px;
   --settings-card-shadow: none;
   background: var(--settings-background);
 }
-body[data-theme='light'] .settings-shell:not([data-section='general']) {
+body[data-theme='light'] .settings-shell {
   --settings-background: #f4f6f5;
   --settings-sidebar: #eef1f0;
   --settings-text: #1c2421;
@@ -26,34 +26,35 @@ body[data-theme='light'] .settings-shell:not([data-section='general']) {
   --settings-error-text: #b3261e;
   --settings-error-border: #b3261e;
 }
-.settings-shell:not([data-section='general']) .settings-main { padding: 40px 32px; max-width: none; }
+.settings-shell .settings-main { padding: 40px 32px; max-width: none; }
 .settings-content { min-width: 0; }
-.settings-shell:not([data-section='general']) .settings-content { max-width: 720px; margin: 0 auto; }
-.settings-shell:not([data-section='general']) .settings-sidebar { padding-top: 24px; background: var(--settings-sidebar); }
-.settings-shell:not([data-section='general']) .settings-sidebar nav button[aria-current='page'] { box-shadow: none; background: var(--settings-selected); color: var(--settings-accent); }
-.settings-shell:not([data-section='general']) .settings-header { border: 0; padding-bottom: 0; margin-bottom: 20px; align-items: center; }
-.settings-shell:not([data-section='general']) .settings-header h1 { font-size: 22px; line-height: 1.4; }
-.settings-shell:not([data-section='general']) .settings-header p { margin-top: 4px; }
-.settings-shell:not([data-section='general']) .settings-save-status { padding-top: 0; }
-.settings-shell:not([data-section='general']) .settings-save-status.settings-status-badge { padding: 4px 12px; max-width: none; }
+.settings-shell .settings-content { max-width: 720px; margin: 0 auto; }
+.settings-shell .settings-sidebar { padding-top: 24px; background: var(--settings-sidebar); }
+.settings-shell .settings-sidebar nav button[aria-current='page'] { box-shadow: none; background: var(--settings-selected); color: var(--settings-accent); }
+.settings-shell .settings-header { border: 0; padding-bottom: 0; margin-bottom: 20px; align-items: center; }
+.settings-shell .settings-header h1 { font-size: 22px; line-height: 1.4; }
+.settings-shell .settings-header p { margin-top: 4px; }
+.settings-shell .settings-save-status { padding-top: 0; }
+.settings-shell .settings-save-status.settings-status-badge { padding: 4px 12px; max-width: none; }
 .settings-status-badge { display: flex; align-items: center; gap: 8px; flex: none; padding: 4px 12px; border: 1px solid var(--settings-line); border-radius: 999px; background: var(--settings-surface); color: var(--settings-secondary); font-size: 13px; }
-.settings-shell:not([data-section='general']) .settings-section { padding: 24px; margin-top: 20px; }
-.settings-shell:not([data-section='general']) .settings-section > h2,
-.settings-shell:not([data-section='general']) .settings-section > .section-heading { margin: 0; padding: 0; border: 0; }
-.settings-shell:not([data-section='general']) .settings-section h2 { font-size: 16px; }
-.settings-shell:not([data-section='general']) .settings-section > .settings-description { margin: 6px 0 18px; }
-.settings-shell:not([data-section='general']) .settings-section > .settings-help { margin-bottom: 0; }
-.settings-shell:not([data-section='general']) .settings-section .setting-row { gap: 16px; padding: 18px 0; }
-.settings-shell:not([data-section='general']) .settings-section .setting-row:last-child { padding-bottom: 0; }
-.settings-shell:not([data-section='general']) .settings-button { min-height: 44px; padding: 9px 18px; font-size: 14px; font-weight: 600; }
+.settings-shell .settings-section { padding: 24px; margin-top: 20px; }
+.settings-shell .settings-section-first { margin-top: 0; }
+.settings-shell .settings-section > h2,
+.settings-shell .settings-section > .section-heading { margin: 0; padding: 0; border: 0; }
+.settings-shell .settings-section h2 { font-size: 16px; }
+.settings-shell .settings-section > .settings-description { margin: 6px 0 18px; }
+.settings-shell .settings-section > .settings-help { margin-bottom: 0; }
+.settings-shell .settings-section .setting-row { gap: 16px; padding: 18px 0; }
+.settings-shell .settings-section .setting-row:last-child { padding-bottom: 0; }
+.settings-shell .settings-button { min-height: 44px; padding: 9px 18px; font-size: 14px; font-weight: 600; }
 .settings-shell .settings-button-danger { color: var(--settings-error-text); border-color: var(--settings-error-border); background: var(--settings-surface); }
 .settings-shell .settings-button-danger:hover:not(:disabled) { color: var(--settings-error-text); border-color: var(--settings-error-border); background: var(--settings-error-surface); }
-.settings-shell:not([data-section='general']) :is(.connection-form input, .remote-field input, .remote-field select, .setting-row select) { min-height: 44px; border-radius: 10px; font-size: 14px; }
-.settings-shell:not([data-section='general']) .setting-switch { width: 44px; height: 26px; padding: 2px; }
-.settings-shell:not([data-section='general']) .setting-switch span { width: 20px; height: 20px; }
-.settings-shell:not([data-section='general']) .setting-switch[aria-checked='true'] span { transform: translateX(18px); background: var(--settings-switch-knob); }
-.settings-shell:not([data-section='general']) .automation-master-foot { padding: 14px 24px; font-size: 13px; }
-.settings-shell:not([data-section='general']) .automation-master-foot button { min-height: 28px; font-weight: 600; }
+.settings-shell :is(.connection-form input, .remote-field input, .remote-field select, .setting-row select) { min-height: 44px; border-radius: 10px; font-size: 14px; }
+.settings-shell .setting-switch { width: 44px; height: 26px; padding: 2px; }
+.settings-shell .setting-switch span { width: 20px; height: 20px; }
+.settings-shell .setting-switch[aria-checked='true'] span { transform: translateX(18px); background: var(--settings-switch-knob); }
+.settings-shell .automation-master-foot { padding: 14px 24px; font-size: 13px; }
+.settings-shell .automation-master-foot button { min-height: 28px; font-weight: 600; }
 .settings-heading-help { position: relative; }
 .settings-help-heading { display: flex; align-items: center; gap: 2px; }
 .settings-help-toggle { width: 44px; height: 44px; margin: -10px 0; display: grid; place-items: center; background: none; border: 0; padding: 0; color: var(--settings-accent); border-radius: 8px; }
@@ -62,55 +63,55 @@ body[data-theme='light'] .settings-shell:not([data-section='general']) {
 .settings-help-panel[hidden] { display: none; }
 .settings-help-panel strong { color: var(--settings-accent); }
 .settings-help-panel p { margin: 6px 0 0; max-width: 72ch; }
-.settings-shell:not([data-section='general']) .hosted-codex { margin-top: 0; }
-.settings-shell:not([data-section='general']) :is(.hosted-codex, .codex-command-settings) .setting-row { border: 0; padding: 12px 0 0; flex-wrap: wrap; }
-.settings-shell:not([data-section='general']) :is(.hosted-codex, .codex-command-settings) .connection-state { font-size: 13px; margin: 0; }
+.settings-shell .hosted-codex { margin-top: 0; }
+.settings-shell :is(.hosted-codex, .codex-command-settings) .setting-row { border: 0; padding: 12px 0 0; flex-wrap: wrap; }
+.settings-shell :is(.hosted-codex, .codex-command-settings) .connection-state { font-size: 13px; margin: 0; }
 .connection-state[data-active='true'], .connection-state[data-status='running'] { color: var(--settings-accent); font-weight: 600; }
 .connection-state[data-status='error'] { color: var(--settings-error-text); }
-.settings-shell:not([data-section='general']) .codex-command-settings > .settings-description { margin: 16px 0 0; }
+.settings-shell .codex-command-settings > .settings-description { margin: 16px 0 0; }
 .codex-service-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 16px; border-top: 1px solid var(--settings-line); margin-top: 20px; padding-top: 16px; }
 .codex-service-form .codex-service-options { border: 0; padding: 0; margin: 0; }
-.settings-shell:not([data-section='general']) .codex-service-options summary,
-.settings-shell:not([data-section='general']) .existing-codex > summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; color: var(--settings-secondary); }
+.settings-shell .codex-service-options summary,
+.settings-shell .existing-codex > summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; color: var(--settings-secondary); }
 .existing-codex > summary { font-weight: 600; }
-.settings-shell:not([data-section='general']) .existing-codex { padding-block: 12px; }
-.settings-shell:not([data-section='general']) .existing-codex[open] { padding-bottom: 24px; }
-.settings-shell:not([data-section='general']) .codex-client-command { border-top: 0; margin-top: 20px; padding-top: 0; }
+.settings-shell .existing-codex { padding-block: 12px; }
+.settings-shell .existing-codex[open] { padding-bottom: 24px; }
+.settings-shell .codex-client-command { border-top: 0; margin-top: 20px; padding-top: 0; }
 .codex-client-command input { font-family: ui-monospace, Consolas, monospace; }
-.settings-shell:not([data-section='general']) .settings-section:has(#claude-title) { margin-top: 20px; }
+.settings-shell .settings-section:has(#claude-title) { margin-top: 20px; }
 .remote-settings form { display: flex; flex-direction: column; }
 .remote-verify { margin-left: auto; color: var(--settings-muted); }
-.settings-shell:not([data-section='general']) .remote-editor { border: 1px solid var(--settings-line); border-radius: 12px; padding: 18px; background: var(--settings-surface); }
-.settings-shell:not([data-section='general']) .remote-grid { gap: 16px; }
-.settings-shell:not([data-section='general']) .remote-add { margin: 14px 0 18px; }
+.settings-shell .remote-editor { border: 1px solid var(--settings-line); border-radius: 12px; padding: 18px; background: var(--settings-surface); }
+.settings-shell .remote-grid { gap: 16px; }
+.settings-shell .remote-add { margin: 14px 0 18px; }
 .hook-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.settings-shell:not([data-section='general']) .hook-integration .setting-row { padding: 16px 0 0; border: 0; }
-.settings-shell:not([data-section='general']) .hook-integration { padding: 0; margin-top: 18px; border-top: 1px solid var(--settings-line); }
-.settings-shell:not([data-section='general']) .hook-integration .settings-help { margin-top: 6px; }
-.settings-shell:not([data-section='general']) .history-toolbar { flex-wrap: wrap; }
+.settings-shell .hook-integration .setting-row { padding: 16px 0 0; border: 0; }
+.settings-shell .hook-integration { padding: 0; margin-top: 18px; border-top: 1px solid var(--settings-line); }
+.settings-shell .hook-integration .settings-help { margin-top: 6px; }
+.settings-shell .history-toolbar { flex-wrap: wrap; }
 .history-filters, .history-clear { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.settings-shell:not([data-section='general']) .history-filters .settings-button { padding-inline: 12px; }
+.settings-shell .history-filters .settings-button { padding-inline: 12px; }
 .history-filters .settings-button[aria-pressed='true'] { color: var(--settings-accent); border-color: var(--settings-accent); background: var(--settings-selected); }
-.settings-shell:not([data-section='general']) .settings-empty { padding: 56px 24px; }
-.settings-shell:not([data-section='general']) .settings-empty h2 { margin: 0 0 12px; font-size: 16px; font-weight: 650; }
-.settings-shell:not([data-section='general']) .settings-empty p { max-width: none; margin-bottom: 12px; }
+.settings-shell .settings-empty { padding: 56px 24px; }
+.settings-shell .settings-empty h2 { margin: 0 0 12px; font-size: 16px; font-weight: 650; }
+.settings-shell .settings-empty p { max-width: none; margin-bottom: 12px; }
 .settings-empty > ol { display: inline-block; text-align: left; padding-left: 20px; margin: 4px 0 20px; color: var(--settings-muted); }
 .settings-empty .settings-actions { justify-content: center; }
 @media (max-width: 760px) {
-  .settings-shell:not([data-section='general']) .settings-main { padding: 28px 24px 32px; }
-  .settings-shell:not([data-section='general']) .settings-section { padding: 20px; }
+  .settings-shell .settings-main { padding: 28px 24px 32px; }
+  .settings-shell .settings-section { padding: 20px; }
   .codex-service-form { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .codex-service-form > button { justify-self: start; }
   .remote-verify { margin-left: 0; flex-basis: 100%; }
-  .settings-shell:not([data-section='general']) .automation-master-foot { flex-wrap: wrap; }
+  .settings-shell .automation-master-foot { flex-wrap: wrap; }
   .settings-status-badge { flex-shrink: 1; }
 }
 @media (max-width: 560px) {
-  .settings-shell:not([data-section='general']) .settings-main { padding: 28px 20px 32px; }
-  .settings-shell:not([data-section='general']) .settings-sidebar { padding-top: 16px; }
-  .settings-shell:not([data-section='general']) .settings-header { flex-wrap: wrap; }
-  .settings-shell:not([data-section='general']) .settings-section { padding: 18px; }
-  .settings-shell:not([data-section='general']) .settings-button { white-space: normal; }
+  .settings-shell .settings-main { padding: 28px 20px 32px; }
+  .settings-shell .settings-sidebar { padding-top: 16px; }
+  .settings-shell .settings-header { flex-wrap: wrap; }
+  .settings-shell .settings-section { padding: 18px; }
+  .settings-shell .settings-button { white-space: normal; }
   .history-clear { gap: 12px; }
-  .settings-shell:not([data-section='general']) .settings-empty { padding: 36px 20px; }
+  .settings-shell .settings-empty { padding: 36px 20px; }
 }

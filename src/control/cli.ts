@@ -28,6 +28,11 @@ export async function runRemoteCli(argv: readonly string[], io: Io): Promise<num
   if (command === 'hook') return runHook(args, file, io)
   const config = readRemoteConfig(file)
   check(config, '接管配置不存在，请先运行 remote init')
+  if (command === 'claude-channel') {
+    const { runClaudeChannel } = await import('./claude-terminal')
+    await runClaudeChannel(config, args.session, args.cwd)
+    return 0
+  }
   const request = controlRequest(config, io.fetchImpl ?? fetch)
   if (command === 'enable' || command === 'disable' || command === 'status') {
     try {

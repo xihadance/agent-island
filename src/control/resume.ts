@@ -10,15 +10,16 @@ import type { ControlSession, InterventionRequest, SessionResumer } from './type
 export class NativeSessionResumer implements SessionResumer {
   private closed = false
   private claude: ClaudeRecoveryRunner
-  constructor(hub: ControlHub, private readonly activities: ActivityStore, private readonly codex: readonly CodexAdapter[], private readonly configFile?: string) {
-    this.claude = new ClaudeRecoveryRunner((session, key) => {
+  constructor(private readonly hub: ControlHub, private readonly activities: ActivityStore, private readonly codex: readonly CodexAdapter[], private readonly configFile?: string) {
+    this.claude = new ClaudeRecoveryRunner((session, key, detail) => {
       if (this.closed) return
       hub.store.create({ sourceKey: `claude-resume-error:${key}`, sessionId: session.id, origin: 'observation', kind: 'error',
-        title: 'Claude Code 恢复执行后再次异常退出', detail: '请检查原会话日志；可在排除问题后再次选择继续会话。', questions: [],
+        title: 'Claude Code 恢复执行后再次异常退出', detail: detail || '请检查原会话日志；可在排除问题后再次选择继续会话。', questions: [],
         actions: hub.recoveryActions(session.id), expiresAt: hub.store.now() + 86400000 })
     })
   }
   available(session: ControlSession): boolean {
+    if (session.terminal) return session.connected && !!this.hub.terminal(session.id)
     if (session.agent === 'claude') return !!session.cwd && /^[a-f0-9-]{36}$/i.test(session.nativeId)
     return session.agent === 'codex' && this.codex.filter(connection => connection.acceptsRecovery(session)).length === 1
   }
@@ -27,6 +28,15 @@ export class NativeSessionResumer implements SessionResumer {
     const activity = this.activities.get(activityId(session.agent, session.nativeId))
     check(!activity || activity.state === 'error', '原会话已继续或已完成，异常通知已失效', 409)
     check(!activity || request.failureStartedAt === undefined || request.failureStartedAt === activity.startedAt, '原会话已进入新一轮，异常通知已失效', 409)
+    if (session.terminal) {
+      const terminal = this.hub.terminal(session.id)
+      check(terminal && session.connected && !session.turnId, '原生终端未连接或仍在执行，请检查当前会话', 409)
+      return async () => {
+        const current = this.hub.store.sessions().find(current => current.id === session.id)
+        check(this.hub.terminal(session.id) === terminal && current?.connected && !current.turnId, '原生终端状态已变化，未提交继续指令', 409)
+        await terminal.sendMessage({ id: request.id, sessionId: session.id, text, by: 'resume', createdAt: this.hub.store.now(), status: 'submitted' })
+      }
+    }
     if (session.agent === 'claude') {
       check(!this.claude.isRunning(session.nativeId), '此 Claude 会话的恢复进程仍在运行', 409)
       await checkClaudeRecovery(session, this.configFile)

@@ -78,6 +78,18 @@ npm run dev:web     # http://127.0.0.1:5174
 
 需要 Node.js 22.12 或更高版本。
 
+## 产品宣传页
+
+中文产品宣传页包含可交互的灵动岛演示、功能介绍、远程接管说明与 GitHub 源码入口。
+
+```bash
+npm run dev:site      # http://127.0.0.1:5175/
+npm run build:site    # 静态产物：dist/site/
+npm run preview:site  # 预览构建产物
+```
+
+页面支持手机布局及浅色／深色主题，可独立部署到静态托管平台。详见 [宣传页说明](src/website/README.md)。
+
 ## 两种显示模式
 
 可在配置窗口或托盘右键菜单切换,重启后记住选择。
@@ -253,7 +265,7 @@ Codex 与 Claude Code 主会话明确异常中断时,远程通知提供「继续
 继续操作使用原生会话 ID,核对原生状态后恢复执行并提交继续指令,也支持 `/resume 异常请求ID [继续指令]`。
 
 - **Codex** — 通过已配置且运行中的 app-server 恢复原线程
-- **Claude Code** — 在原工作目录后台延续同一会话,保留 Hook 权限门禁。原终端不会同步显示,请在灵动岛查看进度;后台执行结束后可用 `claude --resume 原生ID` 查看会话
+- **Claude Code** — 可通过 `node bin/cute-island.js claude` 启动原生终端接入,或加 `--resume 完整原生ID` 恢复已有会话。开启远程接管并安装 Claude Hook 后,在 Claude 启动确认界面启用 cute-island Channels,远程继续和追加指令会进入当前终端。Channels 是预览功能,仍受 Claude 版本、账户及组织策略限制。普通启动的会话使用后台兼容路径,原终端不会同步显示;后台执行结束后可用 `claude --resume 原生ID` 查看会话
 
 重复点击和重启不重放操作。日志静默及子任务异常不会自动启动主会话。关闭接管会停止应用启动的恢复进程。
 

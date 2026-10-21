@@ -162,12 +162,8 @@ export function createReducer() {
         }
         if (open) open.status = event.ok === false ? 'error' : 'done'
         if (event.callId) calls.delete(event.callId)
-        if (event.ok === false) {
-          state = 'error'
-          title = '工具执行失败'
-          terminal = true
-          endedAt ??= event.at
-        } else if (state !== 'error') {
+        // A failed tool can be repaired in this turn. Only a native turn failure ends it.
+        if (!terminal) {
           state = steps.some((step) => step.status === 'waiting') ? 'approval' : steps.some((step) => step.status === 'active') ? 'running' : 'thinking'
           const pending = steps.find((step) => step.status === 'waiting') || steps.find((step) => step.status === 'active')
           if (pending) {
@@ -200,6 +196,7 @@ export function createReducer() {
       }
       state = 'error'
       title = clip(event.title, 80)
+      detail = event.kind === 'error' ? event.detail || taskDetail : taskDetail
       for (const step of steps) if (step.status === 'active' || step.status === 'waiting') step.status = 'error'
       terminal = true
       endedAt ??= event.at

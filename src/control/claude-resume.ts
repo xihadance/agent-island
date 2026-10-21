@@ -8,6 +8,7 @@ import { claudePlugin } from '../agents/plugins/claude'
 import { listProcessSnapshot, matchAgentProcesses, registrationMatchesProcess } from '../agents/processes'
 import { parseTranscript } from '../agents/parse'
 import { presentSession } from '../agents/watch'
+import { errorText, messageEvents } from '../agents/events'
 import { check } from './store'
 import type { ControlSession } from './types'
 
@@ -91,7 +92,7 @@ export async function checkClaudeRecovery(session: ControlSession, configFile?: 
 export class ClaudeRecoveryRunner {
   private children = new Map<ChildProcess, { nativeId: string; cancel: () => void }>()
   private closed = false
-  constructor(private readonly failed: (session: ControlSession, key: string) => void,
+  constructor(private readonly failed: (session: ControlSession, key: string, detail: string) => void,
     private readonly launch: (exe: string, args: string[], options: SpawnOptions) => ChildProcess = spawn) {}
   isRunning(nativeId: string): boolean { return [...this.children.values()].some(child => child.nativeId === nativeId) }
   start(session: ControlSession, text: string, command: ClaudeCommand): Promise<void> {
@@ -105,6 +106,9 @@ export class ClaudeRecoveryRunner {
       let accepted = false
       let finished = false
       let resultFailed = false
+      let failureDetail = ''
+      let stderr = ''
+      const stderrDecoder = new StringDecoder('utf8')
       const timer = setTimeout(() => finish(new Error('Claude 未及时确认继续指令，请检查原会话')), 30000)
       const finish = (error?: Error) => {
         if (finished) return
@@ -114,15 +118,19 @@ export class ClaudeRecoveryRunner {
         else resolve()
       }
       this.children.set(child, { nativeId: session.nativeId, cancel: () => finish(new Error('远程接管已停止')) })
-      child.stderr?.resume()
+      child.stderr?.on('data', (chunk: Buffer) => { stderr = (stderr + stderrDecoder.write(chunk)).slice(-8000) })
       child.stdin?.on('error', () => finish(new Error('无法向 Claude 提交继续指令')))
       child.once('error', () => { this.children.delete(child); finish(new Error('Claude 恢复进程启动失败，请检查 CLI 和工作目录')) })
-      child.once('close', code => {
+      child.once('close', (code, signal) => {
+        buffer += decoder.end()
+        if (buffer.trim()) receive(buffer)
+        stderr = (stderr + stderrDecoder.end()).slice(-8000)
         this.children.delete(child)
         if (this.closed) { finish(new Error('远程接管已停止')); return }
         if (!accepted) finish(new Error('Claude 未确认恢复原会话，请检查登录、版本和会话日志'))
         if (code !== 0 || resultFailed) {
-          try { this.failed(session, `${child.pid ?? 'unknown'}:${Date.now()}`) }
+          const detail = [failureDetail, code !== 0 ? `退出码：${code ?? '未知'}${signal ? `，信号：${signal}` : ''}` : '', stderr].filter(Boolean).join('\n').slice(0, 15000)
+          try { this.failed(session, `${child.pid ?? 'unknown'}:${Date.now()}`, detail) }
           catch { console.error('Claude 恢复异常记录失败，请检查会话日志和状态文件') }
         }
       })
@@ -133,16 +141,22 @@ export class ClaudeRecoveryRunner {
         while ((end = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, end)
           buffer = buffer.slice(end + 1)
-          let row: Record<string, any>
-          try { row = JSON.parse(line) } catch { continue }
-          if (!row || typeof row !== 'object' || row.session_id !== session.nativeId) continue
-          const content = row.message?.content
-          const replay = row.type === 'user' && (content === text || Array.isArray(content) && content.some((part: any) => part?.type === 'text' && part.text === text))
-          if (row.type === 'result') resultFailed = row.is_error === true
-          if (replay || row.type === 'result') { accepted = true; finish() }
+          receive(line)
         }
         if (buffer.length > 2 * 1024 * 1024) { finish(new Error('Claude 返回内容过大，恢复结果待确认')); child.kill() }
       })
+      function receive(line: string): void {
+        let row: Record<string, any>
+        try { row = JSON.parse(line) } catch { return }
+        if (!row || typeof row !== 'object' || row.session_id !== session.nativeId) return
+        const content = row.message?.content
+        const replay = row.type === 'user' && (content === text || Array.isArray(content) && content.some((part: any) => part?.type === 'text' && part.text === text))
+        const failure = messageEvents(row).find(event => event.kind === 'error')
+        if (failure?.kind === 'error') failureDetail = (failure.detail || failure.title).slice(0, 6000)
+        else if (row.type === 'assistant' && errorText(row.error)) failureDetail = errorText(row.error).slice(0, 6000)
+        if (row.type === 'result') resultFailed = !!failure
+        if (replay || row.type === 'result') { accepted = true; finish() }
+      }
       child.once('spawn', () => {
         if (this.closed) { child.kill(); return }
         child.stdin?.end(JSON.stringify({ type: 'user', session_id: session.nativeId, message: { role: 'user', content: text }, parent_tool_use_id: null }) + '\n')

@@ -6,6 +6,7 @@ import type { ControlHub } from './hub'
 import { ACTIVE_STATUSES, type AgentControlAdapter, type ControlSession, type Guidance, type InterventionRequest, type Question } from './types'
 import { formAnswers, formQuestions } from './forms'
 import type { Decision } from '../shared/automation'
+import { errorText } from '../agents/events'
 
 export interface CodexConnection { id: string; url: string; threads: string[]; token?: string; agent?: Agent }
 export type CodexDecision = (method: string, params: Record<string, unknown>) => Decision
@@ -125,7 +126,7 @@ export class CodexAdapter implements AgentControlAdapter {
       const pending = this.pending.get(message.id)
       if (!pending) return
       clearTimeout(pending.timer); this.pending.delete(message.id)
-      if (message.error) pending.reject(new Error('Codex 拒绝了控制请求'))
+      if (message.error) pending.reject(new Error(`Codex 拒绝了控制请求${typeof message.error.code === 'number' ? `（${message.error.code}）` : ''}：${errorText(message.error) || '原生服务未提供原因'}`))
       else pending.resolve(message.result)
       return
     }
@@ -141,11 +142,20 @@ export class CodexAdapter implements AgentControlAdapter {
       this.hub.store.settleSession(sessionId, 'cancelled', true)
       this.hub.store.change(state => { const s = state.sessions.find(s => s.id === sessionId)!; s.turnId = params.turn.id; s.lastSeenAt = this.hub.store.now() })
     }
+    if (message.method === 'error' && params.willRetry === false && typeof params.turnId === 'string') {
+      this.recordError(sessionId, params.threadId, params.turnId, params.error, false)
+      return
+    }
     if (message.method === 'turn/completed') {
-      this.hub.store.settleSession(sessionId)
-      this.hub.store.change(state => { state.sessions.find(s => s.id === sessionId)!.turnId = undefined })
-      if (['failed', 'interrupted'].includes(params.turn.status)) this.hub.store.create({ sourceKey: `codex-error:${this.config.id}:${params.threadId}:${params.turn.id}`, sessionId, turnId: params.turn.id,
-        origin: 'observation', kind: 'error', title: 'Codex 执行失败', detail: params.turn.error?.message ?? '请检查原会话', questions: [], actions: this.hub.recoveryActions(sessionId), expiresAt: this.hub.store.now() + 86400000 })
+      const currentTurn = this.hub.store.sessions().find(session => session.id === sessionId)?.turnId
+      // A delayed completion for the old turn must not clear a newer turn's native gate.
+      if (!currentTurn || currentTurn === params.turn.id) {
+        const error = ['failed', 'interrupted'].includes(params.turn.status)
+          ? this.hub.store.requests().find(request => request.sourceKey === `codex-error:${this.config.id}:${params.threadId}:${params.turn.id}`) : undefined
+        this.hub.store.settleSession(sessionId, 'cancelled', false, error?.id)
+        this.hub.store.change(state => { state.sessions.find(s => s.id === sessionId)!.turnId = undefined })
+      }
+      if (['failed', 'interrupted'].includes(params.turn.status)) this.recordError(sessionId, params.threadId, params.turn.id, params.turn.error, !currentTurn || currentTurn === params.turn.id)
     }
     if (message.method === 'serverRequest/resolved') {
       for (const r of this.hub.store.snapshot().requests) if (r.sessionId === sessionId && r.nativeRequestId === params.requestId && this.native.has(r.id) && ACTIVE_STATUSES.includes(r.status)) {
@@ -189,6 +199,25 @@ export class CodexAdapter implements AgentControlAdapter {
       questions, actions: tooLarge ? actions.filter(a => a !== 'approve' && a !== 'answer') : actions,
       expiresAt: this.hub.store.now() + Math.min(typeof params.autoResolutionMs === 'number' ? Math.max(0, params.autoResolutionMs) : 600000, 600000) })
     this.native.set(r.id, { method: message.method, params })
+    this.requestsChanged(true)
+  }
+  private recordError(sessionId: string, threadId: string, turnId: string, error: unknown, completed: boolean): void {
+    const sourceKey = `codex-error:${this.config.id}:${threadId}:${turnId}`
+    const detail = codexErrorDetail(error)
+    const previous = this.hub.store.requests().find(request => request.sourceKey === sourceKey)
+    // A late error notification cannot undo the completion evidence for this turn.
+    const actions = completed ? this.hub.recoveryActions(sessionId) : previous?.actions ?? ['ack' as const]
+    if (previous) {
+      // Completion may add recovery, but metadata must never reopen an acknowledged occurrence.
+      if (previous.status !== 'pending') return
+      const nextDetail = error ? detail : previous.detail
+      if (nextDetail === previous.detail && JSON.stringify(actions) === JSON.stringify(previous.actions)) return
+      this.hub.store.change(state => {
+        const request = state.requests.find(request => request.id === previous.id)!
+        request.detail = nextDetail; request.actions = actions; request.revision++
+      })
+    } else this.hub.store.create({ sourceKey, sessionId, turnId, origin: 'observation', kind: 'error', title: 'Codex 执行失败',
+      detail, questions: [], actions, expiresAt: this.hub.store.now() + 86400000 })
     this.requestsChanged(true)
   }
   async respond(request: InterventionRequest): Promise<void> {
@@ -275,6 +304,12 @@ export class CodexAdapter implements AgentControlAdapter {
     this.sessions.clear(); this.native.clear()
     this.socket?.terminate()
   }
+}
+
+function codexErrorDetail(error: unknown): string {
+  const value = error && typeof error === 'object' ? error as Record<string, unknown> : {}
+  return [errorText(error), value.codexErrorInfo ? `错误类型：${typeof value.codexErrorInfo === 'string' ? value.codexErrorInfo : JSON.stringify(value.codexErrorInfo)}` : '',
+    errorText(value.additionalDetails)].filter(Boolean).join('\n').slice(0, 16000) || '请检查原会话'
 }
 
 function checkFailedThread(thread: Record<string, any>): void {

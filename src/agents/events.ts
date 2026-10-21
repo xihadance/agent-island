@@ -53,8 +53,12 @@ const AGENT_ACTION: Record<string, string> = {
 
 /** Message-shaped rows shared by Claude, Cursor and Gemini JSONL logs. */
 export function messageEvents(row: Record<string, unknown>): AgentEvent[] {
-  if (row.type === 'result' && (row.subtype === 'success' || row.is_error === true)) {
-    return [endedEvent(row.is_error === true ? 'error' : 'success', row.result ?? row.error)]
+  if (row.type === 'result' && (row.subtype === 'success' || row.is_error === true || textOf(row.subtype).startsWith('error_'))) {
+    const failed = row.is_error === true || textOf(row.subtype).startsWith('error_')
+    const reasons = Array.isArray(row.errors) ? row.errors.map(errorText).filter(Boolean) : []
+    const detail = [errorText(row.result), errorText(row.error), ...reasons].filter(Boolean).join('\n')
+    return failed ? [{ kind: 'error', title: cleanText(detail) || '执行失败', detail: detail || textOf(row.subtype) }]
+      : [endedEvent('success', row.result)]
   }
   const events: AgentEvent[] = []
   const message = isRecord(row.message) ? row.message : row
@@ -205,6 +209,10 @@ export function clip(value: string, max: number): string {
 
 export function textOf(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+export function errorText(value: unknown): string {
+  return typeof value === 'string' ? value : isRecord(value) ? textOf(value.message) : ''
 }
 
 export function parseMaybeRecord(value: unknown): Record<string, unknown> {
