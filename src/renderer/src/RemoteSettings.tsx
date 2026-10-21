@@ -35,7 +35,7 @@ function ConnectionActions({ target, label, disabled, onRemove, onTesting }: {
   return <div className="remote-editor-actions">
     <div className="settings-actions">
       <button type="button" className="settings-button" disabled={disabled || testing} aria-label={`测试 ${label} 的连通性`} onClick={() => void test()}>{testing ? '测试中…' : '测试连通性'}</button>
-      <button type="button" className="settings-button" disabled={disabled || testing} onClick={onRemove}>移除 {label}</button>
+      <button type="button" className="settings-button settings-button-danger" disabled={disabled || testing} onClick={onRemove}>移除 {label}</button>
     </div>
     <p className="remote-test-result" role="status" aria-live="polite" data-state={testing ? 'testing' : result ? result.ok ? 'success' : 'error' : undefined}>
       {testing ? '正在测试连接，请稍候…' : result ? `${result.ok ? '连接成功' : '连接失败'}：${result.message}` : ''}
@@ -95,44 +95,30 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
   return <div className="remote-settings">
     <div className="automation-master" data-enabled={remote.enabled}>
       <div className="setting-row setting-row-prominent"><div className="setting-copy"><label id="remote-switch-label" htmlFor="remote-switch">远程接管</label>
-        <p id="remote-switch-help">{remote.enabled ? '通过远程渠道处理请求。自动审批暂时让位于远程接管。' : '从手机接收提醒、批准权限、回答问题和追加指令。'}</p></div>
+        <p id="remote-switch-help">{remote.enabled ? '已接入的请求统一由远程入口回传；自动审批开启时，先按规则处理，其余交给你。' : '从手机接收提醒、批准权限、回答问题和追加指令。'}</p></div>
         <button id="remote-switch" className="setting-switch" role="switch" aria-checked={remote.enabled} aria-labelledby="remote-switch-label" aria-describedby="remote-switch-help"
           disabled={working || preview || !remote.configured || dirty} onClick={() => void run(async () => {
             onSnapshot(await bridge.setRemoteEnabled(!remote.enabled)); setNotice(remote.enabled ? '远程接管已关闭' : '远程接管已开启')
           })}><span /></button></div>
-      <div className="automation-master-foot"><span className="connection-dot" data-active={remote.running} />{remote.error ? '配置需要检查' : remote.running ? '接管服务运行中' : remote.configured ? '已关闭' : '添加渠道并保存后即可开启'}</div>
+      <div className="automation-master-foot"><span className="connection-dot" data-active={remote.running} />{remote.error ? '配置需要检查' : remote.running ? '接管服务运行中' : remote.configured ? '已关闭' : '添加渠道并保存后即可开启'}{remote.enabled && <span className="remote-verify">在渠道发送 /sessions 验证</span>}</div>
     </div>
     <p className="settings-help">添加连接后可先测试，再保存并开启远程接管。开启后在消息渠道发送 /sessions 验证双向通信。编辑或测试连接前请关闭远程接管。</p>
     {(error || remote.error) && <p className="settings-error" role="alert">{error || remote.error}</p>}
     {remote.missingCredentials.length > 0 && <p className="connection-detail">当前进程未读取到凭据：{remote.missingCredentials.join('、')}。请设置这些环境变量后重启应用。</p>}
-    <section className="settings-section" aria-labelledby="remote-hooks-title"><h2 id="remote-hooks-title">Agent Hook 接管</h2>
-      <p className="settings-description">安装后重新打开对应客户端或会话，再配置消息渠道并开启上方远程接管。安装和移除均会备份文件，保留其他 Hook。</p>
-      {(['claude', 'cursor', 'gemini'] as const).map(agent => {
-        const label = { claude: 'Claude Code', cursor: 'Cursor', gemini: 'Gemini CLI' }[agent]
-        const hook = hooks[agent]
-        return <div className="hook-integration" key={agent}><div className="setting-row"><div className="setting-copy"><strong>{label}</strong>
-          <p>{agent === 'claude' ? '权限审批、选择题回答与补充指令。' : agent === 'cursor' ? 'Shell / MCP 执行前确认与后续指导；原生问答仍在 Cursor 中处理。' : 'BeforeTool 执行前确认与上下文指导；原生问答仍在 Gemini 中处理。'}</p>
-          <p>{hook.installed ? '已安装接管' : '尚未安装接管'}</p></div>
-          <button className="settings-button" disabled={working || preview || dirty} onClick={() => void run(async () => {
-            onSnapshot(await bridge.setRemoteIntegration(agent, !hook.installed)); setNotice(hook.installed ? `${label} 接管已移除` : `${label} 接管已安装，请重新打开会话`)
-          })}>{hook.installed ? '移除' : '安装'} {label} 接管</button></div>
-          {hook.error && <p className="connection-detail" role="alert">{hook.error}</p>}
-          <p className="settings-help">配置文件：{hook.file}</p></div>
-      })}
-      <p className="settings-help">Cursor 与 Gemini 的批准仅通过本次 Hook 门禁，各客户端原有的权限检查仍然生效。</p>
-    </section>
     <form onSubmit={event => { event.preventDefault(); void run(async () => {
       const normalized = { proxy: draft.proxy, channels: draft.channels.map(normalizeChannel), codex: draft.codex.map(normalizeCodex) }
       const snapshot = await bridge.saveRemote(normalized, base)
       setDirty(false); onDirty(false); onSnapshot(snapshot); setNotice('渠道配置已保存，可开启远程接管')
     }) }}>
       <fieldset disabled={disabled} className="remote-fields">
-        <section className="settings-section" aria-labelledby="remote-proxy-title"><h2 id="remote-proxy-title">灵动岛全局代理</h2>
-          <p className="settings-description">默认跟随系统代理。所有消息渠道及远程 Codex 连接继承此设置，也可单独覆盖。本机连接始终直连。</p>
-          <div className="remote-grid"><ProxyFields value={draft.proxy} global onChange={proxy => edit({ ...draft, proxy: proxy as ProxySettings })} /></div>
-          <p className="settings-help">修改后保存并开启远程接管生效。连通性测试使用当前填写的代理，无需先保存。</p>
-        </section>
         <section className="settings-section" aria-labelledby="remote-channels-title"><h2 id="remote-channels-title">消息渠道</h2>
+          <div className="settings-actions remote-add"><label htmlFor="remote-channel-type">平台</label><select id="remote-channel-type" value={type} onChange={event => setType(event.target.value as typeof type)}>
+            {Object.entries(channelNames).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select>
+            <button type="button" className="settings-button" onClick={() => {
+              const id = `${type}-${Date.now().toString(36)}`
+              edit({ ...draft, channels: [...draft.channels, { id, type, destination: '', allowedUsers: [],
+                ...(type === 'feishu' || type === 'wecom' ? { appId: '', secretEnv: `CUTE_ISLAND_${type.toUpperCase()}_SECRET` } : { tokenEnv: `CUTE_ISLAND_${type.toUpperCase()}_TOKEN` }) }] })
+            }}>添加渠道</button></div>
           <p className="settings-description">使用专用机器人。目标会话和允许操作的用户均填写平台 ID；凭据填写环境变量名称。测试会向目标会话发送一条测试消息，无需先保存。</p>
           {!draft.channels.length && <p className="settings-help">还没有渠道。选择平台，添加你的第一个机器人。</p>}
           {draft.channels.map((channel, index) => <fieldset className="remote-editor" key={index}>
@@ -149,16 +135,10 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
             <ConnectionActions target={{ kind: 'channel', proxy: draft.proxy, config: normalizeChannel(channel) }} label={`${channelNames[channel.type]} 渠道 ${index + 1}`} disabled={disabled} onTesting={setTesting}
               onRemove={() => edit({ ...draft, channels: draft.channels.filter((_, i) => i !== index) })} />
           </fieldset>)}
-          <div className="settings-actions remote-add"><label htmlFor="remote-channel-type">平台</label><select id="remote-channel-type" value={type} onChange={event => setType(event.target.value as typeof type)}>
-            {Object.entries(channelNames).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select>
-            <button type="button" className="settings-button" onClick={() => {
-              const id = `${type}-${Date.now().toString(36)}`
-              edit({ ...draft, channels: [...draft.channels, { id, type, destination: '', allowedUsers: [],
-                ...(type === 'feishu' || type === 'wecom' ? { appId: '', secretEnv: `CUTE_ISLAND_${type.toUpperCase()}_SECRET` } : { tokenEnv: `CUTE_ISLAND_${type.toUpperCase()}_TOKEN` }) }] })
-            }}>添加渠道</button></div>
+
         </section>
         <section className="settings-section" aria-labelledby="remote-codex-title"><h2 id="remote-codex-title">Codex 远程控制连接</h2>
-          <p className="settings-description">灵动岛托管的 Codex 服务会自动转发到上方消息渠道，无需添加连接；终端和远程均可审批，先处理的一端生效。这里仅配置其他 app-server，会话 ID 可限定范围。Claude、Cursor、Gemini 使用上方 Hook 接入。</p>
+          <p className="settings-description">灵动岛托管的 Codex 服务会自动转发到上方消息渠道，无需添加连接；终端和远程均可审批，先处理的一端生效。这里仅配置其他 app-server，会话 ID 可限定范围。Claude、Cursor、Gemini 使用下方 Hook 接入。</p>
           {draft.codex.map((connection, index) => <fieldset className="remote-editor" key={index}><legend>Codex · {index + 1}</legend><div className="remote-grid">
             <Field label="连接 ID" value={connection.id} onChange={id => changeCodex(index, { id })} />
             <Field label="WebSocket 地址" value={connection.url} onChange={url => changeCodex(index, { url })} placeholder="ws://127.0.0.1:4500" />
@@ -168,6 +148,29 @@ export function RemoteSettings({ remote, hooks, preview, onSnapshot, onDirty }: 
           </div><ConnectionActions target={{ kind: 'codex', proxy: draft.proxy, config: normalizeCodex(connection) }} label={`Codex 连接 ${index + 1}`} disabled={disabled} onTesting={setTesting}
             onRemove={() => edit({ ...draft, codex: draft.codex.filter((_, i) => i !== index) })} /></fieldset>)}
           <button type="button" className="settings-button" onClick={() => edit({ ...draft, codex: [...draft.codex, { id: `codex-${Date.now().toString(36)}`, url: 'ws://127.0.0.1:4500', threads: [] }] })}>添加 Codex 连接</button>
+        </section>
+      </fieldset>
+      <section className="settings-section" aria-labelledby="remote-hooks-title"><h2 id="remote-hooks-title">Agent Hook 接管</h2>
+        <p className="settings-description">安装后重新打开对应客户端或会话，再配置消息渠道并开启上方远程接管。安装和移除均会备份文件，保留其他 Hook。</p>
+        {(['claude', 'cursor', 'gemini'] as const).map(agent => {
+          const label = { claude: 'Claude Code', cursor: 'Cursor', gemini: 'Gemini CLI' }[agent]
+          const hook = hooks[agent]
+          return <div className="hook-integration" key={agent}><div className="setting-row"><div className="setting-copy"><div className="hook-heading"><strong>{label}</strong><span className="connection-state" data-active={hook.installed}><span className="connection-dot" data-active={hook.installed} />{hook.installed ? '已安装' : '未安装'}</span></div>
+            <p>{agent === 'claude' ? '权限审批、选择题回答与补充指令。' : agent === 'cursor' ? 'Shell / MCP 执行前确认与后续指导；原生问答仍在 Cursor 中处理。' : 'BeforeTool 执行前确认与上下文指导；原生问答仍在 Gemini 中处理。'}</p>
+            </div>
+            <button type="button" className={`settings-button${hook.installed ? ' settings-button-danger' : ''}`} disabled={working || preview || dirty} onClick={() => void run(async () => {
+              onSnapshot(await bridge.setRemoteIntegration(agent, !hook.installed)); setNotice(hook.installed ? `${label} 接管已移除` : `${label} 接管已安装，请重新打开会话`)
+            })}>{hook.installed ? '移除' : '安装'} {label} 接管</button></div>
+            {hook.error && <p className="connection-detail" role="alert">{hook.error}</p>}
+            <p className="settings-help">配置文件：{hook.file}</p></div>
+        })}
+        <p className="settings-help">Cursor 与 Gemini 的批准仅通过本次 Hook 门禁，各客户端原有的权限检查仍然生效。</p>
+      </section>
+      <fieldset disabled={disabled} className="remote-fields">
+        <section className="settings-section" aria-labelledby="remote-proxy-title"><h2 id="remote-proxy-title">灵动岛全局代理</h2>
+          <p className="settings-description">默认跟随系统代理。所有消息渠道及远程 Codex 连接继承此设置，也可单独覆盖。本机连接始终直连。</p>
+          <div className="remote-grid"><ProxyFields value={draft.proxy} global onChange={proxy => edit({ ...draft, proxy: proxy as ProxySettings })} /></div>
+          <p className="settings-help">修改后保存并开启远程接管生效。连通性测试使用当前填写的代理，无需先保存。</p>
         </section>
       </fieldset>
       <div className="remote-save"><button className="settings-button settings-button-primary" type="submit" disabled={disabled || !dirty}>保存渠道配置</button><button className="settings-button" type="button" disabled={working} onClick={() => void run(async () => {
