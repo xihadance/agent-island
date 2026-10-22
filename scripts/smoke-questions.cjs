@@ -133,8 +133,9 @@ async function smoke() {
 
     await control('/hook', { agent: 'claude', invocationId: 'complete', event: { session_id: 'question-smoke', hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_input: { questions, untouched: 'preserve' } } })
     await until(() => evaluate('!document.querySelector(".question-answers")'))
+    // No recommended option: automation answers those before a remote request or island prompt exists.
     const longQuestions = [{ question: '请选择本次需要处理的功能范围', options: [
-      { label: '保留现有流程（推荐）', description: '沿用现有接入方式，补齐选择题选项、说明和回答后的同步状态。'.repeat(4) },
+      { label: '保留现有流程', description: '沿用现有接入方式，补齐选择题选项、说明和回答后的同步状态。'.repeat(4) },
       { label: '自定义范围', description: '在下方输入你的回答。' }
     ], multiSelect: false }]
     const remote = await control('/hook', { agent: 'claude', invocationId: 'remote', event: { session_id: 'question-smoke', hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: longQuestions } } })

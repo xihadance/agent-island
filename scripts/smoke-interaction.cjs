@@ -494,8 +494,8 @@ async function smoke() {
     await evaluate('window.island.setDockExpanded(false)')
     await setMode('managed')
     assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile, 'preferences.json'), 'utf8')), {
-      theme: 'system', mode: 'managed', watchSessions: true, codexServer: { enabled: false, port: 4500, executable: '' },
-      automation: { enabled: false, approvePermissions: true, answerQuestions: true, fallback: 'manual', codexUrl: '' },
+      theme: 'system', mode: 'managed', watchSessions: true, launchAtLogin: false, codexServer: { enabled: false, port: 4500, executable: '' },
+      automation: { enabled: false, approvePermissions: true, answerQuestions: true, blacklist: [], fallback: 'manual', codexUrl: '' },
       update: { enabled: true, skippedVersion: '', lastCheckedAt: 0 }
     })
     await send('Page.reload')

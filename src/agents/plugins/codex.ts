@@ -65,6 +65,8 @@ function createCodexParser(): (text: string) => ParsedTranscript {
   let client: string | undefined
   let metadataSeen = false
   let historyStart: number | undefined
+  /** Whether a person answers sandbox escalations in this turn, per the latest `turn_context`. */
+  let humanReviews = true
 
   const settleTurn = (): void => {
     // Codex never records whether yielded work survived the turn, so stop claiming it runs.
@@ -116,7 +118,10 @@ function createCodexParser(): (text: string) => ParsedTranscript {
         events.push(...timestampEvents(responseItem(isRecord(row.payload) ? row.payload : {}, eventTimestamp(row)), row))
         continue
       }
-      if (row.type === 'turn_context') continue
+      if (row.type === 'turn_context') {
+        humanReviews = escalationReviewedByHuman(isRecord(row.payload) ? row.payload : {})
+        continue
+      }
       events.push(...timestampEvents(messageEvents(row), row))
     }
     return { events, sessionId, client, cwd }
@@ -134,7 +139,8 @@ function createCodexParser(): (text: string) => ParsedTranscript {
         if (inner) ({ name, input } = inner)
       }
       const callId = textOf(payload.call_id) || undefined
-      const event = toolEvent(name, input, callId)
+      // `require_escalated` is only a request. Under auto-review or `never`, nobody is asked.
+      const event = toolEvent(name, input, callId, humanReviews ? undefined : false)
       if (callId) {
         calls.set(callId, { name: name.split('.').pop() ?? name, input, title: event.title, background: event.operation?.kind !== 'agent', at })
         if (isUserInputTool(event.operation?.name)) questions.add(callId)
@@ -345,6 +351,11 @@ function agentEnd(id: string, state: unknown): AgentEvent[] {
   return [{ kind: 'task_end', taskId: safeId(id), status, ...(detail ? { detail } : {}) }]
 }
 
+/** Older transcripts omit these fields; they keep treating an escalation request as a human approval. */
+function escalationReviewedByHuman(context: Record<string, unknown>): boolean {
+  return context.approval_policy !== 'never' && context.approvals_reviewer !== 'auto_review'
+}
+
 /** `{"accepted":true}` only means the question is on screen. An empty or missing answer map is still unanswered. */
 function unansweredAccept(output: unknown): boolean {
   const text = outputText(output).trim()
@@ -392,8 +403,10 @@ async function codexChild(file: string): Promise<ChildLink | null | undefined> {
       const meta = newline < 0 ? head : head.slice(0, newline)
       const parent = meta.match(/"parent_thread_id"\s*:\s*"([^"\\]+)"/)?.[1]
       if (/"type"\s*:\s*"session_meta"/.test(meta) && parent) {
+        // Auto-review runs each escalation in its own child thread; it is not a delegated agent.
+        const review = /"thread_source"\s*:\s*"guardian_review"/.test(meta)
         return { parentSessionId: parent, taskId: safeId(codexSessionId(file)),
-          label: meta.match(/"agent_nickname"\s*:\s*"([^"\\]+)"/)?.[1] || '子 Agent' }
+          label: review ? '自动审查' : meta.match(/"agent_nickname"\s*:\s*"([^"\\]+)"/)?.[1] || '子 Agent' }
       }
       if (newline >= 0 || bytesRead < HEAD_BYTES) {
         try { JSON.parse(meta); return null } catch { return undefined }

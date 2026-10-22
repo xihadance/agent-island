@@ -7,7 +7,11 @@ const execFileAsync = promisify(execFile)
 const RUNTIMES = ['node', 'nodejs', 'bun']
 /** Marks the end of one query's output on the resident shell's stdout. */
 const SENTINEL = '@@CUTE_ISLAND_PROCESSES_END@@'
+/** Printed instead of a snapshot when the query itself threw. */
+const FAILED = '@@CUTE_ISLAND_PROCESSES_FAILED@@'
 const QUERY_TIMEOUT_MS = 8000
+/** Below QUERY_TIMEOUT_MS, so a hung WMI fails inside the shell instead of costing a new console. */
+const CIM_TIMEOUT_S = 5
 
 /** Kinds of agents with a running process, detected from executables and npm script paths. */
 export async function listAgentProcesses(plugins: readonly AgentPlugin[] = BUILTIN_PLUGINS): Promise<Set<string>> {
@@ -113,7 +117,9 @@ export class ResidentShell {
     if (!pending) return
     this.failures = 0; this.retryAt = 0
     clearTimeout(pending.timer)
-    pending.resolve(payload)
+    // A failed query is not an empty process table; that would read as every agent exiting.
+    if (payload.trim() === FAILED) pending.reject(new Error('进程查询失败'))
+    else pending.resolve(payload)
   }
 
   private failed(error: Error): void {
@@ -143,7 +149,7 @@ export class ResidentShell {
 /** Wrap a one-shot query in a read-a-line, answer, mark-the-end loop. */
 export function residentScript(query: string): string {
   return `$ErrorActionPreference = 'Continue'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; `
-    + `while ($null -ne [Console]::In.ReadLine()) { try { ${query} } catch { '[]' } ; `
+    + `while ($null -ne [Console]::In.ReadLine()) { try { ${query} } catch { '${FAILED}' } ; `
     + `[Console]::Out.WriteLine('${SENTINEL}'); [Console]::Out.Flush() }`
 }
 
@@ -172,7 +178,7 @@ export async function listProcessSnapshot(plugins: readonly AgentPlugin[] = BUIL
 function windowsSnapshotScript(plugins: readonly AgentPlugin[]): string {
   const names = [...new Set([...plugins.flatMap((plugin) => plugin.executables), ...RUNTIMES])]
   const pattern = `^(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(\\.exe)?$`
-  return `$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; @(Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; parentPid = $_.ParentProcessId; name = $_.Name; commandLine = $(if ($_.Name -match '${pattern.replace(/'/g, "''")}') { $_.CommandLine } else { '' }); createdAt = $(if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('o') } else { '' }) } }) | ConvertTo-Json -Compress`
+  return `$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; @(Get-CimInstance Win32_Process -OperationTimeoutSec ${CIM_TIMEOUT_S} | ForEach-Object { [pscustomobject]@{ pid = $_.ProcessId; parentPid = $_.ParentProcessId; name = $_.Name; commandLine = $(if ($_.Name -match '${pattern.replace(/'/g, "''")}') { $_.CommandLine } else { '' }); createdAt = $(if ($_.CreationDate) { $_.CreationDate.ToUniversalTime().ToString('o') } else { '' }) } }) | ConvertTo-Json -Compress`
 }
 
 export function processSnapshotFrom(output: string, platform: string, plugins: readonly AgentPlugin[] = BUILTIN_PLUGINS): ProcessSnapshot {

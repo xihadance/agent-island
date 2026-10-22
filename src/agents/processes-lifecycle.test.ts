@@ -58,6 +58,17 @@ it.skipIf(process.platform !== 'win32')('reuses a resident process after turning
   expect(children[0].kill).toHaveBeenCalledTimes(1)
 })
 
+it.skipIf(process.platform !== 'win32')('bounds the CIM query below the shell timeout so a hung WMI does not cost a console', async () => {
+  const children = shellFixture()
+  const { listProcessSnapshot } = await queries()
+  const snapshot = listProcessSnapshot()
+  await tick()
+  reply(children[0])
+  await snapshot
+  const script = (native.spawn.mock.calls[0][1] as string[]).at(-1)!
+  expect(script).toContain('Get-CimInstance Win32_Process -OperationTimeoutSec 5 ')
+})
+
 it.skipIf(process.platform !== 'win32')('propagates a failed resident query without allocating a fallback console', async () => {
   const children = shellFixture()
   const { listProcessSnapshot } = await queries()

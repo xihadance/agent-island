@@ -27,6 +27,7 @@ function fakeShell() {
 }
 
 const END = '@@CUTE_ISLAND_PROCESSES_END@@'
+const FAILED = '@@CUTE_ISLAND_PROCESSES_FAILED@@'
 /** Queries are queued, so the shell starts on a later microtask than the call. */
 const settled = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
 
@@ -95,8 +96,25 @@ describe('resident process query shell', () => {
     const script = residentScript('Get-Thing')
     expect(script).toContain('while ($null -ne [Console]::In.ReadLine())')
     // A throwing query must still print the sentinel, or the reader waits forever.
-    expect(script).toContain("try { Get-Thing } catch { '[]' }")
+    expect(script).toContain(`try { Get-Thing } catch { '${FAILED}' }`)
+    expect(script).not.toContain("catch { '[]' }")
     expect(script.indexOf(END)).toBeGreaterThan(script.indexOf('Get-Thing'))
+  })
+
+  it('rejects a failed query without reporting an empty process table or replacing the shell', async () => {
+    const { spawns, launch } = fakeShell()
+    const shell = new ResidentShell(launch, () => 1000)
+    const failed = shell.ask('Q')
+    await settled()
+    spawns[0].say(FAILED + '\r\n' + END + '\n')
+    await expect(failed).rejects.toThrow('进程查询失败')
+    // A hung WMI ends inside the shell; the console host stays, and the next query is answered at once.
+    const next = shell.ask('Q')
+    await settled()
+    spawns[0].say('[{"pid":3}]' + END + '\n')
+    expect(await next).toBe('[{"pid":3}]')
+    expect(spawns).toHaveLength(1)
+    shell.dispose()
   })
 })
 

@@ -143,7 +143,7 @@ while ($null -ne ($islandLine = [Console]::ReadLine())) {
     const capture = async (name, width, height, target = 'command') => {
       settings.setMinimumSize(360, 480); settings.setContentSize(width, height)
       await evaluate(target === 'profile' ? 'document.querySelector(".hosted-codex").scrollIntoView({block:"start"})'
-        : 'Array.from(document.querySelectorAll("strong")).find(e=>e.textContent==="直接使用 codex 命令").scrollIntoView({block:"center"})')
+        : 'document.querySelector(".codex-command-settings").scrollIntoView({block:"center"})')
       await delay(300)
       assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false)
       await fs.writeFile(path.join(captureDir, `${name}.png`), (await settings.webContents.capturePage()).toPNG())
