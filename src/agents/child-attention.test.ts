@@ -13,6 +13,38 @@ function child(terminal: boolean, at: number): ChildSession {
 }
 
 describe('child attention across parent turns', () => {
+  it.each(['claude', 'codex', 'gemini', 'cursor'])('shows explicit child questions for %s and separates consecutive approvals', agent => {
+    const reducer = createReducer()
+    const store = new ActivityStore()
+    const tracker = new AttentionTracker()
+    reducer.push([{ kind: 'user', title: '检查', at: 1000 }, { kind: 'task_start', taskId: 'child', task: 'agent', label: '检查', at: 1000 }])
+    const linked = child(false, 0)
+    linked.view.kind = agent
+    const publish = () => {
+      const view = mergeChildTasks(reducer.snapshot(), [linked])
+      const activity = store.upsert({ id: 'parent', ...view, operation: view.operation ?? null })
+      tracker.update(store.list())
+      return activity
+    }
+    linked.view.state = 'running'
+    linked.view.operation = { kind: 'tool', name: 'request_user_input' }
+    linked.view.steps = [{ id: 'q', label: '选择方案', status: 'active' }]
+    expect(attentionKind(publish())).toBe('task-input')
+    tracker.acknowledge('parent')
+    linked.view.state = 'approval'
+    linked.view.steps = [{ id: 'a', label: '运行测试', status: 'waiting' }]
+    linked.view.operation = { kind: 'command', command: 'npm test' }
+    expect(attentionKind(publish())).toBe('task-approval')
+    tracker.acknowledge('parent')
+    linked.view.title = '更新了审批说明'
+    publish()
+    expect(tracker.pendingIds()).toEqual([])
+    linked.view.steps = [{ id: 'b', label: '安装依赖', status: 'waiting' }]
+    publish()
+    expect(tracker.pendingIds()).toEqual(['parent'])
+    store.dispose()
+  })
+
   it('retires a child failure on the next parent turn even when only the child records its completion', () => {
     const reducer = createReducer()
     const store = new ActivityStore()

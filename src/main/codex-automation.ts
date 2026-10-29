@@ -6,6 +6,7 @@ type PendingRequest = { id: string | number; method: string; params: unknown }
 
 /** A second native app-server client. Only joins threads already loaded by that server. */
 export class CodexAutomation {
+  private completedTurns = new Set<string>()
   status: SettingsSnapshot['codexStatus'] = 'disabled'
   detail = ''
   private socket?: WebSocket
@@ -34,6 +35,7 @@ export class CodexAutomation {
 
   stop(): void {
     this.url = ''
+    this.completedTurns.clear()
     clearTimeout(this.timer)
     clearInterval(this.poll)
     const socket = this.socket
@@ -156,14 +158,23 @@ export class CodexAutomation {
     if (message.method === 'thread/closed' || message.method === 'turn/completed') {
       const params = record(message.params)
       const turnId = record(params.turn).id
+      if (message.method === 'turn/completed' && typeof params.threadId === 'string' && typeof turnId === 'string') {
+        this.completedTurns.add(`${params.threadId}:${turnId}`)
+        if (this.completedTurns.size > 2048) this.completedTurns.delete(this.completedTurns.values().next().value!)
+      }
       for (const [id, request] of this.pending) {
         const requestParams = record(request.params)
-        if (requestParams.threadId === params.threadId && (message.method === 'thread/closed' || requestParams.turnId === turnId)) this.pending.delete(id)
+        if (requestParams.threadId === params.threadId && (message.method === 'thread/closed' || requestParams.turnId === turnId)) {
+          this.pending.delete(id)
+          this.rememberHandled(id)
+        }
       }
       return
     }
     if ((typeof message.id !== 'number' && typeof message.id !== 'string') || typeof message.method !== 'string') return
     if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(message.method)) return
+    const params = record(message.params)
+    if (typeof params.threadId === 'string' && typeof params.turnId === 'string' && this.completedTurns.has(`${params.threadId}:${params.turnId}`)) return
     if (this.handled.has(message.id) || this.pending.has(message.id)) return
     const request = { id: message.id, method: message.method, params: message.params }
     if (this.pending.size >= 256) return

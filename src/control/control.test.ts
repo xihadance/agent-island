@@ -170,7 +170,7 @@ describe('remote routing and delivery', () => {
     expect(await hub.receive(channel(), { eventId: 'free', sender: 'owner', chat: 'chat', text: 'yes' })).toContain('选择会话')
     expect(store.get(r.id).status).toBe('pending')
   })
-  it('reports every child issue, suppresses refreshes and acknowledged occurrences, reopens recurrences', () => {
+  it('reports child issues once through missing snapshots and announces new execution identities', () => {
     const { store, hub } = setup()
     const activities = new ActivityStore()
     activities.upsert({ id: 'codex-parent', state: 'running', tasks: [{ id: 'a', kind: 'agent', label: 'A', status: 'error' }, { id: 'b', kind: 'agent', label: 'B', status: 'active', state: 'approval' }] })
@@ -179,7 +179,10 @@ describe('remote routing and delivery', () => {
     const r = store.snapshot().requests[0]
     store.decide(r.id, r.revision, { action: 'ack' }, 'u')
     hub.observe(activities.list()); expect(store.snapshot().requests).toHaveLength(2)
-    hub.observe([]); hub.observe(activities.list()); expect(store.snapshot().requests).toHaveLength(4)
+    hub.observe([]); hub.observe(activities.list()); expect(store.snapshot().requests).toHaveLength(2)
+    activities.upsert({ id: 'codex-parent', tasks: [{ id: 'a', kind: 'agent', label: 'A', status: 'error', startedAt: Date.now() },
+      { id: 'b', kind: 'agent', label: 'B', status: 'active', state: 'approval', requestId: 'new-approval' }] })
+    hub.observe(activities.list()); expect(store.snapshot().requests).toHaveLength(4)
     activities.dispose()
   })
   it('bounds cloned history while scanning many sessions, and still separates their issues', () => {

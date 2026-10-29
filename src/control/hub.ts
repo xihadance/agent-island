@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { activityId } from '../agents/parse'
 import type { Activity, SessionSource } from '../shared/activity'
-import { isUserInputTool } from '../shared/island-behavior'
+import { attentionIssues } from '../shared/island-behavior'
 import { check, ControlStore, string, uid } from './store'
 import { ACTIVE_STATUSES, STATUS_LABEL, type AgentControlAdapter, type ChannelAdapter, type ControlSession, type Decision, type Guidance, type InterventionRequest, type RemoteMessage, type SessionResumer } from './types'
 
@@ -276,12 +276,13 @@ export class ControlHub {
     if (this.flushing || this.closed || !this.channels.length) return
     this.flushing = true
     try {
-      // A scan is one immutable revision of the state. Changes during an awaited
-      // send keep their newer revision and are picked up by the next scan.
+      // Recheck before each send: earlier channel calls may outlive the issue being reported.
       const snapshot = this.store.snapshot()
       const sessions = new Map(snapshot.sessions.map(session => [session.id, session]))
-      for (const channel of this.channels) for (const request of snapshot.requests) {
+      for (const channel of this.channels) for (const entry of snapshot.requests) {
         if (this.closed) return
+        const request = this.store.request(entry.id)
+        if (!request) continue
         const key = `${channel.id}/${request.id}`
         const delivery = snapshot.deliveries[key]
         if (delivery?.revision === request.revision || (delivery?.retryAt ?? 0) > this.store.now()) continue
@@ -312,38 +313,36 @@ export class ControlHub {
     const reread = (): void => { state = { sessions: this.store.sessions(), requests: this.store.requests() } }
     for (const activity of activities) {
       const controlled = state.sessions.find(s => s.adapter !== 'observation' && activityId(s.agent, s.nativeId) === activity.id)
-      const issues: { key: string; kind: 'approval' | 'input' | 'error'; title: string; detail: string }[] = []
-      if (!controlled?.connected || !state.requests.some(r => r.sessionId === controlled.id && ACTIVE_STATUSES.includes(r.status))) {
+      const issues = attentionIssues(activity).filter(issue => {
         // Connected Claude/Codex native gates own these requests. A delayed log
         // must not announce a second, observation-only request after automation replied.
         const nativeApproval = controlled?.connected && ['claude', 'codex'].includes(controlled.agent)
         const tool = activity.operation?.name?.split(/[.:]/).pop()?.toLowerCase()
         const nativeInput = controlled?.connected && (controlled.agent === 'claude' && tool === 'askuserquestion' ||
           controlled.agent === 'codex' && tool === 'request_user_input')
-        if (activity.state === 'approval' && !nativeApproval) issues.push({ key: 'approval', kind: 'approval', title: activity.title, detail: activity.operation?.command ?? activity.detail ?? '' })
-        if (['running', 'waiting'].includes(activity.state) && isUserInputTool(activity.operation?.name) && !nativeInput) issues.push({ key: 'input', kind: 'input', title: '需要人工回答（尚未建立问题控制关联）', detail: activity.title })
-      }
-      if (activity.state === 'error') issues.push({ key: 'error', kind: 'error', title: activity.title, detail: activity.detail ?? '' })
-      for (const task of activity.tasks ?? []) if (task.status === 'error' || (task.status === 'active' && task.state === 'approval')) {
-        issues.push({ key: `task:${task.id}:${task.startedAt}`, kind: task.status === 'error' ? 'error' : 'approval', title: `子任务：${task.label}`, detail: task.detail ?? '' })
-      }
+        const nativePending = controlled?.connected && state.requests.some(request => request.sessionId === controlled.id &&
+          ACTIVE_STATUSES.includes(request.status) && (request.kind === issue.kind || issue.kind === 'approval' && request.kind === 'plan'))
+        if (issue.kind === 'approval') return !nativeApproval && !nativePending
+        if (issue.kind === 'input') return !nativeInput && !nativePending && !activity.questionRequest
+        return true
+      })
       for (const issue of issues) {
-        const fingerprint = createHash('sha256').update(JSON.stringify([activity.id, activity.startedAt, issue.key, issue.kind,
-          issue.key === 'approval' ? activity.operation : issue.key === 'error' ? activity.title : null,
-          activity.steps.filter(s => s.status === 'waiting' || s.status === 'error').map(s => s.id)])).digest('hex')
+        const fingerprint = createHash('sha256').update(JSON.stringify([activity.id, issue.key])).digest('hex')
         found.add(fingerprint)
-        if (state.requests.some(r => r.origin === 'observation' && r.toolKey === fingerprint && r.status !== 'cancelled')) continue
+        const failure = issue.kind === 'error' || issue.kind === 'task-error'
+        if (state.requests.some(r => r.origin === 'observation' && r.toolKey === fingerprint && (failure || r.status !== 'cancelled'))) continue
         const source = this.source(activity.id)
         if (source?.cwd && controlled && !controlled.cwd) { this.store.change(next => { next.sessions.find(s => s.id === controlled.id)!.cwd = source.cwd }); reread() }
         const sessionId = controlled?.id ?? `observe:${source ? `${source.agent}:${source.nativeId}` : activity.id}`
-        if (issue.key === 'error' && state.requests.some(r => r.sessionId === sessionId && r.kind === 'error' && !r.toolKey && r.createdAt >= activity.startedAt && r.expiresAt > this.store.now())) continue
+        if (issue.kind === 'error' && state.requests.some(r => r.sessionId === sessionId && r.kind === 'error' && !r.toolKey && r.createdAt >= activity.startedAt && r.expiresAt > this.store.now())) continue
         if (!controlled && !state.sessions.some(s => s.id === sessionId)) { this.store.session({ id: sessionId, nativeId: source?.nativeId ?? activity.id, cwd: source?.cwd, agent: inferAgent(source?.agent ?? activity.agent), adapter: 'observation', label: activity.agent, capabilities: [], connected: false }); reread() }
-        const actions = issue.key === 'error' && (source || controlled) ? this.recoveryActions(sessionId, state.sessions) : ['ack' as const]
-        this.store.create({ sourceKey: `observe:${uid()}`, sessionId, origin: 'observation', kind: issue.kind, title: issue.title, failureStartedAt: activity.startedAt, detail: actions.includes('resume') ? issue.detail : `${issue.detail}\n仅通知；此事件没有可用的原生控制请求。`, toolKey: fingerprint, questions: [], actions, expiresAt: this.store.now() + 24 * 3600000 })
+        const actions = issue.kind === 'error' && (source || controlled) ? this.recoveryActions(sessionId, state.sessions) : ['ack' as const]
+        const kind = issue.kind === 'task-error' ? 'error' : issue.kind === 'task-approval' ? 'approval' : issue.kind === 'task-input' ? 'input' : issue.kind
+        this.store.create({ sourceKey: `observe:${uid()}`, sessionId, origin: 'observation', kind, title: issue.title, failureStartedAt: activity.startedAt, detail: actions.includes('resume') ? issue.detail : `${issue.detail}\n仅通知；此事件没有可用的原生控制请求。`, toolKey: fingerprint, questions: [], actions, expiresAt: this.store.now() + 24 * 3600000 })
         reread()
       }
     }
-    for (const r of this.store.requests()) if (r.origin === 'observation' && r.toolKey && !found.has(r.toolKey) && r.decision?.action !== 'resume' && !['cancelled', 'expired'].includes(r.status)) this.store.mark(r.id, 'cancelled')
+    for (const r of this.store.requests()) if (r.origin === 'observation' && r.toolKey && !found.has(r.toolKey) && r.decision?.action !== 'resume' && !['resolved', 'cancelled', 'expired'].includes(r.status)) this.store.mark(r.id, 'cancelled')
   }
 }
 function inferAgent(label: string): ControlSession['agent'] {

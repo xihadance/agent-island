@@ -1,5 +1,5 @@
 import type { ActivityOperation, ActivityState, ActivityStep, ActivityTask, TaskStatus } from '../shared/activity'
-import { isUserInputTool } from '../shared/island-behavior'
+import { attentionIssues, isUserInputTool } from '../shared/island-behavior'
 import { clip } from './events'
 import type { AgentEvent, ChildLink, SessionView } from './types'
 
@@ -48,7 +48,18 @@ export function createReducer() {
         if (!turn) turn = 1
         startedAt ??= event.at
       }
-      if (event.kind === 'turn_start') continue
+      if (event.kind === 'turn_start') {
+        steps.length = 0
+        calls.clear()
+        stepEvents.clear()
+        for (const [id, task] of tasks) if (task.status !== 'active') tasks.delete(id)
+        state = 'thinking'
+        title = '开始执行'
+        operation = undefined
+        detail = taskDetail
+        terminal = false
+        continue
+      }
       if (event.kind === 'exit') {
         // The agent recorded its own shutdown. An unfinished turn ends here by choice,
         // not by failure, and its in-process children died with it.
@@ -138,6 +149,8 @@ export function createReducer() {
         const step: ActivityStep = existing ?? { id: `s${++stepSequence}`, label: title, status: 'active' }
         step.status = waiting ? 'waiting' : 'active'
         step.kind = operation?.kind
+        if (isUserInputTool(operation?.name)) step.name = operation?.name
+        else delete step.name
         if (!existing) steps.push(step)
         stepEvents.set(step.id, event)
         if (event.callId) calls.set(event.callId, step)
@@ -194,7 +207,7 @@ export function createReducer() {
         endedAt ??= event.at
         continue
       }
-      state = 'error'
+      state = event.kind === 'stop' ? 'stopped' : 'error'
       title = clip(event.title, 80)
       detail = event.kind === 'error' ? event.detail || taskDetail : taskDetail
       for (const step of steps) if (step.status === 'active' || step.status === 'waiting') step.status = 'error'
@@ -247,7 +260,7 @@ export function createReducer() {
       tasks: capTasks([...tasks.values()]).map((task) => ({ ...task })),
       turn,
       startedAt,
-      endedAt: terminal && (state === 'error' || ![...tasks.values()].some((task) => task.status === 'active')) ? endedAt : undefined,
+      endedAt: terminal && (state === 'error' || state === 'stopped' || ![...tasks.values()].some((task) => task.status === 'active')) ? endedAt : undefined,
       terminal
     }
   }
@@ -268,9 +281,11 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
   for (const child of children) {
     const childView = presentTasks(child.view)
     const status: TaskStatus | undefined = childView.terminal
-      ? childView.state === 'error' ? 'error' : 'done'
+      ? childView.state === 'error' ? 'error' : childView.state === 'stopped' ? 'stopped' : 'done'
       : child.live ? 'active' : undefined
     const detail = GENERIC_TITLES.has(childView.title) ? undefined : childView.title
+    const gate = attentionIssues(childView).find(issue => ['approval', 'input', 'task-approval', 'task-input'].includes(issue.kind))
+    const request = gate ? { requestKind: gate.kind === 'input' || gate.kind === 'task-input' ? 'input' as const : 'approval' as const, requestId: gate.key } : {}
     const existing = tasks.find((task) => task.id === child.link.taskId)
     if (childView.terminal && childView.endedAt !== undefined) {
       // A reused task can start before its child transcript has appended the new turn.
@@ -294,6 +309,9 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
       // The parent's own completion notice is authoritative once it arrives.
       if (existing.status === 'active') {
         existing.state = childView.state
+        delete existing.requestKind
+        delete existing.requestId
+        if (status === 'active') Object.assign(existing, request)
         if (status && status !== 'active') {
           existing.status = status
           if (childView.endedAt !== undefined) existing.endedAt = Math.max(existing.startedAt ?? childView.endedAt, childView.endedAt)
@@ -304,10 +322,10 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
     }
     if (status !== 'active') continue
     tasks.push({ id: child.link.taskId, kind: 'agent', label: clip(child.link.label, 80), status, state: childView.state,
-      ...(detail ? { detail: clip(detail, 160) } : {}), ...(childView.startedAt !== undefined ? { startedAt: childView.startedAt } : {}) })
+      ...(detail ? { detail: clip(detail, 160) } : {}), ...(childView.startedAt !== undefined ? { startedAt: childView.startedAt } : {}), ...request })
   }
   const ends = [view.endedAt, ...children.map((child) => child.view.endedAt)].filter((at): at is number => at !== undefined)
-  return { ...view, tasks: capTasks(tasks), endedAt: view.terminal && view.state !== 'error' && ends.length ? Math.max(...ends) : view.endedAt }
+  return { ...view, tasks: capTasks(tasks), endedAt: view.terminal && view.state === 'success' && ends.length ? Math.max(...ends) : view.endedAt }
 }
 
 /**

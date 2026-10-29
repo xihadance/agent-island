@@ -93,7 +93,7 @@ describe('pending human questions', () => {
     const push = transcript()
     push(ask('a'), ask('b'), done)
     const view = push(event({ type: 'turn_aborted', reason: 'interrupted' }))
-    expect(view).toMatchObject({ state: 'error', title: '已中断', terminal: true })
+    expect(view).toMatchObject({ state: 'stopped', title: '已中断', terminal: true })
     expect(view.steps.every((step) => step.status === 'error')).toBe(true)
   })
 })

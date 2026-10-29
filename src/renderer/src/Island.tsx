@@ -306,7 +306,7 @@ function Expanded({ activity, onDismiss, onAcknowledge }: { activity: Activity; 
 
 function AttentionNotice({ activity, onAcknowledge }: { activity: Activity; onAcknowledge: (id: string) => void }) {
   const kind = attentionKind(activity)
-  const label = kind === 'approval' ? '需要审批' : kind === 'input' ? '需要你回复' : kind === 'task-approval' ? '子 Agent 需要审批' : kind === 'task-error' ? '后台任务异常' : '会话异常'
+  const label = kind === 'approval' ? '需要审批' : kind === 'input' ? '需要你回复' : kind === 'task-approval' ? '子 Agent 需要审批' : kind === 'task-input' ? '子 Agent 需要你回复' : kind === 'task-error' ? '后台任务异常' : '会话异常'
   return (
     <div className="managed-notice" data-testid="managed-notice" data-kind={kind}>
       <div><strong>{label}</strong><span>{activity.questionRequest ? '展开选项即可回答' : `请在 ${activity.agent} 中查看处理`}</span></div>

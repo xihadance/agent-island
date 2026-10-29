@@ -38,6 +38,7 @@ it('offers recovery only for top-level failures with original local metadata, ne
   const id = `claude-${nativeId}`
   activities.setSessionSource(id, { agent: 'claude', nativeId, cwd: 'D:/原项目' })
   activities.upsert({ id, agent: 'Claude Code', state: 'error', title: '原生异常', tasks: [{ id: 'child', kind: 'agent', label: '子任务', status: 'error' }] })
+  activities.upsert({ id: 'child-only', state: 'running', tasks: [{ id: 'child', kind: 'agent', label: '子任务', status: 'error' }] })
   hub.observe(activities.list())
   expect(store.snapshot().requests.find(r => r.title === '异常')?.actions).toEqual(['ack'])
   expect(store.snapshot().requests.find(r => r.title === '原生异常')?.actions).toEqual(['resume', 'ack'])

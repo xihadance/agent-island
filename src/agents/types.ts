@@ -40,6 +40,7 @@ export type AgentEvent = { at?: number } & (
   | { kind: 'tool_result'; title: string; ok: boolean; callId?: string }
   | { kind: 'done'; title: string }
   | { kind: 'error'; title: string; detail?: string }
+  | { kind: 'stop'; title: string }
   /** The agent recorded its own shutdown. Silence after this is not an interruption. */
   | { kind: 'exit' }
   | { kind: 'task_start'; taskId: string; task: TaskKind; label: string; detail?: string }

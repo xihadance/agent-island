@@ -136,6 +136,7 @@ export function endedEvent(status: unknown, message: unknown): AgentEvent {
   if (status === 'error' || status === 'failed') {
     return { kind: 'error', title: title || '执行失败' }
   }
+  if (status === 'interrupted' || status === 'cancelled' || status === 'stopped') return { kind: 'stop', title: title || '已中断' }
   return { kind: 'done', title: title || '已完成' }
 }
 

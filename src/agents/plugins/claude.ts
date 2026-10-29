@@ -83,7 +83,7 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
         continue
       }
       if (row.type === 'user' && /^\[Request interrupted by user(?: for tool use)?\]$/.test(content.trim())) {
-        events.push(...timestampEvents([{ kind: 'error', title: '已中断' }], row))
+        events.push(...timestampEvents([{ kind: 'stop', title: '已中断' }], row))
         continue
       }
       const notice = notificationEvents(row, owners)

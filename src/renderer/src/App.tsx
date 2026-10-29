@@ -4,7 +4,7 @@ import { getBridge } from './bridge'
 import { Island } from './Island'
 import { useIslandDrag } from './useIslandDrag'
 import { useIslandBehavior } from './useIslandBehavior'
-import { attentionKind, isPassive, islandAttention } from '../../shared/island-behavior'
+import { isPassive, islandAttention } from '../../shared/island-behavior'
 import type { IslandApi } from './env'
 
 export function App() {
@@ -21,7 +21,11 @@ export function App() {
   const expandedRef = useRef(false)
   const hoveringRef = useRef(false)
   const managed = behavior.mode === 'managed'
-  const pending = activities.filter(item => behavior.attentionIds.includes(item.id))
+  const activityById = new Map(activities.map(activity => [activity.id, activity]))
+  const pending = behavior.attentionIds.flatMap(id => {
+    const activity = activityById.get(id)
+    return activity ? [activity] : []
+  })
   const passive = isPassive(behavior)
   const drag = useIslandDrag(bridge, !passive, pending.length > 0)
   const attention = pending.length > 0 && islandAttention(behavior, drag.dock.collapsed)
@@ -49,7 +53,7 @@ export function App() {
 
   const primary = activities[0]
   const stacked = activities.length > 1
-  const attentionId = activities.find((item) => attentionKind(item))?.id
+  const attentionId = pending[0]?.id
 
   useEffect(() => {
     if (managed) return

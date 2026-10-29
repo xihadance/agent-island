@@ -47,6 +47,7 @@ export class HookController {
       session.turnId = undefined
     })
     if (['SessionStart', 'sessionStart', 'UserPromptSubmit', 'BeforeAgent', 'beforeSubmitPrompt'].includes(eventName)) store.settleSession(id, 'cancelled', true)
+    if (['Stop', 'AfterAgent', 'stop'].includes(eventName)) store.settleSession(id, 'cancelled', true)
     if (['PostToolUse', 'PostToolUseFailure', 'AfterTool', 'postToolUse', 'postToolUseFailure', 'afterShellExecution', 'afterMCPExecution'].includes(eventName)) {
       const matching = store.snapshot().requests.filter(r => r.sessionId === id && r.toolKey === toolKey && ACTIVE_STATUSES.includes(r.status))
       // PermissionRequest has no tool_use_id. An ambiguous completion must not settle a sibling.
@@ -96,9 +97,14 @@ export class HookController {
         actions: kind === 'input' ? ['answer', 'cancel'] : ['approve', 'deny', 'cancel'], expiresAt: store.now() + 300000 })
       return { requestId: request.id, deadline: request.expiresAt }
     }
-    const failed = ['PostToolUseFailure', 'postToolUseFailure', 'StopFailure'].includes(eventName) || eventName === 'Notification'
-    if (failed) store.create({ sourceKey: `hook:${agent}:${invocation}:notice`, sessionId: id, origin: 'observation', kind: 'error', title: eventName === 'Notification' ? 'Agent 通知' : '执行异常',
-      detail: JSON.stringify(event).slice(0, 16000), questions: [], actions: eventName === 'StopFailure' ? this.hub.recoveryActions(id) : ['ack'], expiresAt: store.now() + 86400000 })
+    // Tool failures are repairable, and generic notifications do not prove a failed turn.
+    if (eventName === 'StopFailure') {
+      const sourceKey = `hook:${agent}:${invocation}:notice`
+      const previousFailure = store.requests().find(request => request.sourceKey === sourceKey)
+      store.settleSession(id, 'cancelled', true, previousFailure?.id)
+      store.create({ sourceKey, sessionId: id, origin: 'observation', kind: 'error', title: '执行异常',
+        detail: JSON.stringify(event).slice(0, 16000), questions: [], actions: this.hub.recoveryActions(id), expiresAt: store.now() + 86400000 })
+    }
     const contextEvents = agent === 'claude' ? ['UserPromptSubmit', 'PostToolUse', 'PostToolUseFailure', 'Stop'] : agent === 'gemini' ? ['BeforeAgent', 'AfterTool'] : ['postToolUse', 'postToolUseFailure', 'stop']
     // Channel messages reach the original TUI directly; never inject them again through a hook.
     if (!contextEvents.includes(eventName) || previous?.terminal) return { output: {} }

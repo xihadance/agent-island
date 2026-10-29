@@ -23,6 +23,8 @@ export class CodexAdapter implements AgentControlAdapter {
   private recovering = new Set<string>()
   private sessions = new Map<string, string>()
   private native = new Map<string, NativeRequest>()
+  private latestTurns = new Map<string, { id: string; started: boolean }>()
+  private completedTurns = new Map<string, string>()
   private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
   get connected(): boolean { return !this.closed && this.initialized && this.socket?.readyState === WebSocket.OPEN }
   constructor(private readonly hub: ControlHub, private readonly config: CodexConnection, private readonly requestsChanged: (created: boolean) => void = () => {},
@@ -99,6 +101,7 @@ export class CodexAdapter implements AgentControlAdapter {
       this.hub.store.session({ id, agent: 'codex', nativeId: thread, connectionId: this.config.id, adapter: 'codex', label: thread.slice(0, 12), connected: true, capabilities: ['approve', 'answer', 'message', 'interrupt'] })
       this.hub.attach(id, this)
       let result: any
+      const observedTurn = this.latestTurns.get(thread)
       try { result = await this.rpc('thread/resume', { threadId: thread }) }
       catch {
         if (this.closed || this.socket !== socket) return
@@ -109,7 +112,19 @@ export class CodexAdapter implements AgentControlAdapter {
       if (this.closed || this.socket !== socket) return
       const native = result.thread
       const active = native.turns?.findLast((turn: any) => turn.status === 'inProgress')
-      this.hub.store.change(state => { const s = state.sessions.find(s => s.id === id)!; s.label = native.name || s.label; s.turnId = active?.id ?? s.turnId })
+      const latest = native.turns?.at(-1)
+      // The response snapshot may predate lifecycle events or gates received while subscribing.
+      const liveTurn = this.latestTurns.get(thread)
+      const unchangedTurn = liveTurn === observedTurn
+      if (unchangedTurn && latest?.id) this.latestTurns.set(thread, { id: latest.id, started: latest.status === 'inProgress' })
+      // An older snapshot can still retire earlier gates without replacing the live turn.
+      if (latest?.id && latest.status !== 'inProgress' && (unchangedTurn || liveTurn?.id !== latest.id) &&
+          !this.completedTurns.has(`${thread}:${latest.id}`)) this.rememberCompletion(thread, latest.id, latest.status)
+      this.hub.store.change(state => {
+        const s = state.sessions.find(s => s.id === id)!
+        s.label = native.name || s.label
+        if (unchangedTurn) s.turnId = active?.id ?? s.turnId
+      })
     }
   }
   private detach(thread: string, settle = true): void {
@@ -139,23 +154,33 @@ export class CodexAdapter implements AgentControlAdapter {
     if (!sessionId) return
     if (message.method === 'thread/closed') { this.detach(params.threadId); return }
     if (message.method === 'turn/started') {
+      this.latestTurns.set(params.threadId, { id: params.turn.id, started: true })
       this.hub.store.settleSession(sessionId, 'cancelled', true)
       this.hub.store.change(state => { const s = state.sessions.find(s => s.id === sessionId)!; s.turnId = params.turn.id; s.lastSeenAt = this.hub.store.now() })
     }
     if (message.method === 'error' && params.willRetry === false && typeof params.turnId === 'string') {
+      const latest = this.latestTurns.get(params.threadId)?.id
+      const completed = this.completedTurns.get(`${params.threadId}:${params.turnId}`)
+      if (latest && latest !== params.turnId || completed && completed !== 'failed') return
       this.recordError(sessionId, params.threadId, params.turnId, params.error, false)
       return
     }
     if (message.method === 'turn/completed') {
       const currentTurn = this.hub.store.sessions().find(session => session.id === sessionId)?.turnId
+      const latest = this.latestTurns.get(params.threadId)?.id
+      const completed = this.completedTurns.get(`${params.threadId}:${params.turn.id}`)
+      if (latest && latest !== params.turn.id || completed === 'completed') return
+      const failed = params.turn.status === 'failed' || params.turn.status === 'interrupted' && !!params.turn.error
+      this.latestTurns.set(params.threadId, { id: params.turn.id, started: false })
+      this.rememberCompletion(params.threadId, params.turn.id, failed ? 'failed' : params.turn.status)
       // A delayed completion for the old turn must not clear a newer turn's native gate.
       if (!currentTurn || currentTurn === params.turn.id) {
-        const error = ['failed', 'interrupted'].includes(params.turn.status)
+        const error = failed
           ? this.hub.store.requests().find(request => request.sourceKey === `codex-error:${this.config.id}:${params.threadId}:${params.turn.id}`) : undefined
         this.hub.store.settleSession(sessionId, 'cancelled', false, error?.id)
         this.hub.store.change(state => { state.sessions.find(s => s.id === sessionId)!.turnId = undefined })
       }
-      if (['failed', 'interrupted'].includes(params.turn.status)) this.recordError(sessionId, params.threadId, params.turn.id, params.turn.error, !currentTurn || currentTurn === params.turn.id)
+      if (failed) this.recordError(sessionId, params.threadId, params.turn.id, params.turn.error, !currentTurn || currentTurn === params.turn.id)
     }
     if (message.method === 'serverRequest/resolved') {
       for (const r of this.hub.store.snapshot().requests) if (r.sessionId === sessionId && r.nativeRequestId === params.requestId && this.native.has(r.id) && ACTIVE_STATUSES.includes(r.status)) {
@@ -164,7 +189,15 @@ export class CodexAdapter implements AgentControlAdapter {
       this.requestsChanged(false)
     }
     if (message.id === undefined || !['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput', 'mcpServer/elicitation/request'].includes(message.method)) return
-    if (params.turnId) this.hub.store.change(state => { state.sessions.find(s => s.id === sessionId)!.turnId = params.turnId })
+    // Completion evidence also retires delayed native gates; never approve an old turn.
+    const currentTurn = this.hub.store.sessions().find(session => session.id === sessionId)?.turnId
+    const latestTurn = this.latestTurns.get(params.threadId)
+    if (typeof params.turnId === 'string' && (this.completedTurns.has(`${params.threadId}:${params.turnId}`) ||
+        currentTurn && latestTurn?.started && latestTurn.id === currentTurn && !this.completedTurns.has(`${params.threadId}:${currentTurn}`) && currentTurn !== params.turnId)) return
+    if (typeof params.turnId === 'string') {
+      this.latestTurns.set(params.threadId, { id: params.turnId, started: latestTurn?.started === true && latestTurn.id === params.turnId })
+      this.hub.store.change(state => { state.sessions.find(s => s.id === sessionId)!.turnId = params.turnId })
+    }
     const input = /requestUserInput$/.test(message.method)
     const elicitation = message.method === 'mcpServer/elicitation/request'
     const questions: Question[] = input && Array.isArray(params.questions) ? params.questions.map((q: any) => ({ id: q.id, text: q.question, options: (q.options ?? []).map((o: any) => o.label), descriptions: (q.options ?? []).map((o: any) => typeof o.description === 'string' ? o.description.slice(0, 2000) : ''), multi: false, freeText: q.isOther !== false })) : elicitation && params.mode !== 'url' ? formQuestions(params.requestedSchema) ?? [] : []
@@ -200,6 +233,12 @@ export class CodexAdapter implements AgentControlAdapter {
       expiresAt: this.hub.store.now() + Math.min(typeof params.autoResolutionMs === 'number' ? Math.max(0, params.autoResolutionMs) : 600000, 600000) })
     this.native.set(r.id, { method: message.method, params })
     this.requestsChanged(true)
+  }
+  private rememberCompletion(threadId: string, turnId: string, status: string): void {
+    const key = `${threadId}:${turnId}`
+    this.completedTurns.delete(key)
+    this.completedTurns.set(key, status)
+    if (this.completedTurns.size > 2048) this.completedTurns.delete(this.completedTurns.keys().next().value!)
   }
   private recordError(sessionId: string, threadId: string, turnId: string, error: unknown, completed: boolean): void {
     const sourceKey = `codex-error:${this.config.id}:${threadId}:${turnId}`

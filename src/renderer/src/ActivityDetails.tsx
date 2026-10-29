@@ -21,9 +21,9 @@ export function Tasks({ activity }: { activity: Activity }) {
   if (!tasks.length) return null
   // Keep actionable children visible even when there are many running tasks.
   const visible = [
-    ...tasks.filter(task => task.status === 'active' && task.state === 'approval'),
+    ...tasks.filter(task => task.status === 'active' && (task.state === 'approval' || task.requestKind)),
     ...tasks.filter(task => task.status === 'error').reverse(),
-    ...tasks.filter(task => task.status === 'active' && task.state !== 'approval'),
+    ...tasks.filter(task => task.status === 'active' && task.state !== 'approval' && !task.requestKind),
     ...tasks.filter(task => task.status === 'done' || task.status === 'stopped').reverse()
   ]
     .slice(0, MAX_VISIBLE_TASKS)
@@ -42,7 +42,7 @@ export function Tasks({ activity }: { activity: Activity }) {
 }
 
 function TaskRow({ task }: { task: ActivityTask }) {
-  const state = task.status === 'active' ? task.state : undefined
+  const state = task.status === 'active' ? task.requestKind === 'input' ? 'waiting' : task.requestKind === 'approval' ? 'approval' : task.state : undefined
   const icon = task.status === 'active' ? state ?? task.kind : task.status
   return (
     <li data-task={task.id} data-status={task.status} data-state={state} data-kind={task.kind} title={task.detail ? `${task.label}\n${task.detail}` : task.label}>
@@ -52,7 +52,7 @@ function TaskRow({ task }: { task: ActivityTask }) {
         {task.detail && <span className="task-detail">{task.detail}</span>}
       </span>
       <span className="task-meta">
-        <span className="task-state" data-testid="task-status">{state ? STATE_LABEL[state] : TASK_STATUS_LABEL[task.status]}</span>
+        <span className="task-state" data-testid="task-status">{task.status === 'active' && task.requestKind === 'input' ? '需要你回复' : state ? STATE_LABEL[state] : TASK_STATUS_LABEL[task.status]}</span>
         <TaskExecutionTime task={task} />
       </span>
       <span className="sr-only">{task.kind === 'agent' ? '子 Agent' : '后台命令'}</span>

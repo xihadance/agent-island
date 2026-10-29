@@ -60,7 +60,7 @@ describe('Claude interactive lifecycle', () => {
     expect(parseTranscript('claude', 'session', jsonl([request,
       { type: 'assistant', message: { content: [{ type: 'thinking', thinking: '检查中' }] } },
       { type: 'user', timestamp: END, message: { content: [{ type: 'text', text: content }] } }
-    ]))).toMatchObject({ state: 'error', title: '已中断', terminal: true, turn: 1, startedAt: START, endedAt: END })
+    ]))).toMatchObject({ state: 'stopped', title: '已中断', terminal: true, turn: 1, startedAt: START, endedAt: END })
   })
 })
 

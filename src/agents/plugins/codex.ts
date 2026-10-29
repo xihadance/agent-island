@@ -261,7 +261,8 @@ function codexEvent(payload: Record<string, unknown>, calls: Map<string, Call>):
   if (type === 'task_complete') return [{ kind: 'done', title: cleanText(textOf(payload.last_agent_message) || textOf(payload.message)) || '已完成' }]
   if (type === 'turn_aborted') {
     const title = cleanText(textOf(payload.message) || textOf(payload.error))
-    return [{ kind: 'error', title: title || (payload.reason === 'interrupted' ? '已中断' : '执行失败') }]
+    if (payload.reason === 'interrupted' && !payload.error) return [{ kind: 'stop', title: title || '已中断' }]
+    return [{ kind: 'error', title: title || '执行失败' }]
   }
   if (type === 'error') {
     return [{ kind: 'error', title: cleanText(textOf(payload.message) || textOf(payload.error)) || '执行失败' }]

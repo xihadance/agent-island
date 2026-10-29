@@ -128,10 +128,10 @@ it('honors a live turn notification even when the resume response still contains
   expect(received.some(m => m.method === 'turn/start')).toBe(false)
 })
 
-it('offers continuation on a native interrupted turn and retains the failed turn identity', async () => {
+it.each(['failed', 'interrupted'])('offers continuation when a native %s turn carries an explicit failure', async status => {
   const { hub, store, request, peer } = await fixture()
   await hub.resume(request.id, 1, 'owner')
   await vi.waitFor(() => expect(store.get(request.id).status).toBe('resolved'))
-  peer().send(JSON.stringify({ method: 'turn/completed', params: { threadId: 'native', turn: { id: 'new-turn', status: 'interrupted' } } }))
+  peer().send(JSON.stringify({ method: 'turn/completed', params: { threadId: 'native', turn: { id: 'new-turn', status, error: { message: '连接失败' } } } }))
   await vi.waitFor(() => expect(store.snapshot().requests.some(r => r.turnId === 'new-turn' && r.kind === 'error' && r.actions.includes('resume'))).toBe(true))
 })

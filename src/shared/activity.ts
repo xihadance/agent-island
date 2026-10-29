@@ -25,6 +25,8 @@ export interface ActivityStep {
   label: string
   status: StepStatus
   kind?: OperationKind
+  /** Explicit input tools remain identifiable while other calls are in flight. */
+  name?: string
 }
 
 /** Work that outlives a single tool call: sub-agents and background commands. */
@@ -39,6 +41,9 @@ export interface ActivityTask {
   status: TaskStatus
   /** Latest child-session state, when a linked transcript is available. */
   state?: ActivityState
+  /** Evidence of a live child request, distinct from generic waiting or progress text. */
+  requestKind?: 'approval' | 'input'
+  requestId?: string
   detail?: string
   /** Unix milliseconds from task execution events; unknown times stay omitted. */
   startedAt?: number
@@ -535,7 +540,9 @@ function parseSteps(value: unknown): ActivityStep[] {
     if (seen.has(id)) throw new ActivityError(400, `steps[${index}].id 重复`)
     seen.add(id)
     if (step.kind !== undefined && !isOperationKind(step.kind)) throw new ActivityError(400, `steps[${index}].kind 无效`)
-    return { id, label: clip(step.label, 80), status: step.status, ...(step.kind ? { kind: step.kind as OperationKind } : {}) }
+    if (step.name !== undefined && (typeof step.name !== 'string' || !step.name.trim())) throw new ActivityError(400, `steps[${index}].name 无效`)
+    return { id, label: clip(step.label, 80), status: step.status, ...(step.kind ? { kind: step.kind as OperationKind } : {}),
+      ...(typeof step.name === 'string' ? { name: clip(step.name, 160) } : {}) }
   })
 }
 
@@ -556,6 +563,8 @@ function parseTasks(value: unknown): ActivityTask[] {
       throw new ActivityError(400, `tasks[${index}].status 无效`)
     }
     if (task.state !== undefined && !isActivityState(task.state)) throw new ActivityError(400, `tasks[${index}].state 无效`)
+    if (task.requestKind !== undefined && task.requestKind !== 'approval' && task.requestKind !== 'input') throw new ActivityError(400, `tasks[${index}].requestKind 无效`)
+    if (task.requestId !== undefined && (typeof task.requestId !== 'string' || !task.requestId.trim() || task.requestId.length > 24000)) throw new ActivityError(400, `tasks[${index}].requestId 无效`)
     if (task.detail !== undefined && typeof task.detail !== 'string') throw new ActivityError(400, `tasks[${index}].detail 无效`)
     const detail = typeof task.detail === 'string' ? clip(task.detail, 160) : ''
     const timing: Pick<ActivityTask, 'startedAt' | 'endedAt'> = {}
@@ -574,7 +583,9 @@ function parseTasks(value: unknown): ActivityTask[] {
       throw new ActivityError(400, `tasks[${index}].endedAt 只能用于已结束的任务`)
     }
     return { id, kind: task.kind, label: clip(task.label, 80), status: task.status as TaskStatus,
-      ...(task.state ? { state: task.state as ActivityState } : {}), ...(detail ? { detail } : {}), ...timing }
+      ...(task.state ? { state: task.state as ActivityState } : {}), ...(detail ? { detail } : {}), ...timing,
+      ...(task.requestKind ? { requestKind: task.requestKind as 'approval' | 'input' } : {}),
+      ...(typeof task.requestId === 'string' ? { requestId: task.requestId } : {}) }
   })
 }
 

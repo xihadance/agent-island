@@ -108,7 +108,7 @@ describe('Codex background work', () => {
       { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<turn_aborted>\nThe user interrupted\n</turn_aborted>' }] } },
       { type: 'event_msg', payload: { type: 'turn_aborted', reason: 'interrupted' } }
     ]))
-    expect(aborted).toMatchObject({ state: 'error', title: '已中断', terminal: true })
+    expect(aborted).toMatchObject({ state: 'stopped', title: '已中断', terminal: true })
   })
 
   it('keeps unanswered Claude, Gemini, and Cursor questions pending', () => {
@@ -175,7 +175,7 @@ describe('Codex background work', () => {
       { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<turn_aborted>\nThe user interrupted\n</turn_aborted>' }] } },
       { type: 'event_msg', payload: { type: 'turn_aborted', reason: 'interrupted' } }
     ]))
-    expect(view).toMatchObject({ state: 'error', title: '已中断' })
+    expect(view).toMatchObject({ state: 'stopped', title: '已中断' })
     expect(view?.steps).toHaveLength(1)
   })
 

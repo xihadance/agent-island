@@ -44,6 +44,10 @@ export class ControlStore {
    */
   sessions(): ControlSession[] { return structuredClone(this.state.sessions) }
   requests(): InterventionRequest[] { return structuredClone(this.state.requests) }
+  request(id: string): InterventionRequest | undefined {
+    const request = this.state.requests.find(request => request.id === id)
+    return request ? structuredClone(request) : undefined
+  }
   wasAutomated(sourceKey: string, fingerprint: string): boolean {
     const previous = this.state.automated?.[sourceKey]
     if (previous === undefined) return false
