@@ -320,7 +320,10 @@ function publishActivities(activities = store?.list() ?? []): void {
   notifyBehavior()
   if (updater?.state.status === 'downloaded') notifySettings()
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setFocusable(next.some(activity => activity.questionRequest?.status === 'pending' && activity.questionRequest.connected))
+    const focusable = next.some(activity => activity.questionRequest?.status === 'pending' && activity.questionRequest.connected)
+    // Chromium's Windows Deactivate() can activate a sibling even when this window
+    // was inactive, ending another application's IME composition on routine updates.
+    if (mainWindow.isFocusable() !== focusable) mainWindow.setFocusable(focusable)
     mainWindow.webContents.send('island:activities', next)
   }
 }
