@@ -15,7 +15,7 @@ async function until(check) {
 }
 
 async function fixture() {
-  const { app, BrowserWindow, Menu, nativeTheme } = require('electron')
+  const { app, BrowserWindow, Menu, nativeTheme, screen } = require('electron')
   app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
   app.commandLine.appendSwitch('disable-renderer-backgrounding')
   app.getVersion = () => require('../package.json').version
@@ -24,7 +24,8 @@ async function fixture() {
   Object.defineProperty(app, 'isPackaged', { get: () => process.env.ISLAND_FAKE_PACKAGED === '1' })
   let trayMenu = []
   const buildMenu = Menu.buildFromTemplate.bind(Menu)
-  Menu.buildFromTemplate = template => { if (template.some(item => item.label === '托管模式')) trayMenu = template; return buildMenu(template) }
+  const flattenMenu = items => items.flatMap(item => [item, ...(Array.isArray(item.submenu) ? flattenMenu(item.submenu) : [])])
+  Menu.buildFromTemplate = template => { if (template.some(item => item.id === 'tray-settings')) trayMenu = flattenMenu(template); return buildMenu(template) }
   // Paint without covering the user's desktop or taking keyboard focus.
   const showInactive = BrowserWindow.prototype.showInactive
   BrowserWindow.prototype.show = function () { this.setPosition(-10000, -10000); showInactive.call(this) }
@@ -118,6 +119,32 @@ async function fixture() {
   await evaluate('document.querySelectorAll("input[name=island-mode]")[1].click()')
   await until(async () => (await state()).preferences.mode === 'managed')
   assert.equal(trayMenu.find(item => item.label === '托管模式').checked, true)
+  const islandWindow = BrowserWindow.getAllWindows().find(win => win !== settings)
+  await until(async () => (await state()).islandVisible)
+  await settled()
+  await evaluate('document.querySelector("[data-testid=toggle-island-visibility]").click()')
+  await until(async () => !(await state()).islandVisible)
+  assert.equal(islandWindow.isVisible(), false)
+  await until(() => evaluate('document.querySelector("[data-testid=toggle-island-visibility]").textContent === "显示灵动岛"'))
+  assert.equal(trayMenu.find(item => item.id === 'toggle-visibility').label, '显示灵动岛')
+  trayMenu.find(item => item.id === 'toggle-visibility').click()
+  await until(() => evaluate('document.querySelector("[data-testid=toggle-island-visibility]").textContent === "隐藏灵动岛"'))
+  assert.equal(islandWindow.isVisible(), true)
+  trayMenu.find(item => item.id === 'toggle-visibility').click()
+  await until(() => evaluate('document.querySelector("[data-testid=toggle-island-visibility]").textContent === "显示灵动岛"'))
+  await evaluate('window.island.settingsAction("reset-position")')
+  const area = screen.getPrimaryDisplay().workArea
+  const savedPosition = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'window-position.json'), 'utf8'))
+  assert.equal(savedPosition.x, Math.round(area.x + (area.width - islandWindow.getBounds().width) / 2))
+  assert.equal(savedPosition.y, area.y + 4)
+  assert.equal((await state()).islandVisible, true, 'Restoring position also reveals a hidden island')
+  assert.equal(trayMenu.find(item => item.id === 'toggle-visibility').label, '隐藏灵动岛')
+  const watch = trayMenu.find(item => item.id === 'watch-sessions')
+  assert.equal(watch.enabled, false, 'The launch environment keeps session recognition disabled')
+  assert.equal(watch.checked, false)
+  const configuredWatch = (await state()).preferences.watchSessions
+  watch.click({ checked: true })
+  assert.equal((await state()).preferences.watchSessions, configuredWatch)
   await capture('settings-general')
   trayMenu.find(item => item.label === '关注模式').click()
   await until(() => evaluate('document.querySelectorAll("input[name=island-mode]")[0].checked'))
@@ -304,7 +331,8 @@ async function fixture() {
   await until(async () => !(await state()).remote.enabled)
   assert.equal((await post({ hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_use_id: 'after-remote' })).hookSpecificOutput.decision.behavior, 'allow')
   await evaluate('window.island.settingsAction("clear-history")')
-  trayMenu.find(item => item.label === '配置远程接管…').click()
+  trayMenu.find(item => item.id === 'tray-settings').click()
+  await click('远程接管')
   await until(() => evaluate('document.querySelector("h1").textContent === "远程接管"'))
   await click('自动审批')
   settings.setMinimumSize(360, 480)

@@ -11,11 +11,12 @@ import { ActivityError, ActivityStore } from '../shared/activity'
 import { DEMO_ID, demoFrames, playDemoFrames } from '../shared/demo'
 import { startStatusServer, type StatusServer } from './server'
 import { TRAY_ICON } from './tray-icon'
+import { trayMenu, trayPresentation, type TrayState } from './tray-menu'
 import { constrainPosition, dockAfterDrag, dockedPosition, positionAfterDrag, type DockState, type Point, type WindowPosition } from '../shared/window-position'
 import { readWindowPosition, saveWindowPosition } from './window-position'
 import { AttentionTracker, isIslandMode, isPassive, islandAttention, shouldIgnoreMouse, type IslandBehavior, type IslandMode } from '../shared/island-behavior'
 import { readPreferences, savePreferences } from './preferences'
-import { normalizePreferences, patchPreferences, type AutomationEntry, type SettingsSnapshot } from '../shared/preferences'
+import { normalizePreferences, patchPreferences, type AutomationEntry, type PreferencesPatch, type SettingsSnapshot } from '../shared/preferences'
 import { decideClaude, decideCodex, type Decision } from '../shared/automation'
 import { CodexAutomationGroup } from './codex-automation-group'
 import { hasClaudeIntegration, setClaudeIntegration } from './claude-integration'
@@ -209,6 +210,9 @@ function createWindow(activityStore: ActivityStore): BrowserWindow {
     unsubscribe()
     if (mainWindow === win) mainWindow = null
   })
+  const visibilityChanged = () => { if (tray) updateTrayMenu(tray); notifySettings() }
+  win.on('show', visibilityChanged)
+  win.on('hide', visibilityChanged)
   const unsubscribe = activityStore.subscribe((activities) => {
     publishActivities(activities)
   })
@@ -282,7 +286,7 @@ function setRemoteEnabled(enabled: boolean): void {
   try {
     if (enabled && testingRemoteConnection) throw new Error('连接测试正在进行，请完成后再开启远程接管')
     const runtime = loadControl()
-    if (!runtime) throw new Error('请先通过托盘的“配置远程接管”创建配置')
+    if (!runtime) throw new Error('请先在配置窗口的“远程接管”中添加并保存渠道')
     runtime.setEnabled(enabled)
   } catch (error) {
     dialog.showErrorBox('远程接管切换失败', errorText(error))
@@ -443,7 +447,7 @@ function settingsSnapshot(): SettingsSnapshot {
   return { codexCommand: codexCommandStatus(codexCommandOptions()), codexServer: hostedCodex?.state ?? { status: 'stopped', url: '', detail: '' },
     remoteHooks: { claude: remoteIntegrationStatus(remoteHookOptions('claude')), cursor: remoteIntegrationStatus(remoteHookOptions('cursor')), gemini: remoteIntegrationStatus(remoteHookOptions('gemini')) },
     remote: remoteSettings(remoteConfigFile(), control?.status(), controlLoadError), preferences, version: app.getVersion(), port: server?.port ?? readPort(),
-    watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', claudeInstalled, launchAtLogin,
+    watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', islandVisible: !!mainWindow?.isVisible(), claudeInstalled, launchAtLogin,
     codexStatus: codex?.status ?? 'disabled', codexDetail: codex?.detail ?? '', history: [...history],
     update: updater?.state ?? { status: 'disabled', current: app.getVersion(), autoInstall: false } }
 }
@@ -601,14 +605,6 @@ function resetPosition(): void {
   reveal()
 }
 
-function openRemoteSettings(): void {
-  openSettings()
-  const contents = settingsWindow?.webContents
-  const navigate = () => { if (contents && !contents.isDestroyed()) void contents.executeJavaScript("window.location.hash = 'settings/remote'") }
-  if (contents?.isLoading()) contents.once('did-finish-load', navigate)
-  else navigate()
-}
-
 function settingsBackground(): string { return nativeTheme.shouldUseDarkColors ? '#121214' : '#eef0f3' }
 function syncSettingsBackground(): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.setBackgroundColor(settingsBackground())
@@ -665,37 +661,25 @@ function createTray(): Tray {
 
 function updateTrayMenu(next: Tray): void {
   const remote = control?.status()
-  const configured = existsSync(remoteConfigFile())
-  const remoteLabel = controlLoadError ? '不可用，请检查配置' : remote?.error ? '启动或清理失败' : remote?.enabled ? '已开启' : configured ? '已关闭' : '请先配置'
-  const tooltip = `Cute Island · ${islandMode === 'managed' ? '托管模式' : '关注模式'}${preferences.automation.enabled ? ' · 自动审批' : ''} · 远程接管${remoteLabel}`
+  const state: TrayState = { mode: islandMode, visible: !!mainWindow?.isVisible(), watchSessions: preferences.watchSessions,
+    watchDisabledByEnvironment: process.env.CUTE_ISLAND_WATCH === '0', automationEnabled: preferences.automation.enabled,
+    remote: { configured: existsSync(remoteConfigFile()), enabled: remote?.enabled ?? false, unavailable: !!controlLoadError, error: !!remote?.error, testing: testingRemoteConnection } }
+  const { tooltip, signature } = trayPresentation(state)
   // Control state changes on every request and delivery, far more often than this
   // menu's contents do. Re-applying it closes an open tray menu and flickers the
   // tooltip, so only touch the tray when something it actually shows changed.
-  const signature = JSON.stringify([tooltip, configured, testingRemoteConnection, remote?.enabled ?? false])
   if (signature === trayMenuSignature) return
   trayMenuSignature = signature
   next.setToolTip(tooltip)
-  const menu = Menu.buildFromTemplate([
-    { label: '打开配置…', accelerator: 'CmdOrCtrl+,', click: openSettings },
-    { type: 'separator' },
-    { label: '关注模式', type: 'radio', checked: islandMode === 'focus', click: () => setIslandMode('focus') },
-    { label: '托管模式', type: 'radio', checked: islandMode === 'managed', click: () => setIslandMode('managed') },
-    { type: 'separator' },
-    { label: '自动审批', type: 'checkbox', checked: preferences.automation.enabled, click: item => {
-      try { updatePreferences({ automation: { enabled: item.checked } }) }
-      catch (error) { dialog.showErrorBox('无法保存配置', errorText(error)) }
-    } },
-    { id: 'remote-toggle', label: `远程接管（${remoteLabel}）`, type: 'checkbox', checked: remote?.enabled ?? false, enabled: configured && !testingRemoteConnection,
-      click: item => setRemoteEnabled(item.checked) },
-    { label: '配置远程接管…', click: openRemoteSettings },
-    { type: 'separator' },
-    { label: '显示灵动岛', click: () => reveal() },
-    { label: '隐藏灵动岛', click: () => mainWindow?.hide() },
-    { label: '恢复顶部居中', click: resetPosition },
-    { label: '播放演示', click: () => void playDemo() },
-    { type: 'separator' },
-    { label: '退出', click: () => app.quit() }
-  ])
+  const save = (patch: PreferencesPatch) => {
+    try { updatePreferences(patch) }
+    catch (error) { dialog.showErrorBox('无法保存配置', errorText(error)) }
+  }
+  const menu = Menu.buildFromTemplate(trayMenu(state, {
+    openSettings, setVisible: visible => { if (visible) reveal(); else mainWindow?.hide() }, setMode: setIslandMode,
+    setWatchSessions: watchSessions => save({ watchSessions }), setAutomationEnabled: enabled => save({ automation: { enabled } }),
+    setRemoteEnabled, quit: () => app.quit()
+  }))
   next.setContextMenu(menu)
 }
 

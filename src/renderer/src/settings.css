@@ -163,6 +163,7 @@ body[data-surface='settings'] { scrollbar-color: var(--settings-scrollbar) var(-
 .mode-option small { display: block; margin-top: 4px; font-size: 13px; color: var(--settings-muted); }
 .section-heading { flex-wrap: wrap; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .connection-state { display: flex; align-items: center; gap: 8px; color: var(--settings-muted); font-size: 12px; flex: none; }
+.window-action { display: flex; flex: none; align-items: center; flex-wrap: wrap; gap: 12px; }
 .integration-action { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 .integration-action > span { color: var(--settings-muted); font-size: 12px; }
 .settings-field-label { display: block; font-size: 13px; color: var(--settings-secondary); margin: 0 0 7px; }

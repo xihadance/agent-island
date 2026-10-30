@@ -18,9 +18,10 @@ async function fixture() {
   shell.openPath = async file => { opened.push(file); return '' }
   let template = [], menu
   const build = Menu.buildFromTemplate.bind(Menu)
+  const flattenMenu = items => items.flatMap(item => [item, ...(Array.isArray(item.submenu) ? flattenMenu(item.submenu) : [])])
   Menu.buildFromTemplate = items => {
     const result = build(items)
-    if (items.some(item => item.id === 'remote-toggle')) { template = items; menu = result }
+    if (items.some(item => item.id === 'tray-settings')) { template = flattenMenu(items); menu = result }
     return result
   }
   // The menu is native; no need to show or focus a window for this fixture.
@@ -31,12 +32,12 @@ async function fixture() {
     if (request.method === 'POST') {
       if (request.url.startsWith('/toggle/')) template.find(item => item.id === 'remote-toggle').click({ checked: request.url.endsWith('/true') })
       else if (request.url === '/managed') template.find(item => item.label === '托管模式').click()
-      else if (request.url === '/configure') template.find(item => item.label === '配置远程接管…').click()
+      else if (request.url === '/configure') template.find(item => item.id === 'tray-settings').click()
     }
     const toggle = menu?.getMenuItemById('remote-toggle')
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify({ toggle: toggle && { checked: toggle.checked, enabled: toggle.enabled, label: toggle.label },
-      mode: menu?.items.find(item => item.type === 'radio' && item.checked)?.label, windows: BrowserWindow.getAllWindows().length, settings: BrowserWindow.getAllWindows().some(w => w.webContents.getURL().includes('#settings')), opened, errors }))
+      mode: template.find(item => item.type === 'radio' && item.checked)?.label, windows: BrowserWindow.getAllWindows().length, settings: BrowserWindow.getAllWindows().some(w => w.webContents.getURL().includes('#settings')), opened, errors }))
   }).listen(Number(process.env.ISLAND_FIXTURE_PORT), '127.0.0.1')
   app.on('will-quit', () => server.close())
   require('../out/main/index.js')

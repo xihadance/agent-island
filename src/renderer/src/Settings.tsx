@@ -141,7 +141,7 @@ export function Settings() {
             <p className="settings-description">选择配置页面的颜色主题，跟随系统可自动切换。</p>
             <ThemePicker value={snapshot.preferences.theme} disabled={busy} onChange={theme => update({ theme })} />
           </section>
-          <section className="settings-section" aria-labelledby="mode-title"><h2 id="mode-title">灵动岛显示</h2>
+          <section className="settings-section" aria-labelledby="mode-title"><h2 id="mode-title">显示模式与启动</h2>
             <div className="mode-options" role="radiogroup" aria-label="显示模式">{(['focus', 'managed'] as const).map(mode => <label key={mode} className="mode-option" data-selected={snapshot.preferences.mode === mode}>
               <input type="radio" name="island-mode" checked={snapshot.preferences.mode === mode} disabled={busy} onChange={() => update({ mode })} /><span><strong>{mode === 'focus' ? '关注模式' : '托管模式'}</strong><small>{mode === 'focus' ? '悬浮查看、点击展开，随时关注进展。' : '平时淡显并穿透鼠标，需要你时再提醒。'}</small></span></label>)}</div>
             <Switch title="自动识别本机会话" description={snapshot.watchDisabledByEnvironment ? '启动环境已关闭会话识别；修改启动环境后重启应用生效。' : '持续跟踪 Claude Code、Codex、Gemini 和 Cursor 的会话日志。'} checked={snapshot.preferences.watchSessions && !snapshot.watchDisabledByEnvironment}
@@ -149,8 +149,13 @@ export function Settings() {
             <Switch title="开机自动启动" description={snapshot.launchAtLogin.detail} checked={snapshot.launchAtLogin.enabled}
               disabled={busy || !snapshot.launchAtLogin.supported} onChange={launchAtLogin => update({ launchAtLogin })} />
           </section>
-          <section className="settings-section" aria-labelledby="window-title"><h2 id="window-title">窗口与位置</h2><div className="setting-row"><div className="setting-copy"><strong>灵动岛位置</strong><p>拖动后自动记住位置，也可以一键回到屏幕顶部。</p></div><button className="settings-button" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction('reset-position'), '已恢复顶部居中')}>恢复顶部居中</button></div>
-            <div className="settings-actions"><button className="settings-button" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction('show'), '已显示灵动岛')}>显示灵动岛</button><button className="settings-button" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction('hide'), '已隐藏灵动岛')}>隐藏灵动岛</button><button className="settings-button" disabled={busy} onClick={() => void run(() => bridge.playDemo(), '演示已开始')}>播放演示</button></div>
+          <section className="settings-section" aria-labelledby="window-title"><h2 id="window-title">窗口与位置</h2>
+            <div className="setting-row"><div className="setting-copy"><strong>灵动岛显示</strong><p>隐藏仅收起窗口，识别、审批和接管按各自开关运行。</p></div>
+              <div className="window-action"><span className="connection-state" role="status"><span className="connection-dot" data-active={snapshot.islandVisible} aria-hidden="true" />{snapshot.preview ? '浏览器预览' : snapshot.islandVisible ? '已显示' : '已隐藏'}</span>
+                <button className="settings-button" data-testid="toggle-island-visibility" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction(snapshot.islandVisible ? 'hide' : 'show'), snapshot.islandVisible ? '已隐藏灵动岛' : '已显示灵动岛')}>{snapshot.islandVisible ? '隐藏灵动岛' : '显示灵动岛'}</button></div>
+            </div>
+            <div className="setting-row"><div className="setting-copy"><strong>灵动岛位置</strong><p>拖动后自动记住位置。找不到窗口时，可恢复到屏幕顶部。</p></div><button className="settings-button" disabled={busy || snapshot.preview} onClick={() => void run(() => bridge.settingsAction('reset-position'), '已恢复顶部居中')}>恢复顶部居中</button></div>
+            <div className="setting-row"><div className="setting-copy"><strong>功能演示</strong><p>预览任务进度、审批和异常提醒。</p></div><button className="settings-button" disabled={busy} onClick={() => void run(() => bridge.playDemo(), '演示已开始')}>播放演示</button></div>
           </section>
           <UpdateSettings snapshot={snapshot} busy={busy} update={update} action={updateAction} />
           <p className="settings-help">关闭配置窗口后，灵动岛继续在托盘中运行。可从托盘或灵动岛的右键菜单再次打开配置。</p>

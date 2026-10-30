@@ -414,6 +414,12 @@ The island preserves its geometry spring and state animations. Settings motion r
 
 **Prototype implementation verification (2026-10-17):** Typecheck, 506 tests across 49 files, build, real Electron settings/restart smoke and interaction smoke passed. Current captures under [.impeccable/review](.impeccable/review) use the `refine-` prefix; the settings matrix covers both themes, all five sections, 640px and 390px layouts, remote fields and empty/history states. Browser text measurements in [refine-contrast.json](.impeccable/review/refine-contrast.json) cover 328 rendered settings pairs with a minimum of 4.68:1, excluding disabled controls. This is scoped evidence, not exhaustive transient-state or native-control certification. The island's subtle ink is .48 rather than the prototype's .40 to retain metadata legibility. The once-run detector reported advisory documentation gaps only. Independent review/documenter agents failed before working because of service transport errors, so review and documentation used the skill's in-thread fallback. External channels, live model work, packaging and macOS/Linux appearance were not checked in this pass.
 
+### Tray and window controls
+
+The tray uses the operating system's native menu styling. Configuration and the current show/hide action form the first group; display mode and session recognition form the second; automatic approval and remote takeover remain direct checkbox shortcuts in the third. Exit is separated at the bottom. The display-mode submenu names its current mode. The tooltip summarizes window visibility, recognition, approval and takeover. Recognition disabled by the launch environment remains unchecked and unavailable; connection testing is named and temporarily disables the takeover switch. Menu caching tracks checked and enabled states even when an error label masks a state transition.
+
+General settings group display mode with startup, then window visibility, position recovery and demonstration into individual rows. Visibility pairs a text status and semantic state dot with one action button. Existing type, theme, border, spacing and control tokens are reused; action groups wrap at the inherited narrow breakpoint. Native show/hide events synchronize settings and tray presentation. Position recovery reveals a hidden window. Remote configuration is reached through the existing settings navigation.
+
 ## Do's and Don'ts
 
 ### Do

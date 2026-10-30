@@ -27,7 +27,7 @@ function createMockBridge(): IslandApi {
   } catch { /* Keep valid defaults when preview storage is damaged. */ }
   mode = preferences.mode
   const settingsListeners = new Set<(snapshot: SettingsSnapshot) => void>()
-  const snapshot = (): SettingsSnapshot => ({ preferences, version: '预览', port: 17321, watchDisabledByEnvironment: false,
+  const snapshot = (): SettingsSnapshot => ({ preferences, version: '预览', port: 17321, watchDisabledByEnvironment: false, islandVisible: true,
     codexCommand: { installed: false, profiles: [], shell: 'PowerShell / Bash / Zsh' },
     codexServer: { status: 'stopped', url: '', detail: '' },
     remoteHooks: { claude: { installed: false, file: '~/.claude/settings.json' }, cursor: { installed: false, file: '~/.cursor/hooks.json' }, gemini: { installed: false, file: '~/.gemini/settings.json' } },

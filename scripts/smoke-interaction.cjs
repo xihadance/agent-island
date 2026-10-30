@@ -15,7 +15,6 @@ async function fixture() {
   const { app, screen, BrowserWindow, Menu, ipcMain } = require('electron')
   await app.whenReady()
   let cursor = { x: -10000, y: -10000 }
-  let reset
   let dragPhase = 'idle'
   let dragSequence = 0
   let ignoreMouse = true
@@ -28,9 +27,9 @@ async function fixture() {
   ipcMain.on('island:drag', (_event, phase) => { dragPhase = phase; dragSequence++ })
   screen.getCursorScreenPoint = () => cursor
   const buildMenu = Menu.buildFromTemplate.bind(Menu)
+  const flattenMenu = items => items.flatMap(item => [item, ...(Array.isArray(item.submenu) ? flattenMenu(item.submenu) : [])])
   Menu.buildFromTemplate = template => {
-    reset = template.find(item => item.label === '恢复顶部居中')?.click ?? reset
-    if (template.some(item => item.label === '托管模式')) modeMenu = template
+    if (template.some(item => item.id === 'tray-settings')) modeMenu = flattenMenu(template)
     return buildMenu(template)
   }
   const server = require('node:http').createServer(async (request, response) => {
@@ -48,8 +47,7 @@ async function fixture() {
       return
     }
     if (request.method === 'POST') {
-      if (request.url === '/reset') reset?.()
-      else if (request.url === '/mode/managed') modeMenu.find(item => item.label === '托管模式')?.click()
+      if (request.url === '/mode/managed') modeMenu.find(item => item.label === '托管模式')?.click()
       else if (request.url === '/mode/focus') modeMenu.find(item => item.label === '关注模式')?.click()
       else { let body = ''; for await (const part of request) body += part; cursor = JSON.parse(body) }
     }
@@ -524,12 +522,7 @@ async function smoke() {
     assert.deepEqual(pointOf((await getWindow()).bounds), savedBounds, 'Restart restores the saved edge handle')
     assert.equal((await getWindow()).mode, '托管模式', 'Restart restores the selected mode in the tray')
     assert.equal((await getWindow()).ignoreMouse, true, 'Managed startup remains click-through')
-    await fetch(`http://127.0.0.1:${fixturePort}/reset`, { method: 'POST' })
-    await delay(600)
-    const reset = (await getWindow()).bounds
-    assert.equal(reset.x, Math.round(area.x + (area.width - reset.width) / 2))
-    assert.equal(reset.y, area.y + 4)
-    console.log(JSON.stringify({ result: 'passed', executionTime: true, clientLabels: true, taskDisplay: true, taskTiming: true, childApproval: true, nativeDrag: true, nativeFractionalPosition: true, clickVsDrag: true, commandSelection: true, transparency: true, fourEdgeDocking: true, focusEdgeAlerts: true, undocking: true, edgeExpansion: true, keyboard: true, reducedMotion: true, managedPassthrough: true, managedAlerts: true, alertAcknowledgment: true, trayModes: true, modePersistence: true, restartPersistence: true, trayReset: true, rendererErrors: errors }))
+    console.log(JSON.stringify({ result: 'passed', executionTime: true, clientLabels: true, taskDisplay: true, taskTiming: true, childApproval: true, nativeDrag: true, nativeFractionalPosition: true, clickVsDrag: true, commandSelection: true, transparency: true, fourEdgeDocking: true, focusEdgeAlerts: true, undocking: true, edgeExpansion: true, keyboard: true, reducedMotion: true, managedPassthrough: true, managedAlerts: true, alertAcknowledgment: true, trayModes: true, modePersistence: true, restartPersistence: true, rendererErrors: errors }))
   } catch (error) {
     console.error(logs.slice(-2000)); throw error
   } finally {

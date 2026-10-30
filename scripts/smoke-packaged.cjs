@@ -121,6 +121,14 @@ async function main() {
           await until(() => settingsEvaluate(`document.body.dataset.theme === '${theme}'`))
           assert.equal((await settingsEvaluate('window.island.getSettings()')).preferences.theme, theme)
         }
+        await settingsEvaluate('Array.from(document.querySelectorAll(".settings-sidebar nav button")).find(button => button.textContent.trim() === "常规").click()')
+        for (const visible of [false, true]) {
+          await until(() => settingsEvaluate('!!document.querySelector("[data-testid=toggle-island-visibility]") && !document.querySelector("[data-testid=toggle-island-visibility]").disabled'))
+          await settingsEvaluate('document.querySelector("[data-testid=toggle-island-visibility]").click()')
+          await until(async () => (await settingsEvaluate('window.island.getSettings()')).islandVisible === visible)
+          await until(() => settingsEvaluate(`document.querySelector('[data-testid=toggle-island-visibility]').textContent === '${visible ? '隐藏灵动岛' : '显示灵动岛'}'`))
+        }
+        assert.equal((await settingsEvaluate('window.island.getSettings()')).preferences.watchSessions, snapshot.preferences.watchSessions, 'Visibility does not change session recognition')
         assert.deepEqual(settings.errors, [])
         await settingsEvaluate('setTimeout(() => window.close(), 0); true')
         await delay(150)

@@ -150,6 +150,7 @@ export interface SettingsSnapshot {
   version: string
   port: number
   watchDisabledByEnvironment: boolean
+  islandVisible: boolean
   claudeInstalled: boolean
   launchAtLogin: LaunchAtLoginStatus
   codexStatus: 'disabled' | 'connecting' | 'connected' | 'error'
