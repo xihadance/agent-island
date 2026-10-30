@@ -1,7 +1,7 @@
 import type { ControlStore } from '../store'
 import type { ChannelAdapter, ControlSession, InterventionRequest, RemoteMessage } from '../types'
 import { telegramReply, telegramRequest } from './telegram-format'
-import { redact } from '../hub'
+import { ACTION_LABEL, redact } from '../notification'
 
 export class TelegramChannel implements ChannelAdapter {
   private abort = new AbortController()
@@ -102,7 +102,7 @@ export function keyboard(request?: InterventionRequest, answers: Record<string, 
   if (!request) return { inline_keyboard: [] }
   const details = [{ text: '查看详情', callback_data: `${request.id}:${request.revision}:detail` }]
   if (request.status !== 'pending') return { inline_keyboard: [details] }
-  const rows: unknown[][] = [request.actions.filter(a => a !== 'answer').map(action => ({ text: ({ approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了', resume: '继续会话' })[action], callback_data: `${request.id}:${request.revision}:${action}` }))]
+  const rows: unknown[][] = [request.actions.filter(a => a !== 'answer').map(action => ({ text: ACTION_LABEL[action], callback_data: `${request.id}:${request.revision}:${action}` }))]
   const q = request.questions[0]
   if (request.actions.includes('answer') && request.questions.length === 1 && !q.multi) q.options.forEach((option, i) => rows.push([{ text: Array.from(redact(option)).slice(0, 60).join(''), callback_data: `${request.id}:${request.revision}:pick:${i}` }]))
   else if (request.actions.includes('answer')) {

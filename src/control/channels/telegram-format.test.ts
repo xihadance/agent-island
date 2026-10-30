@@ -29,7 +29,7 @@ function plain(html: string): string {
 it('renders readable approval content without turning command text into HTML or exposing credentials', () => {
   const detail = JSON.stringify({ command: 'echo "<b>test</b>" && npm test', cwd: 'D:/a&b', reason: 'Authorization: Bearer hidden-credential' })
   const html = telegramRequest({ ...request, detail }, session)
-  expect(html).toContain('<b>审批请求 · 等待处理</b>')
+  expect(html).toContain('<b>审批请求 · 待审批</b>')
   expect(html).toContain('<pre>echo &quot;&lt;b&gt;test&lt;/b&gt;&quot; &amp;&amp; npm test</pre>')
   expect(html).not.toContain('hidden-credential')
   expect(plain(html)).toContain('/send codex-live 内容')
@@ -38,7 +38,7 @@ it('renders readable approval content without turning command text into HTML or 
 it('makes observation limits explicit, removes duplicate commands, and hides unavailable guidance', () => {
   const html = telegramRequest({ ...request, origin: 'observation', title: 'Get-Location', detail: 'Get-Location\n仅通知；此事件没有可用的原生控制请求。', actions: ['ack'] }, { ...session, adapter: 'observation', connected: false, capabilities: [] })
   const text = plain(html)
-  expect(html).toContain('<b>仅提醒 · 待查看</b>')
+  expect(html).toContain('<b>审批请求 · 待查看</b>')
   expect(text.match(/Get-Location/g)).toHaveLength(1)
   expect(text).toContain('“知道了”只关闭提醒')
   expect(text).not.toContain('/send')

@@ -1,6 +1,8 @@
 import type { ChannelTransport } from '../proxy'
 import AiBot from '@wecom/aibot-node-sdk'
-import type { ChannelAdapter, InterventionRequest, RemoteMessage } from '../types'
+import type { ChannelAdapter, ControlSession, InterventionRequest, RemoteMessage } from '../types'
+import { redact, textChunks } from '../notification'
+import { wecomActionCard, wecomRequest } from './request-format'
 
 export class WecomChannel implements ChannelAdapter {
   private ws: InstanceType<typeof AiBot.WSClient>
@@ -27,23 +29,22 @@ export class WecomChannel implements ChannelAdapter {
     })
     this.ws.connect()
   }
-  async send(text: string, r?: InterventionRequest): Promise<string> {
-    if (!r && Buffer.byteLength(text) > 3500) {
-      let id = ''
-      for (let i = 0; i < text.length; i += 800) { const next = await this.send(text.slice(i, i + 800)); id ||= next }
-      return id
+  async send(text: string, r?: InterventionRequest, session?: ControlSession): Promise<string> {
+    const pages = r ? wecomRequest(r, session) : textChunks(redact(text).replace(/<@/g, '< @'), 3500, true)
+    let id = ''
+    for (const content of pages) {
+      const result = await this.ws.sendMessage(this.destination, { msgtype: 'markdown', markdown: { content } })
+      id ||= String(result.headers.req_id)
     }
-    const actions = r?.status === 'pending' ? r.actions.filter(a => a !== 'answer') : []
-    const body = r && actions.length ? { msgtype: 'template_card' as const, template_card: { card_type: 'button_interaction' as const,
-      main_title: { title: `#${r.id} ${r.title}`.slice(0, 100), desc: text.slice(0, 2000) }, task_id: `${r.id}@${r.revision}`,
-      button_list: actions.map(action => ({ text: { approve: '批准一次', deny: '拒绝', cancel: '取消', ack: '知道了', resume: '继续会话' }[action], key: `${r.id}:${r.revision}:${action}`, style: 1 as const }))
-    } } : { msgtype: 'markdown' as const, markdown: { content: (r ? text.slice(0, 800) : text).replace(/<@/g, '< @') } }
-    const result = await this.ws.sendMessage(this.destination, body)
-    return String(result.headers.req_id)
+    if (r?.status === 'pending' && r.actions.some(a => a !== 'answer')) {
+      const result = await this.ws.sendMessage(this.destination, { msgtype: 'template_card', template_card: wecomActionCard(r, session) })
+      id = String(result.headers.req_id)
+    }
+    return id
   }
-  async update(_messageId: string, text: string, request: InterventionRequest): Promise<void> {
+  async update(_messageId: string, text: string, request: InterventionRequest, session?: ControlSession): Promise<void> {
     // WeCom edits require a live callback frame; unsolicited status changes are follow-ups.
-    await this.send(text, request.status === 'pending' ? request : undefined)
+    await this.send(text, request, session)
   }
   close(): void { this.ws.disconnect() }
 }

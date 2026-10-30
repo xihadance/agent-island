@@ -79,15 +79,46 @@ it('sends WeCom cards with valid unique task IDs and preserves request routing i
   const channel = new WecomChannel('wc', 'chat', ['owner'], 'bot', 'secret')
   mocks.push.mockImplementation(async (_destination, body) => {
     // Match the installed SDK's task_id contract, including the byte limit.
-    expect(body.template_card.task_id).toMatch(/^[A-Za-z0-9_@-]+$/)
-    expect(Buffer.byteLength(body.template_card.task_id)).toBeLessThanOrEqual(128)
+    if (body.template_card) {
+      expect(body.template_card.task_id).toMatch(/^[A-Za-z0-9_@-]+$/)
+      expect(Buffer.byteLength(body.template_card.task_id)).toBeLessThanOrEqual(128)
+    }
     return { headers: { req_id: 'wm' } }
   })
   try {
     await channel.send('确认运行测试', request)
     await channel.send('更新后的请求', { ...request, revision: request.revision + 1 })
-    const [first, second] = mocks.push.mock.calls.map(call => call[1].template_card)
+    const [first, second] = mocks.push.mock.calls.filter(call => call[1].template_card).map(call => call[1].template_card)
     expect(first.task_id).not.toBe(second.task_id)
     expect(first.button_list[0].key).toBe(`${request.id}:${request.revision}:approve`)
   } finally { channel.close() }
+})
+
+it('delivers the same type and file comparison through Feishu cards and WeCom detail messages', async () => {
+  const store = new ControlStore()
+  const session = store.session({ id: 's', nativeId: 'native', agent: 'claude', adapter: 'hook', label: 'Cute Island', cwd: 'D:/project', connected: true, capabilities: ['approve'] })
+  const request = store.create({ sessionId: 's', sourceKey: 'source', origin: 'hook', kind: 'approval', title: '修改文件', detail: JSON.stringify({
+    file_path: 'src/login.ts', old_string: 'return false', new_string: 'return true', command: '🧪'.repeat(3000)
+  }), questions: [], actions: ['approve', 'deny'], expiresAt: Date.now() + 60000 })
+  const feishu = new FeishuChannel('fs', 'chat', ['owner'], 'app', 'secret')
+  const wecom = new WecomChannel('wc', 'chat', ['owner'], 'bot', 'secret')
+  try {
+    await feishu.send('摘要', request, session)
+    await wecom.send('摘要', request, session)
+    const card = JSON.parse(mocks.create.mock.calls[0][0].data.content)
+    expect(card.header.title.content).toBe('审批请求 · 待审批')
+    const pages = mocks.push.mock.calls.filter(call => call[1].markdown).map(call => call[1].markdown.content)
+    for (const output of [JSON.stringify(card), pages.join('\n')]) for (const value of ['D:/project', '目标文件', 'src/login.ts', '变更前', 'return false', '变更后', 'return true']) expect(output).toContain(value)
+    for (const page of pages) { expect(Buffer.byteLength(page)).toBeLessThanOrEqual(3500); expect(Buffer.from(page).toString('utf8')).toBe(page) }
+    const actionCard = mocks.push.mock.calls.at(-1)![1].template_card
+    expect(actionCard.main_title.title).toBe(card.header.title.content)
+    expect(actionCard.button_list[0].key).toBe(`${request.id}:1:approve`)
+    store.mark(request.id, 'resolved')
+    mocks.push.mockClear()
+    await feishu.update('fm', '', store.get(request.id), session)
+    await wecom.update('wm', '', store.get(request.id), session)
+    expect(JSON.parse(mocks.patch.mock.calls[0][0].data.content).header.title.content).toContain('已处理')
+    expect(mocks.push.mock.calls.every(call => call[1].msgtype === 'markdown')).toBe(true)
+    expect(mocks.push.mock.calls.map(call => call[1].markdown.content).join('\n')).toContain('审批请求 · 已处理')
+  } finally { feishu.close(); wecom.close() }
 })
