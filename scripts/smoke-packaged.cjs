@@ -111,17 +111,20 @@ async function main() {
           if (result.exceptionDetails) throw new Error(result.exceptionDetails.text)
           return result.result.value
         }
-        await until(() => settingsEvaluate('!!window.island && !!document.querySelector(".automation-master")'))
+        await until(() => settingsEvaluate('!!window.island && !!document.querySelector(".settings-shell[data-ready]")'))
         const snapshot = await settingsEvaluate('window.island.getSettings()')
         assert.equal(snapshot.version, require('../package.json').version, 'Packaged settings shows the release version')
         assert.equal(snapshot.preferences.automation.enabled, false, 'Automation starts disabled in a fresh profile')
         assert.equal(snapshot.preferences.theme, 'system', 'Fresh profiles follow the system theme')
+        const openPage = label => settingsEvaluate(`Array.from(document.querySelectorAll(".settings-sidebar nav button")).find(button => button.textContent.trim() === ${JSON.stringify(label)}).click()`)
+        await openPage('通用')
         for (const theme of ['light', 'dark']) {
-          await settingsEvaluate(`document.querySelector('[data-testid=theme-quick-${theme}]').click()`)
+          await until(() => settingsEvaluate(`!!document.querySelector('[data-testid=theme-${theme}]') && !document.querySelector('[data-testid=theme-${theme}]').disabled`))
+          await settingsEvaluate(`document.querySelector('[data-testid=theme-${theme}]').click()`)
           await until(() => settingsEvaluate(`document.body.dataset.theme === '${theme}'`))
           assert.equal((await settingsEvaluate('window.island.getSettings()')).preferences.theme, theme)
         }
-        await settingsEvaluate('Array.from(document.querySelectorAll(".settings-sidebar nav button")).find(button => button.textContent.trim() === "常规").click()')
+        await openPage('灵动岛')
         for (const visible of [false, true]) {
           await until(() => settingsEvaluate('!!document.querySelector("[data-testid=toggle-island-visibility]") && !document.querySelector("[data-testid=toggle-island-visibility]").disabled'))
           await settingsEvaluate('document.querySelector("[data-testid=toggle-island-visibility]").click()')

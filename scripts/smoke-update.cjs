@@ -48,7 +48,7 @@ async function fixture() {
   await until(() => BrowserWindow.getAllWindows().some(win => win.webContents.getURL().endsWith('#settings')))
   const settings = BrowserWindow.getAllWindows().find(win => win.webContents.getURL().endsWith('#settings'))
   const evaluate = script => settings.webContents.executeJavaScript(script, true)
-  await until(() => evaluate('!!document.querySelector(".automation-master")'))
+  await until(() => evaluate('!!document.querySelector(".settings-shell[data-ready]")'))
   await evaluate('window.location.hash = "settings/general"')
   const state = () => evaluate('window.island.getSettings()')
   await evaluate('window.island.settingsAction("update-check")')

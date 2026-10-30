@@ -24,10 +24,11 @@ export function UpdateSettings({ snapshot, busy, update, action }: {
     : state.status === 'error' ? state.error ?? '检查失败'
     : next ? `有新版本 ${next.version}` : `已是最新版本 · ${checkedLabel(state.checkedAt)}`
 
-  return <section className="settings-section" aria-labelledby="update-title">
-    <div className="section-heading"><h2 id="update-title">版本与更新</h2>
-      <span className="connection-state"><span className="connection-dot" data-active={!!next} />{state.current}</span></div>
-    <p className="settings-description" role="status" data-status={state.status}>{status}</p>
+  return <section className="settings-group" aria-labelledby="update-title">
+    <h2 className="settings-group-label" id="update-title">软件更新</h2>
+    <span className="settings-group-aside">当前版本 {state.current}</span>
+    <div className="settings-card">
+    <div className="setting-row"><div className="setting-copy"><strong>版本状态</strong><p className="settings-description" role="status" data-status={state.status}>{status}</p></div></div>
     {next && <div className="update-available">
       <div className="update-available-head"><strong>{next.version}</strong>{next.publishedAt > 0 && <time dateTime={new Date(next.publishedAt).toISOString()}>{new Date(next.publishedAt).toLocaleDateString('zh-CN')} 发布</time>}</div>
       {next.notes && <pre className="update-notes">{next.notes}</pre>}
@@ -50,12 +51,14 @@ export function UpdateSettings({ snapshot, busy, update, action }: {
     </div>}
     <div className="setting-row"><div className="setting-copy"><strong id="update-enabled-label">自动检查新版本</strong>
       <p id="update-enabled-description">每天向 GitHub 查询一次最新版本号，只读取版本信息，不上传任何本机内容。</p></div>
-      <button className="setting-switch" type="button" role="switch" aria-checked={enabled} aria-labelledby="update-enabled-label"
-        aria-describedby="update-enabled-description" disabled={busy} onClick={() => update({ update: { enabled: !enabled } })}><span /></button></div>
-    <div className="settings-actions">
-      <button className="settings-button" disabled={disabled || !enabled || state.status === 'checking'} onClick={() => action('update-check', '已开始检查')}>立即检查</button>
-      {snapshot.preferences.update.skippedVersion && <button className="settings-button" disabled={disabled} onClick={() => update({ update: { skippedVersion: '' } })}>
-        取消跳过 {snapshot.preferences.update.skippedVersion}</button>}
+      <div className="setting-control"><button className="setting-switch" type="button" role="switch" aria-checked={enabled} aria-labelledby="update-enabled-label"
+        aria-describedby="update-enabled-description" disabled={busy} onClick={() => update({ update: { enabled: !enabled } })}><span /></button></div></div>
+    <div className="setting-row"><div className="setting-copy"><strong>手动检查</strong><p>跟随远程接管配置的全局代理。</p></div>
+      <div className="setting-control">
+        {snapshot.preferences.update.skippedVersion && <button className="settings-button" disabled={disabled} onClick={() => update({ update: { skippedVersion: '' } })}>
+          取消跳过 {snapshot.preferences.update.skippedVersion}</button>}
+        <button className="settings-button" disabled={disabled || !enabled || state.status === 'checking'} onClick={() => action('update-check', '已开始检查')}>立即检查</button>
+      </div></div>
     </div>
   </section>
 }

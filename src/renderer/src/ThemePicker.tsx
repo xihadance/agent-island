@@ -21,17 +21,15 @@ export function useSettingsTheme(theme: Theme = 'system'): void {
   }, [theme])
 }
 
-export function ThemePicker({ value, disabled, onChange, compact = false }: {
-  value: Theme; disabled?: boolean; onChange: (theme: Theme) => void; compact?: boolean
-}) {
+/** Native radios keep arrow-key selection; the segmented look is styling only. */
+export function ThemePicker({ value, disabled, onChange }: { value: Theme; disabled?: boolean; onChange: (theme: Theme) => void }) {
   const name = useId()
-  return <div className={compact ? 'theme-quick' : 'theme-options'} role="radiogroup" aria-label={compact ? '快捷切换主题' : '颜色主题'}>
-    {choices.map(choice => <label key={choice.value} className="theme-choice" data-selected={value === choice.value} title={compact ? choice.label : undefined}>
+  return <div className="settings-segmented theme-options" role="radiogroup" aria-label="配置页外观">
+    {choices.map(choice => <label key={choice.value} className="theme-choice" data-selected={value === choice.value}>
       <input className="sr-only" type="radio" name={name} value={choice.value} checked={value === choice.value} disabled={disabled}
-        data-testid={`theme-${compact ? 'quick-' : ''}${choice.value}`} onChange={() => onChange(choice.value)} />
-      {!compact && <span className="theme-preview" data-preview-theme={choice.value} aria-hidden="true"><span className="theme-preview-sidebar"><i /><i /><i /></span><span className="theme-preview-content"><i /><i /><b /></span></span>}
-      <span className="theme-choice-label"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{choice.icon}</svg><span className={compact ? 'sr-only' : undefined}>{choice.label}</span>
-        {!compact && <svg className="theme-choice-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>}</span>
+        data-testid={`theme-${choice.value}`} onChange={() => onChange(choice.value)} />
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{choice.icon}</svg>
+      <span>{choice.label}</span>
     </label>)}
   </div>
 }

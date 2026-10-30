@@ -81,7 +81,7 @@ server.on('connection', peer=>{
   const settings = await until(() => BrowserWindow.getAllWindows().find(win => win.webContents.getURL().endsWith('#settings')))
   settings.webContents.setBackgroundThrottling(false)
   const evaluate = script => settings.webContents.executeJavaScript(script, true)
-  await until(() => evaluate('!!document.querySelector(".automation-master")'))
+  await until(() => evaluate('!!document.querySelector(".settings-shell[data-ready]")'))
   const state = () => evaluate('window.island.getSettings()')
   const hostedPort = await freePort(), hostedUrl = `ws://127.0.0.1:${hostedPort}`
   const draft = { channels: [{ id: 'phone', type: 'telegram', destination: 'chat', allowedUsers: ['owner'], tokenEnv: 'ISLAND_SMOKE_TELEGRAM_TOKEN' }], codex: [] }
@@ -94,7 +94,7 @@ server.on('connection', peer=>{
   await until(async () => (await snapshot()).sessions.some(session => session.nativeId === 'hosted-thread' && session.connected))
   assert.deepEqual((await state()).remote.codex, [])
   const island = BrowserWindow.getAllWindows().find(win => win !== settings)
-  await evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent.trim() === "Agent 接入").click()')
+  await evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent.trim() === "Codex").click()')
   await until(() => evaluate('!!document.querySelector(".hosted-codex")'))
   const review = path.resolve('.impeccable/review')
   await fs.mkdir(review, { recursive: true })
@@ -108,7 +108,7 @@ server.on('connection', peer=>{
     await evaluate('document.querySelector("#remote-codex-title").scrollIntoView({block:"center"})')
     await delay(150)
     await fs.writeFile(path.join(review, `managed-codex-${theme}-remote.png`), (await settings.webContents.capturePage()).toPNG())
-    await evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent.trim() === "Agent 接入").click()')
+    await evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent.trim() === "Codex").click()')
   }
   const launch = JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'codex-command', 'launch.json'), 'utf8'))
   const prepared = await fetch(launch.statusUrl, { method: 'POST', headers: { authorization: `Bearer ${launch.token}`, 'content-type': 'application/json' },

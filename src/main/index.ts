@@ -330,6 +330,8 @@ function publishActivities(activities = store?.list() ?? []): void {
     if (mainWindow.isFocusable() !== focusable) mainWindow.setFocusable(focusable)
     mainWindow.webContents.send('island:activities', next)
   }
+  // Settings only lists pending requests; it never answers them, so focus rules stay with the island.
+  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('island:activities', next)
 }
 
 function notifyBehavior(): void {
@@ -605,7 +607,7 @@ function resetPosition(): void {
   reveal()
 }
 
-function settingsBackground(): string { return nativeTheme.shouldUseDarkColors ? '#121214' : '#eef0f3' }
+function settingsBackground(): string { return nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f1f2f4' }
 function syncSettingsBackground(): void {
   if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.setBackgroundColor(settingsBackground())
 }

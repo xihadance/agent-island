@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chooseAnswers, decideClaude, decideCodex } from './automation'
+import { blacklistHit, chooseAnswers, decideClaude, decideCodex } from './automation'
 import { normalizePreferences, patchPreferences } from './preferences'
 
 const enabled = patchPreferences(normalizePreferences(undefined), { automation: { enabled: true } })
@@ -86,6 +86,14 @@ describe('native automation responses', () => {
     expect(decideCodex('item/commandExecution/requestApproval', { command: 'echo a+b' }, preferences).response).toBeUndefined()
     const cleared = patchPreferences(preferences, { automation: { blacklist: [] } })
     expect(decideCodex('item/commandExecution/requestApproval', { command: 'echo secret' }, cleared).action).toBe('approved')
+  })
+
+  it.each([
+    { content: ['git PUSH origin main'], hit: 'git push' }, { content: [{ tool_input: { paths: ['config/.ENV'] } }], hit: '.env' },
+    { content: ['部署到生产环境'], hit: '生产环境' }, { content: ['git status'], hit: undefined }, { content: ['echo .*'], hit: '.*' }
+  ])('names the keyword the settings preview would hit in $content', ({ content, hit }) => {
+    expect(blacklistHit([' git push ', '.env', '生产环境', '.*'], ...content)).toBe(hit)
+    expect(blacklistHit([], ...content)).toBeUndefined()
   })
 
   it.each(['item/tool/requestUserInput', 'tool/requestUserInput'])('answers %s only when question automation is enabled', method => {

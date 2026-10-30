@@ -76,7 +76,7 @@ async function fixture() {
     try { return await settings.webContents.executeJavaScript(script, true) }
     catch (error) { console.error('Failed UI expression:', script); throw error }
   }
-  await until(() => evaluate('!!document.querySelector(".settings-sidebar")'))
+  await until(() => evaluate('!!document.querySelector(".settings-shell[data-ready]")'))
   const click = text => evaluate(`Array.from(document.querySelectorAll('button')).find(button => button.textContent.trim() === ${JSON.stringify(text)}).click()`)
   const fill = (index, label, value) => evaluate(`(() => {
     const group = document.querySelectorAll('.remote-editor')[${index}];
@@ -93,11 +93,12 @@ async function fixture() {
     settings.setMinimumSize(360, 480)
     settings.setContentSize(width, 800)
     await delay(100)
-    const height = await evaluate('document.documentElement.scrollHeight')
+    // The main column scrolls, not the document; grow the window to its full content height.
+    const height = await evaluate('Math.max(document.documentElement.scrollHeight, document.querySelector(".settings-main").scrollHeight)')
     settings.setContentSize(width, height)
-    await evaluate('window.scrollTo(0, 0)')
+    await evaluate('document.querySelector(".settings-main").scrollTo(0, 0)')
     await delay(150)
-    assert.equal(await evaluate('document.documentElement.scrollWidth > window.innerWidth'), false, name)
+    assert.equal(await evaluate('document.documentElement.scrollWidth > window.innerWidth || document.querySelector(".settings-main").scrollWidth > document.querySelector(".settings-main").clientWidth'), false, name)
     assert.equal(await evaluate('document.querySelectorAll(".remote-editor-actions button").length'), 10)
     await fs.writeFile(path.resolve('.impeccable/review', `${name}.png`), (await settings.webContents.capturePage()).toPNG())
   }

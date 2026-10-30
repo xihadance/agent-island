@@ -8,20 +8,22 @@ export interface Decision {
 
 const manual = (summary: string): Decision => ({ action: 'manual', summary })
 
-function matchesBlacklist(blacklist: string[], ...content: unknown[]): boolean {
-  const keywords = blacklist.map(entry => entry.trim().toLowerCase()).filter(Boolean)
-  if (!keywords.length) return false
+/** Returns the first matching keyword as configured. The settings preview reuses this exact rule. */
+export function blacklistHit(blacklist: string[], ...content: unknown[]): string | undefined {
+  const keywords = blacklist.map(entry => entry.trim()).filter(Boolean)
+  if (!keywords.length) return
   const pending = [...content]
   while (pending.length) {
     const value = pending.pop()
     if (typeof value === 'string') {
       const text = value.toLowerCase()
-      if (keywords.some(keyword => text.includes(keyword))) return true
+      const hit = keywords.find(keyword => text.includes(keyword.toLowerCase()))
+      if (hit) return hit
     } else if (Array.isArray(value)) pending.push(...value)
     else if (value && typeof value === 'object') pending.push(...Object.values(value))
   }
-  return false
 }
+const matchesBlacklist = (blacklist: string[], ...content: unknown[]): boolean => blacklistHit(blacklist, ...content) !== undefined
 const recommended = (option: Record<string, unknown>): boolean => option.recommended === true ||
   /(?:[（(\[【]\s*(?:recommended|推荐|建议)\s*[）)\]】]|\s[-—]\s*recommended\s*$)/i.test(String(option.label ?? ''))
 

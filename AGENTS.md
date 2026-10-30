@@ -37,12 +37,16 @@ src/
     server.ts  本机 HTTP/WS 服务(状态 API + Claude Hook + 控制接口)
     codex-*.ts 托管 Codex 服务、命令接入、自动审批
     *-integration.ts Hook 与命令接入的安装/移除
-  renderer/    React UI:Island.tsx(灵动岛)、Settings.tsx(配置窗口)
+  renderer/    React UI:Island.tsx(灵动岛)、Settings.tsx(配置窗口外壳:侧栏、路由、保存状态)
+    settings-ui.tsx    配置页公共组件(Group / Row / Switch / LinkRow / Capabilities / Hero)
+    HomeSettings / AgentSettings / RulesSettings / RemoteSettings / AppSettings.tsx  各配置页
   shared/      主进程与渲染进程共用的纯逻辑(优先放这里,便于测试)
     activity.ts        Activity 领域模型 + ActivityStore
     island-behavior.ts 关注/托管模式、提醒判定 AttentionTracker
     codex-launch.ts    codex 命令路由决策
     preferences.ts     偏好规范化与兼容
+    settings-nav.ts    配置页 hash 路由(含旧地址别名)
+    settings-summary.ts 配置页文案的判定:待处理请求、各 Agent 能力与状态
   cli.ts       island CLI(push / end / demo / remote / codex-launch)
 scripts/*.cjs  真实 Electron 端到端冒烟脚本
 ```
@@ -57,7 +61,7 @@ scripts/*.cjs  真实 Electron 端到端冒烟脚本
 npm install          # postinstall 会跑 patch-package --error-on-fail
 npm run dev          # Electron 开发模式
 npm run dev:web      # 仅浏览器预览 UI(http://127.0.0.1:5174),无需 Electron
-npm test             # vitest run,40 个文件 392 个用例,约 6 秒
+npm test             # vitest run,63 个文件 786 个用例,约 8 秒
 npm run typecheck    # tsc --noEmit
 npm run build        # electron-vite build + esbuild 打包 CLI
 npm run dist         # typecheck → test → build → electron-builder,产物在 release/

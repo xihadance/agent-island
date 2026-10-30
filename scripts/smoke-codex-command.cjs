@@ -42,8 +42,8 @@ async function fixture() {
   }
   const state = () => evaluate('window.island.getSettings()')
   const click = text => evaluate(`Array.from(document.querySelectorAll('button')).find(b=>b.textContent.trim()===${JSON.stringify(text)}).click()`)
-  await until(() => evaluate('!!document.querySelector(".automation-master")'))
-  await click('Agent 接入')
+  await until(() => evaluate('!!document.querySelector(".settings-shell[data-ready]")'))
+  await click('Codex')
   await click('安装命令接入')
   await until(async () => (await state()).codexCommand.installed)
   const profiles = (await state()).codexCommand.profiles
