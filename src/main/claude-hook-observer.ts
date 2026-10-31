@@ -73,6 +73,14 @@ export class ClaudeHookObserver {
 
   present(activities: Activity[]): Activity[] { return withNativeApprovals(activities, [...this.pending.values()]) }
 
+  /** Only transcripts settle a prompt. Without them, forget it rather than show it forever. */
+  clear(): void {
+    this.calls.clear()
+    if (!this.pending.size) return
+    this.pending.clear()
+    this.changed()
+  }
+
   private remove(matches: (permission: PendingPermission) => boolean): void {
     let changed = false
     for (const [id, permission] of this.pending) if (matches(permission)) { this.pending.delete(id); changed = true }

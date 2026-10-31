@@ -86,7 +86,10 @@ async function smoke() {
   const errors = []
   const start = () => {
     const env = { ...process.env,
-      CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ISLAND_FIXTURE_PORT: String(fixturePort), CUTE_ISLAND_WATCH: '0', CUTE_ISLAND_TOKEN: '', ELECTRON_RENDERER_URL: '' }
+      CUTE_ISLAND_REMOTE_CONFIG: path.join(profile, 'remote.json'), CUTE_ISLAND_PORT: String(port), ISLAND_FIXTURE_PORT: String(fixturePort), CUTE_ISLAND_TOKEN: '', ELECTRON_RENDERER_URL: '',
+      // Hook-only permissions are shown only while session watching can settle them; watch empty roots.
+      CUTE_ISLAND_WATCH: '1', CLAUDE_CONFIG_DIR: path.join(profile, 'claude'), CODEX_HOME: path.join(profile, 'codex'),
+      GEMINI_CLI_HOME: path.join(profile, 'gemini'), CURSOR_HOME: path.join(profile, 'cursor') }
     delete env.ELECTRON_RUN_AS_NODE
     child = spawn(executable, [__filename, `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`], {
       windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env

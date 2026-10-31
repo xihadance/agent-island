@@ -26,6 +26,8 @@ export interface SessionView {
   tasks: ActivityTask[]
   /** Native child ids retain their spawn identity and last explicit task outcome across turns. */
   linkedTasks?: Record<string, ActivityTask>
+  /** Latest timed parent notice per task, including ones after the visible task already settled. */
+  taskOutcomes?: Record<string, { status: TaskStatus; at: number }>
   /** The transcript itself says this turn finished. */
   terminal: boolean
   stale?: boolean

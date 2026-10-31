@@ -39,6 +39,35 @@ describe('child attention across parent turns', () => {
     expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks[0].status).toBe('done')
   })
 
+  it('settles a reused child on its later native idle notice', () => {
+    const reducer = createReducer()
+    reducer.push([{ kind: 'task_start', taskId: 'child', task: 'agent', label: '检查', at: 1000 },
+      { kind: 'task_end', taskId: 'child', status: 'done', at: 2000 }])
+    const reused = child(false, 0)
+    reused.view.startedAt = 3000
+    expect(mergeChildTasks(reducer.snapshot(), [reused]).tasks[0]).toMatchObject({ status: 'active', startedAt: 3000 })
+    reducer.push([{ kind: 'task_end', taskId: 'child', status: 'done', at: 4000 }])
+    expect(mergeChildTasks(reducer.snapshot(), [reused]).tasks[0]).toMatchObject({ status: 'done', startedAt: 3000, endedAt: 4000 })
+    reducer.push([{ kind: 'task_end', taskId: 'child', status: 'done', at: 1500 }])
+    expect(mergeChildTasks(reducer.snapshot(), [reused]).tasks[0]).toMatchObject({ status: 'done', startedAt: 3000, endedAt: 4000 })
+  })
+
+  it('settles a linked child reused after the parent moved to a new turn', () => {
+    const reducer = createReducer()
+    reducer.push([{ kind: 'task_start', taskId: 'spawn', task: 'agent', label: '检查', at: 1000 },
+      { kind: 'task_link', taskId: 'spawn', childId: 'native-child' },
+      { kind: 'task_end', taskId: 'spawn', status: 'done', at: 2000 },
+      { kind: 'user', title: '继续', at: 2500 }])
+    const linked = child(false, 0)
+    linked.link = { parentSessionId: 'parent', taskId: 'agent-native-child', childId: 'native-child', label: '检查' }
+    linked.view.startedAt = 3000
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks).toMatchObject([{ id: 'spawn', status: 'active' }])
+    reducer.push([{ kind: 'task_end', taskId: 'spawn', status: 'done', at: 4000 }])
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks).toEqual([])
+    linked.view.startedAt = 5000
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks).toMatchObject([{ id: 'spawn', status: 'active', startedAt: 5000 }])
+  })
+
   it('ignores a delayed notice for an earlier assignment after the same task restarts', () => {
     const reducer = createReducer()
     reducer.push([{ kind: 'task_start', taskId: 'child', task: 'agent', label: '检查', at: 1000 },

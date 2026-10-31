@@ -61,6 +61,11 @@ export function attentionIssues(activity: AttentionActivity): AttentionIssue[] {
   return issues
 }
 
+function redate(key: string, startedAt: number): string {
+  const [, ...rest] = JSON.parse(key) as unknown[]
+  return JSON.stringify([startedAt, ...rest])
+}
+
 /** Acknowledgments last for this occurrence; metadata refreshes never reopen it. */
 export class AttentionTracker {
   private current = new Map<string, AttentionIssue[]>()
@@ -76,7 +81,14 @@ export class AttentionTracker {
       return issues.length ? [[activity.id, issues] as const] : []
     }))
     for (const [id, acknowledgment] of this.acknowledged) {
-      if (this.rounds.has(id) && this.rounds.get(id) !== acknowledgment.round) { this.acknowledged.delete(id); continue }
+      const round = this.rounds.get(id)
+      if (round !== undefined && round !== acknowledgment.round) {
+        if (round > acknowledgment.round) { this.acknowledged.delete(id); continue }
+        // A native prompt can be shown before its transcript is found, dated by the prompt.
+        // The found turn began earlier; that re-dates this round rather than starting a new one.
+        acknowledgment.keys = new Map([...acknowledgment.keys].map(([key, kind]) => [redate(key, round), kind]))
+        acknowledgment.round = round
+      }
       const live = new Set(this.current.get(id)?.map(issue => issue.key))
       // Cached failures can temporarily leave the visible snapshot; that is not a new failure.
       for (const [key, kind] of acknowledgment.keys) if (!live.has(key) && kind !== 'error' && kind !== 'task-error') acknowledgment.keys.delete(key)

@@ -25,6 +25,7 @@ export function createReducer() {
   const stepEvents = new Map<string, AgentEvent & { kind: 'tool' | 'approval' }>()
   const tasks = new Map<string, ActivityTask>()
   const linkedTasks = new Map<string, ActivityTask>()
+  const outcomes = new Map<string, { status: TaskStatus; at: number }>()
   let stepSequence = 0
   let title = '正在处理'
   let detail: string | undefined
@@ -114,6 +115,14 @@ export function createReducer() {
         const targets = event.taskId === '*'
           ? [...tasks.values()].filter((task) => task.kind === 'agent')
           : [tasks.get(event.taskId)].filter((task) => !!task)
+        // A reused child reports every assignment's outcome, but a settled task stays frozen here.
+        // Keep the latest one so mergeChildTasks can end the child's newer turn.
+        const owner = event.taskId === '*' ? undefined : tasks.get(event.taskId) ?? [...linkedTasks.values()].find((task) => task.id === event.taskId)
+        if (owner && event.at !== undefined && event.at > (outcomes.get(owner.id)?.at ?? -Infinity)) {
+          outcomes.delete(owner.id)
+          outcomes.set(owner.id, { status: event.status, at: event.at })
+          if (outcomes.size > 64) outcomes.delete(outcomes.keys().next().value!)
+        }
         for (const task of targets) {
           if (task.status !== 'active') continue
           // A delayed notice from an earlier assignment cannot finish a reused child.
@@ -269,6 +278,7 @@ export function createReducer() {
       steps: steps.slice(-4).map((step) => ({ ...step })),
       tasks: capTasks([...tasks.values()]).map((task) => ({ ...task })),
       ...(linkedTasks.size ? { linkedTasks: Object.fromEntries([...linkedTasks].map(([id, task]) => [id, { ...task }])) } : {}),
+      ...(outcomes.size ? { taskOutcomes: Object.fromEntries(outcomes) } : {}),
       turn,
       startedAt,
       endedAt: terminal && (state === 'error' || state === 'stopped' || ![...tasks.values()].some((task) => task.status === 'active')) ? endedAt : undefined,
@@ -300,9 +310,12 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
     const linked = child.link.childId ? view.linkedTasks?.[child.link.childId] : undefined
     const taskId = linked?.id ?? child.link.taskId
     const existing = tasks.find((task) => task.id === taskId)
+    const outcome = view.taskOutcomes?.[taskId]
+    // The parent's latest notice ends a reused child's newer turn, which the parent's settled task cannot record.
+    const reusedEnd = outcome && childView.startedAt !== undefined && outcome.at >= childView.startedAt ? outcome : undefined
     // Parent notices survive a new turn even though its visible completed tasks do not.
-    if (!existing && linked && linked.status !== 'active'
-      && !(status === 'active' && linked.endedAt !== undefined && childView.startedAt !== undefined && childView.startedAt > linked.endedAt)) continue
+    if (!existing && linked && linked.status !== 'active' && !(status === 'active' && !reusedEnd
+      && linked.endedAt !== undefined && childView.startedAt !== undefined && childView.startedAt > linked.endedAt)) continue
     if (childView.terminal && childView.endedAt !== undefined) {
       // A reused task can start before its child transcript has appended the new turn.
       if (existing?.startedAt !== undefined && existing.startedAt > childView.endedAt) continue
@@ -318,10 +331,11 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
       // A later native turn is new work, even if the parent only sent a message.
       if (existing.status !== 'active' && existing.endedAt !== undefined && childView.startedAt !== undefined
         && childView.startedAt > existing.endedAt && status) {
-        existing.status = status
+        existing.status = reusedEnd?.status ?? status
         existing.startedAt = childView.startedAt
         delete existing.endedAt
         delete existing.detail
+        if (reusedEnd) existing.endedAt = Math.max(childView.startedAt, reusedEnd.at)
       }
       if (existing.startedAt === undefined && childView.startedAt !== undefined
         && (existing.endedAt === undefined || childView.startedAt <= existing.endedAt)) {

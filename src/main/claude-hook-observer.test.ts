@@ -61,6 +61,21 @@ it('gives a repeated permission a new occurrence after its native result', () =>
   expect(observer.present([base])[0].steps.at(-1)!.id).not.toBe(first)
 })
 
+it('forgets pending permissions when no transcript can settle them', () => {
+  let changes = 0
+  const observer = new ClaudeHookObserver(() => { changes++ }, () => 1000)
+  observer.clear()
+  expect(changes).toBe(0)
+  observer.transcript('claude', 'native', [toolEvent(permission.tool_name, {}, 'chrome')])
+  observer.hook(permission, 'manual')
+  observer.clear()
+  expect(observer.present([base])).toEqual([base])
+  expect(changes).toBe(2)
+  observer.hook(permission, 'manual')
+  observer.transcript('claude', 'native', [{ kind: 'tool_result', callId: 'chrome', title: '完成', ok: true }])
+  expect(observer.present([base])[0].state).toBe('approval')
+})
+
 it('keeps a current permission while the watcher replays an older call to the same MCP tool', () => {
   const observer = new ClaudeHookObserver(() => {}, () => 1000)
   observer.hook(permission, 'manual')

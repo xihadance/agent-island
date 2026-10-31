@@ -126,7 +126,8 @@ async function boot(): Promise<void> {
       control: loadControl,
       claudeHook: payload => {
         const decision = decideClaude(payload, automationPreferences())
-        if (!control?.status().enabled) claudeHookObserver.hook(payload, decision.action)
+        // The installed hooks never report the outcome; only the watcher's transcripts can settle a prompt.
+        if (watcher && !control?.status().enabled) claudeHookObserver.hook(payload, decision.action)
         const key = createHash('sha256').update(JSON.stringify([payload, decision.action, decision.summary])).digest('hex')
         if (!recentHooks.has(key)) {
           recentHooks.add(key)
@@ -583,7 +584,7 @@ function syncWatcher(): void {
     watcher = new SessionWatcher(store, { onEvents: (kind, id, events) => claudeHookObserver.transcript(kind, id, events) })
     watcher.start()
   }
-  else if (!enabled && watcher) { watcher.stop(); watcher = null }
+  else if (!enabled && watcher) { watcher.stop(); watcher = null; claudeHookObserver.clear() }
 }
 
 function updatePreferences(patch: unknown): SettingsSnapshot {

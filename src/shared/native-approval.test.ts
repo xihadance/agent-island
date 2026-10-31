@@ -19,6 +19,17 @@ it('keeps a native permission acknowledged while its transcript catches up', () 
   expect(tracker.pendingIds()).toEqual([base.id])
 })
 
+it('keeps a permission acknowledged when its transcript is discovered after the prompt', () => {
+  const tracker = new AttentionTracker()
+  tracker.update(withNativeApprovals([], [permission]))
+  expect(tracker.pendingIds()).toEqual([base.id])
+  tracker.acknowledge(base.id)
+  tracker.update(withNativeApprovals([base], [permission]))
+  expect(tracker.pendingIds()).toEqual([])
+  tracker.update(withNativeApprovals([{ ...base, startedAt: 2000, updatedAt: 2000 }], [{ ...permission, id: 'next-round', createdAt: 2100 }]))
+  expect(tracker.pendingIds()).toEqual([base.id])
+})
+
 it('overlays permissions without mutating or inventing a completed execution', () => {
   const finished: Activity = { ...base, state: 'success', stale: true, endedAt: 1050 }
   const overlaid = withNativeApprovals([finished], [permission])[0]
