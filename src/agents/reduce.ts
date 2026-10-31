@@ -24,6 +24,7 @@ export function createReducer() {
   const calls = new Map<string, ActivityStep>()
   const stepEvents = new Map<string, AgentEvent & { kind: 'tool' | 'approval' }>()
   const tasks = new Map<string, ActivityTask>()
+  const linkedTasks = new Map<string, ActivityTask>()
   let stepSequence = 0
   let title = '正在处理'
   let detail: string | undefined
@@ -83,14 +84,21 @@ export function createReducer() {
         const existing = tasks.get(event.taskId)
         const taskStartedAt = existing?.status === 'active' ? existing.startedAt ?? event.at : event.at
         tasks.delete(event.taskId)
-        tasks.set(event.taskId, {
+        const task: ActivityTask = {
           id: event.taskId,
           kind: event.task,
           label: clip(event.label, 80),
           status: 'active',
           ...(taskStartedAt !== undefined ? { startedAt: taskStartedAt } : {}),
-          ...(event.detail ? { detail: clip(event.detail, 160) } : existing?.detail ? { detail: existing.detail } : {})
-        })
+          ...(event.detail ? { detail: clip(event.detail, 160) } : existing?.status === 'active' && existing.detail ? { detail: existing.detail } : {})
+        }
+        tasks.set(event.taskId, task)
+        for (const [id, previous] of linkedTasks) if (previous.id === task.id) linkedTasks.set(id, task)
+        continue
+      }
+      if (event.kind === 'task_link') {
+        const task = tasks.get(event.taskId)
+        if (task) linkedTasks.set(event.childId, task)
         continue
       }
       if (event.kind === 'task_update') {
@@ -108,6 +116,8 @@ export function createReducer() {
           : [tasks.get(event.taskId)].filter((task) => !!task)
         for (const task of targets) {
           if (task.status !== 'active') continue
+          // A delayed notice from an earlier assignment cannot finish a reused child.
+          if (event.at !== undefined && task.startedAt !== undefined && event.at < task.startedAt) continue
           if (terminal && state !== 'error') endedAt = event.at === undefined ? undefined : Math.max(endedAt ?? 0, event.at)
           task.status = event.status
           if (event.at !== undefined) task.endedAt = Math.max(task.startedAt ?? event.at, event.at)
@@ -258,6 +268,7 @@ export function createReducer() {
       operation,
       steps: steps.slice(-4).map((step) => ({ ...step })),
       tasks: capTasks([...tasks.values()]).map((task) => ({ ...task })),
+      ...(linkedTasks.size ? { linkedTasks: Object.fromEntries([...linkedTasks].map(([id, task]) => [id, { ...task }])) } : {}),
       turn,
       startedAt,
       endedAt: terminal && (state === 'error' || state === 'stopped' || ![...tasks.values()].some((task) => task.status === 'active')) ? endedAt : undefined,
@@ -286,7 +297,12 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
     const detail = GENERIC_TITLES.has(childView.title) ? undefined : childView.title
     const gate = attentionIssues(childView).find(issue => ['approval', 'input', 'task-approval', 'task-input'].includes(issue.kind))
     const request = gate ? { requestKind: gate.kind === 'input' || gate.kind === 'task-input' ? 'input' as const : 'approval' as const, requestId: gate.key } : {}
-    const existing = tasks.find((task) => task.id === child.link.taskId)
+    const linked = child.link.childId ? view.linkedTasks?.[child.link.childId] : undefined
+    const taskId = linked?.id ?? child.link.taskId
+    const existing = tasks.find((task) => task.id === taskId)
+    // Parent notices survive a new turn even though its visible completed tasks do not.
+    if (!existing && linked && linked.status !== 'active'
+      && !(status === 'active' && linked.endedAt !== undefined && childView.startedAt !== undefined && childView.startedAt > linked.endedAt)) continue
     if (childView.terminal && childView.endedAt !== undefined) {
       // A reused task can start before its child transcript has appended the new turn.
       if (existing?.startedAt !== undefined && existing.startedAt > childView.endedAt) continue
@@ -299,6 +315,14 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
       }
     }
     if (existing) {
+      // A later native turn is new work, even if the parent only sent a message.
+      if (existing.status !== 'active' && existing.endedAt !== undefined && childView.startedAt !== undefined
+        && childView.startedAt > existing.endedAt && status) {
+        existing.status = status
+        existing.startedAt = childView.startedAt
+        delete existing.endedAt
+        delete existing.detail
+      }
       if (existing.startedAt === undefined && childView.startedAt !== undefined
         && (existing.endedAt === undefined || childView.startedAt <= existing.endedAt)) {
         existing.startedAt = childView.startedAt
@@ -321,7 +345,7 @@ export function mergeChildTasks<T extends TurnView>(view: T, children: readonly 
       continue
     }
     if (status !== 'active') continue
-    tasks.push({ id: child.link.taskId, kind: 'agent', label: clip(child.link.label, 80), status, state: childView.state,
+    tasks.push({ id: taskId, kind: 'agent', label: clip(child.link.label, 80), status, state: childView.state,
       ...(detail ? { detail: clip(detail, 160) } : {}), ...(childView.startedAt !== undefined ? { startedAt: childView.startedAt } : {}), ...request })
   }
   const ends = [view.endedAt, ...children.map((child) => child.view.endedAt)].filter((at): at is number => at !== undefined)

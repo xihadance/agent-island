@@ -165,6 +165,20 @@ async function smoke() {
       await fs.writeFile(`output/playwright/${name}.png`, Buffer.from(result.data, 'base64'))
     }
     const roundStart = Date.now() - 65_000
+    const permission = { session_id: 'chrome-permission', hook_event_name: 'PermissionRequest', tool_name: 'mcp__chrome_devtools__take_snapshot', tool_input: {} }
+    const hook = async event => {
+      const response = await fetch(`http://127.0.0.1:${port}/v1/hooks/claude`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(event) })
+      assert.equal(response.status, 200)
+      const result = await response.json()
+      await delay(400)
+      return result
+    }
+    assert.deepEqual(await hook(permission), {}, 'Manual MCP permission leaves the native Claude prompt in charge')
+    assert.equal(await evaluate('window.island.getActivities().then(activities => activities[0].state)'), 'approval')
+    assert.equal(await evaluate('document.querySelector(".activity-status").textContent.trim()'), '需要审批')
+    await screenshot('claude-mcp-permission')
+    await hook({ ...permission, hook_event_name: 'PostToolUse' })
+    assert.equal((await evaluate('window.island.getActivities()')).length, 0, 'Native completion clears a hook-only permission')
     await push({ id: 'quiet-cursor', agent: 'Cursor', state: 'running', stale: true, startedAt: roundStart,
       title: '等待长任务输出', operation: { kind: 'command', command: 'long-job' } })
     assert.equal(await evaluate('document.querySelector(".activity-status").textContent.trim()'), '暂未收到更新')
@@ -228,6 +242,11 @@ async function smoke() {
     await until(async () => await taskDuration('child') !== firstTaskTime)
     assert.equal(await taskDuration('command'), '00:42', 'Completed task time stays frozen while other children run')
     await screenshot('subagent-status-time')
+    assert.equal(await evaluate('document.querySelector("[data-task=child] .task-toggle").getAttribute("aria-expanded")'), 'false')
+    await click('[data-task=child] .task-toggle')
+    assert.equal(await mode(), 'expanded', 'Inspecting a child cannot collapse the island')
+    assert.equal(await evaluate('document.querySelector("[data-task=child] [data-testid=task-recent]").textContent'), '最近任务：读取组件')
+    await screenshot('subagent-recent-expanded')
     await push({ id: 'drag', tasks: [
       { id: 'child', kind: 'agent', label: '检查代码', status: 'active', state: 'running', detail: '正在运行测试' },
       { id: 'command', kind: 'command', label: '类型检查', status: 'done' }
@@ -235,16 +254,37 @@ async function smoke() {
     assert.equal((await evaluate('window.island.getActivities()')).find(item => item.id === 'drag').tasks[0].startedAt, taskStart,
       'Task detail and state updates keep the original execution start')
     assert.equal(await evaluate('document.querySelector("[data-task=child] [data-testid=task-status]").textContent'), '执行中')
+    assert.equal(await evaluate('document.querySelector("[data-task=child] [data-testid=task-recent]").textContent'), '最近任务：正在运行测试', 'An open child detail follows native updates')
     await push({ id: 'drag', tasks: [{ id: 'child', kind: 'agent', label: '检查代码', status: 'done', endedAt: taskStart + 44_000 }] })
     assert.equal(await taskDuration('child'), '00:44')
     await delay(1100)
     assert.equal(await taskDuration('child'), '00:44', 'A child execution freezes at its recorded end')
+    assert.equal(await evaluate('document.querySelector("[data-task=child] .task-toggle").getAttribute("aria-expanded")'), 'true', 'A recorded completion preserves the open detail')
+    assert.equal(await evaluate('document.querySelector("[data-task=child] [data-testid=task-recent]").textContent'), '最近任务：正在运行测试', 'Completion preserves the last recorded task')
+    await screenshot('subagent-recent-completed')
+    await evaluate('document.querySelector("[data-task=child] .task-toggle").focus()')
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    await delay(400)
+    assert.equal(await evaluate('document.querySelector("[data-task=child] .task-toggle").getAttribute("aria-expanded")'), 'false', 'Keyboard activation collapses the same disclosure')
+    assert.equal(await mode(), 'expanded')
     await push({ id: 'drag', tasks: [
       { id: 'legacy', kind: 'agent', label: '没有完整时间记录的长名称子 Agent', status: 'stopped' },
       { id: 'missing-end', kind: 'agent', label: '未记录结束时间', status: 'done', startedAt: taskStart }
     ] })
     assert.equal(await taskDuration('legacy'), '未记录')
     assert.equal(await taskDuration('missing-end'), '未记录', 'A finished task with no end timestamp must not keep counting')
+    await click('[data-task=legacy] .task-toggle')
+    assert.equal(await evaluate('document.querySelector("[data-task=legacy] [data-testid=task-recent]").textContent'), '最近任务：暂未记录执行任务')
+    await screenshot('subagent-recent-missing')
+    await push({ id: 'drag', tasks: [
+      { id: 'legacy', kind: 'agent', label: '没有完整时间记录的长名称子 Agent', status: 'stopped', detail: '检查较长路径 '.repeat(30) },
+      { id: 'missing-end', kind: 'agent', label: '未记录结束时间', status: 'done', startedAt: taskStart }
+    ] })
+    assert.equal(await evaluate('document.querySelector("[data-task=legacy] [data-testid=task-recent]").getBoundingClientRect().height'), 16, 'Long details remain one line')
+    await screenshot('subagent-recent-long')
+    await click('[data-task=missing-end] .task-toggle')
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid=task-recent]").length'), 1, 'Only one child detail opens at a time')
     assert.ok(await evaluate('Array.from(document.querySelectorAll(".tasks li")).every(row => row.scrollWidth <= row.clientWidth)'),
       'Task name, status and duration stay within the row')
     assert.deepEqual(pointOf((await getWindow()).bounds), original, 'A click does not move the window')

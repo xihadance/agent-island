@@ -8,7 +8,7 @@ import { activityId } from './parse'
 import { BUILTIN_PLUGINS } from './plugins'
 import { clientForProcess, listProcessSnapshot, matchAgentProcesses, registrationMatchesProcess, stopProcessQueries, type ProcessSnapshot } from './processes'
 import { dropActiveTasks, mergeChildTasks, presentTasks, type ChildSession } from './reduce'
-import type { AgentPlugin, ChildLink, SessionView } from './types'
+import type { AgentEvent, AgentPlugin, ChildLink, SessionView } from './types'
 
 export { readSession } from './files'
 export { listAgentProcesses, matchAgentProcesses } from './processes'
@@ -37,6 +37,7 @@ export interface WatchOptions {
   backgroundMs?: number
   /** Override for diagnostics and deterministic I/O tests. */
   readSession?: typeof readSession
+  onEvents?: (kind: string, sessionId: string, events: readonly AgentEvent[]) => void
 }
 
 interface TrackedSession {
@@ -82,7 +83,7 @@ export class SessionWatcher {
   private readonly cache = new Map<string, CachedSession>()
   /** Resolved parent links; `null` marks a top-level transcript. */
   private readonly links = new Map<string, { stamp: string; link: ChildLink | null }>()
-  private readonly reader = new SessionReader()
+  private readonly reader: SessionReader
   private files: SessionFile[] = []
   private running = new Set<string>()
   private liveIds = new Map<string, Set<string>>()
@@ -99,6 +100,7 @@ export class SessionWatcher {
   private generation = 0
 
   constructor(private readonly store: ActivityStore, options: WatchOptions = {}) {
+    this.reader = new SessionReader(options.onEvents)
     const plugins = options.plugins ?? BUILTIN_PLUGINS
     const roots = options.roots ?? defaultAgentRoots(homedir(), process.env, plugins)
     this.sources = plugins.filter((plugin) => roots[plugin.kind]).map((plugin) => ({ plugin, root: roots[plugin.kind],
@@ -323,7 +325,7 @@ export class SessionWatcher {
       if (visiting.has(view.id)) return { view: presentTasks(view), age, live: this.isLive(file, age) }
       visiting.add(view.id)
       const linked: Array<ChildSession & { age: number }> = (children.get(view.id) ?? []).map((child) => ({
-        ...fold(child), link: child.file.link!
+        ...fold(child), link: { ...child.file.link!, taskId: view.linkedTasks?.[child.file.link!.childId ?? '']?.id ?? child.file.link!.taskId }
       }))
       const busy = linked.filter((child) => child.live && !child.view.terminal)
       // Propagate a descendant's activity and native busy registration all the way to the root.

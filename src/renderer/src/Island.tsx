@@ -3,7 +3,7 @@ import { AnimatePresence, motion, type Transition } from 'framer-motion'
 import { expandedHeight, operationHeight, priorityRank, tasksHeight, type Activity, type ActivityState } from '../../shared/activity'
 import { agentAppearance } from './agent-appearance'
 import { ClaudeIcon, CodexIcon, CursorIcon, GeminiIcon } from './agent-icons'
-import { OperationDetails, Status, Steps, TaskBadge, Tasks } from './ActivityDetails'
+import { OperationDetails, Status, Steps, TaskBadge, Tasks, TaskExpansionContext, taskDisclosureKey } from './ActivityDetails'
 import { useIslandDrag } from './useIslandDrag'
 import { ExecutionTime } from './ExecutionTime'
 import { attentionKind, type IslandMode } from '../../shared/island-behavior'
@@ -32,6 +32,7 @@ const SPRING: Transition = { type: 'spring', stiffness: 520, damping: 38, mass: 
 export function Island({ embedded, drag, behaviorMode, passive, attention, onAcknowledge, hovered, onHover, activities, expanded, selectedId, resting, onToggle, onSelect, onDismiss }: IslandProps) {
   const reduced = useReducedMotion()
   const [focused, setFocused] = useState(false)
+  const [openTask, setOpenTask] = useState<string | null>(null)
   const collapsed = drag.dock.collapsed && !attention
   const solid = !passive && (attention || hovered || focused || drag.dragging || (!collapsed && (expanded || selectedId !== null)))
   const activity = activities[0]
@@ -42,10 +43,13 @@ export function Island({ embedded, drag, behaviorMode, passive, attention, onAck
   const openActivity = activities.find(item => item.id === selectedId) ?? activity
   const attentionHeight = attention ? 64 - (openActivity?.state === 'approval' ? 70 : 0) : 0
   const questionHeight = openActivity?.questionRequest && (mode === 'expanded' || (mode === 'stack' && selectedId)) ? 260 : 0
-  const metrics = { ...baseMetrics, height: Math.min(520, baseMetrics.height + attentionHeight + questionHeight) }
+  const taskDetailHeight = (mode === 'expanded' || mode === 'stack' && selectedId)
+    && openActivity?.tasks?.some(task => taskDisclosureKey(openActivity.id, task) === openTask) ? 22 : 0
+  const metrics = { ...baseMetrics, height: Math.min(520, baseMetrics.height + attentionHeight + questionHeight + taskDetailHeight) }
   const contentKey = collapsed ? 'docked' : stacked ? 'stack' : activity ? `${mode}:${activity.agent}:${activity.state}` : mode
 
   return (
+    <TaskExpansionContext value={{ open: openTask, toggle: key => setOpenTask(previous => previous === key ? null : key) }}>
     <motion.div
       tabIndex={passive || (stacked && !collapsed) ? -1 : 0}
       inert={passive}
@@ -140,6 +144,7 @@ export function Island({ embedded, drag, behaviorMode, passive, attention, onAck
         </motion.div>
       </AnimatePresence>}
     </motion.div>
+    </TaskExpansionContext>
   )
 }
 

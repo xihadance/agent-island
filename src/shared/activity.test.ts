@@ -21,6 +21,15 @@ function schedulerOf(pending: Array<{ fn: () => void; cancelled: boolean }>) {
 }
 
 describe('ActivityStore', () => {
+  it('retains a task description through completion and clears it when the same child starts new work', () => {
+    const store = new ActivityStore(() => ({ cancel() {} }))
+    store.upsert({ id: 'parent', tasks: [{ id: 'child', kind: 'agent', label: '检查', status: 'active', startedAt: 1000, detail: '运行测试' }] })
+    expect(store.upsert({ id: 'parent', tasks: [{ id: 'child', kind: 'agent', label: '检查', status: 'done', endedAt: 2000 }] }).tasks?.[0])
+      .toMatchObject({ detail: '运行测试', startedAt: 1000, endedAt: 2000 })
+    expect(store.upsert({ id: 'parent', tasks: [{ id: 'child', kind: 'agent', label: '新任务', status: 'active', startedAt: 3000 }] }).tasks?.[0].detail).toBeUndefined()
+    store.dispose()
+  })
+
   it('batches nested updates while keeping reads synchronous, including a partial failed batch', () => {
     const store = new ActivityStore(() => ({ cancel() {} }))
     const updates: Activity[][] = []

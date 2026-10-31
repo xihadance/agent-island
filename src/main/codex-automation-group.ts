@@ -5,6 +5,7 @@ import { CodexAutomation } from './codex-automation'
 export class CodexAutomationGroup {
   private connections = new Map<string, CodexAutomation>()
   constructor(private preferences: () => Preferences, private urls: () => string[], private changed: () => void, private report: (decision: Decision) => void) {}
+  get approvals() { return [...this.connections.values()].flatMap(connection => connection.approvals) }
   get status(): SettingsSnapshot['codexStatus'] {
     const values = [...this.connections.values()]
     return values.some(value => value.status === 'error') ? 'error' : values.some(value => value.status === 'connecting') ? 'connecting'

@@ -415,6 +415,7 @@ function resolveTasks(parsed: ParsedActivity, current: Activity | undefined): { 
     const newRound = task.startedAt !== undefined && task.startedAt !== existing.startedAt
       || task.status === 'active' && existing.status !== 'active'
     if (!newRound) {
+      if (next.detail === undefined && existing.detail) next.detail = existing.detail
       if (next.startedAt === undefined && existing.startedAt !== undefined) next.startedAt = existing.startedAt
       if (task.status !== 'active' && existing.status !== 'active' && next.endedAt === undefined && existing.endedAt !== undefined) {
         next.endedAt = existing.endedAt

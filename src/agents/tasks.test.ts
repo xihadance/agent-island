@@ -5,6 +5,28 @@ import { unwrapExec } from './plugins/codex'
 const jsonl = (rows: unknown[]): string => rows.map((row) => JSON.stringify(row)).join('\n')
 
 describe('Codex background work', () => {
+  it.each(['SubAgentActivity', 'subAgentActivity'])('settles a native %s completion without needing a separate child transcript', type => {
+    const activity = (kind: string, at: number) => ({ type: 'event_msg', timestamp: at, payload: { type: 'item_completed',
+      item: { type, kind, agent_thread_id: 'child', agentThreadId: 'child', agent_path: '/root/review', agentPath: '/root/review' } } })
+    const view = parseTranscript('codex', 'parent', jsonl([activity('started', 1000),
+      { type: 'event_msg', timestamp: 1500, payload: { type: 'task_complete', last_agent_message: '等待结果' } }, activity('completed', 2000)]))
+    expect(view).toMatchObject({ state: 'success', tasks: [{ id: 'child', status: 'done', endedAt: 2000 }] })
+  })
+
+  it('does not settle a child when its close request failed', () => {
+    const collab = (tool: string, status: string) => ({ type: 'event_msg', payload: { type: 'item_completed',
+      item: { type: 'CollabAgentToolCall', tool, status, receiver_thread_ids: ['child'] } } })
+    expect(parseTranscript('codex', 'parent', jsonl([collab('spawn_agent', 'completed'), collab('close_agent', 'failed')]))?.tasks[0].status).toBe('active')
+  })
+
+  it('reads native camel-case collab states without treating a wait tool completion as child completion', () => {
+    const collab = (item: Record<string, unknown>) => ({ type: 'event_msg', payload: { type: 'item_completed', item: { type: 'collabAgentToolCall', ...item } } })
+    const spawn = collab({ tool: 'spawnAgent', status: 'completed', receiverThreadIds: ['child'] })
+    const wait = (status: string) => collab({ tool: 'wait', status: 'completed', agentsStates: { child: { status, message: '检查测试' } } })
+    expect(parseTranscript('codex', 'parent', jsonl([spawn, wait('running')]))?.tasks[0].status).toBe('active')
+    expect(parseTranscript('codex', 'parent', jsonl([spawn, wait('completed')]))?.tasks[0]).toMatchObject({ status: 'done', detail: '检查测试' })
+  })
+
   const exec = (id: string, source: string) => ({ type: 'response_item', payload: { type: 'custom_tool_call', name: 'exec', call_id: id, input: source } })
   const output = (id: string, text: string, type = 'custom_tool_call_output') => ({ type: 'response_item', payload: { type, call_id: id, output: text } })
   const wait = (id: string, cell: string) => ({ type: 'response_item', payload: { type: 'function_call', name: 'wait', call_id: id, arguments: JSON.stringify({ cell_id: cell }) } })
@@ -226,6 +248,26 @@ describe('Claude background work', () => {
     type: 'user', toolUseResult, message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] }
   })
   const notify = (body: string) => ({ type: 'user', origin: { kind: 'task-notification' }, message: { role: 'user', content: `<task-notification>\n${body}\n</task-notification>` } })
+
+  it('does not count a teammate as running after its native idle notification', () => {
+    const view = parseTranscript('claude', 's', jsonl([
+      use('agent-1', 'Agent', { name: 'reviewer', description: '检查测试', subagent_type: 'general-purpose' }),
+      result('agent-1', { status: 'teammate_spawned', agentId: 'a-reviewer-123', name: 'reviewer' }),
+      { type: 'assistant', message: { stop_reason: 'end_turn', content: [{ type: 'text', text: '等待检查结果' }] } },
+      { type: 'user', message: { content: '<teammate-message teammate_id="reviewer" color="blue">\n{"type":"idle_notification","from":"reviewer","timestamp":"2026-10-30T10:00:00Z","idleReason":"available"}\n</teammate-message>' } }
+    ]))
+    expect(view?.tasks.find(task => task.id === 'agent-1')?.status).not.toBe('active')
+    expect(view?.state).not.toBe('running')
+  })
+
+  it('does not replay completed sub-agent spawns from diagnostic API request blobs', () => {
+    const spawn = use('agent-1', 'Agent', { description: '检查测试' })
+    const view = parseTranscript('claude', 's', jsonl([
+      spawn, result('agent-1', { status: 'completed', agentId: 'a123' }),
+      { ...spawn, type: 'api-request-blob' }
+    ]))
+    expect(view?.tasks.find(task => task.id === 'agent-1')?.status).toBe('done')
+  })
 
   it('tracks an async agent from launch to its notification, across turns', () => {
     const rows = [

@@ -24,6 +24,8 @@ export interface SessionView {
   steps: ActivityStep[]
   /** Sub-agents and background commands, including ones that outlive the turn. */
   tasks: ActivityTask[]
+  /** Native child ids retain their spawn identity and last explicit task outcome across turns. */
+  linkedTasks?: Record<string, ActivityTask>
   /** The transcript itself says this turn finished. */
   terminal: boolean
   stale?: boolean
@@ -44,6 +46,7 @@ export type AgentEvent = { at?: number } & (
   /** The agent recorded its own shutdown. Silence after this is not an interruption. */
   | { kind: 'exit' }
   | { kind: 'task_start'; taskId: string; task: TaskKind; label: string; detail?: string }
+  | { kind: 'task_link'; taskId: string; childId: string }
   | { kind: 'task_update'; taskId: string; detail: string }
   /** `taskId: '*'` settles every open sub-agent, e.g. "all background agents were stopped". */
   | { kind: 'task_end'; taskId: string; status: Exclude<TaskStatus, 'active'>; detail?: string }
@@ -74,6 +77,8 @@ export interface ChildLink {
   parentSessionId: string
   /** Task id inside the parent; matches the parent's task_start event when one exists. */
   taskId: string
+  /** Separate from the parent's tool call id in agents such as Claude Code. */
+  childId?: string
   label: string
 }
 

@@ -1,8 +1,12 @@
 import WebSocket from 'ws'
+import { createHash } from 'node:crypto'
+import { activityId } from '../agents/parse'
+import { describeOperation } from '../agents/operation'
+import type { NativeApproval } from '../shared/native-approval'
 import { decideCodex, type Decision } from '../shared/automation'
 import { record, type Preferences, type SettingsSnapshot } from '../shared/preferences'
 
-type PendingRequest = { id: string | number; method: string; params: unknown }
+type PendingRequest = { id: string | number; method: string; params: unknown; createdAt: number }
 
 /** A second native app-server client. Only joins threads already loaded by that server. */
 export class CodexAutomation {
@@ -21,6 +25,18 @@ export class CodexAutomation {
   private calls = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 
   constructor(private preferences: () => Preferences, private changed: () => void, private report: (decision: Decision) => void) {}
+
+  get approvals(): NativeApproval[] {
+    return [...this.pending.values()].flatMap(request => {
+      const params = record(request.params)
+      if (typeof params.threadId !== 'string' || !params.threadId || !request.method.endsWith('/requestApproval') && request.method !== 'mcpServer/elicitation/request') return []
+      const mcp = request.method === 'mcpServer/elicitation/request'
+      const server = typeof params.serverName === 'string' ? params.serverName : 'MCP'
+      return [{ id: `codex-permission-${createHash('sha256').update(JSON.stringify([this.url, request.id])).digest('hex').slice(0, 24)}`,
+        activityId: activityId('codex', params.threadId), agent: 'Codex', title: mcp ? `MCP 授权：${server}` : 'Codex 需要审批',
+        operation: mcp ? { kind: 'mcp' as const, name: server } : describeOperation('exec_command', params), createdAt: request.createdAt }]
+    })
+  }
 
   update(): void {
     const auto = this.preferences().automation
@@ -48,6 +64,7 @@ export class CodexAutomation {
   private reset(): void {
     this.joined.clear()
     this.pending.clear()
+    this.changed()
     this.handled.clear()
     for (const call of this.calls.values()) { clearTimeout(call.timer); call.reject(new Error('连接已关闭')) }
     this.calls.clear()
@@ -152,7 +169,9 @@ export class CodexAutomation {
       if ((typeof id === 'number' || typeof id === 'string') && this.pending.has(id)) {
         this.pending.delete(id)
         this.rememberHandled(id)
+        this.changed()
       }
+      this.changed()
       return
     }
     if (message.method === 'thread/closed' || message.method === 'turn/completed') {
@@ -162,24 +181,28 @@ export class CodexAutomation {
         this.completedTurns.add(`${params.threadId}:${turnId}`)
         if (this.completedTurns.size > 2048) this.completedTurns.delete(this.completedTurns.values().next().value!)
       }
+      let settled = false
       for (const [id, request] of this.pending) {
         const requestParams = record(request.params)
         if (requestParams.threadId === params.threadId && (message.method === 'thread/closed' || requestParams.turnId === turnId)) {
           this.pending.delete(id)
           this.rememberHandled(id)
+          settled = true
         }
       }
+      if (settled) this.changed()
       return
     }
     if ((typeof message.id !== 'number' && typeof message.id !== 'string') || typeof message.method !== 'string') return
-    if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(message.method)) return
+    if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/permissions/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput', 'mcpServer/elicitation/request'].includes(message.method)) return
     const params = record(message.params)
     if (typeof params.threadId === 'string' && typeof params.turnId === 'string' && this.completedTurns.has(`${params.threadId}:${params.turnId}`)) return
     if (this.handled.has(message.id) || this.pending.has(message.id)) return
-    const request = { id: message.id, method: message.method, params: message.params }
+    const request = { id: message.id, method: message.method, params: message.params, createdAt: Date.now() }
     if (this.pending.size >= 256) return
     this.pending.set(request.id, request)
     this.decide(request, true)
+    this.changed()
   }
 
   private decide(request: PendingRequest, logManual = false): void {
@@ -189,6 +212,7 @@ export class CodexAutomation {
     if (!decision.response) { if (logManual) this.report(decision); return }
     this.pending.delete(request.id)
     this.rememberHandled(request.id)
+    this.changed()
     socket.send(JSON.stringify({ id: request.id, result: decision.response }), error => {
       this.report(error ? { action: 'manual', summary: '回复发送失败，请在原客户端处理' } : decision)
     })

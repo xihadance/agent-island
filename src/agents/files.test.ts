@@ -25,6 +25,19 @@ const launch = [
 const done = { type: 'assistant', message: { stop_reason: 'end_turn', content: [{ type: 'text', text: '构建在后台继续' }] } }
 
 describe('incremental transcript reader', () => {
+  it('retains a Claude child identity when its rows carry the parent session id', async () => {
+    const file = fileFor(jsonl([
+      { type: 'user', isSidechain: true, sessionId: 'parent', agentId: 'a-reviewer-123', message: { content: '检查测试' } },
+      { type: 'assistant', isSidechain: true, sessionId: 'parent', agentId: 'a-reviewer-123', message: { stop_reason: 'end_turn', content: [{ type: 'text', text: '检查完成' }] } }
+    ]))
+    const reader = new SessionReader()
+    expect(await reader.read('claude', 'agent-a-reviewer-123', file, statSync(file).size))
+      .toMatchObject({ id: 'claude-a-reviewer-123', sessionId: 'a-reviewer-123', state: 'success' })
+    appendFileSync(file, jsonl([{ type: 'api-request', sessionId: 'parent', agentId: 'a-reviewer-123' }]))
+    expect(await reader.read('claude', 'agent-a-reviewer-123', file, statSync(file).size))
+      .toMatchObject({ id: 'claude-a-reviewer-123', sessionId: 'a-reviewer-123', state: 'success' })
+  })
+
   it('keeps a forked Codex transcript identity and excludes inherited work across reads', async () => {
     const file = fileFor(jsonl([{ type: 'session_meta', ordinal: 0, payload: {
       id: 'child', session_id: 'parent', parent_thread_id: 'parent', subagent_history_start_ordinal: 5

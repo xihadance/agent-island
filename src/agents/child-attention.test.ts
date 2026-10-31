@@ -13,6 +13,41 @@ function child(terminal: boolean, at: number): ChildSession {
 }
 
 describe('child attention across parent turns', () => {
+  it('links Claude child ids to their spawn and preserves an idle notice across parent turns', () => {
+    const reducer = createReducer()
+    reducer.push([{ kind: 'task_start', taskId: 'spawn', task: 'agent', label: '检查', at: 1000 },
+      { kind: 'task_link', taskId: 'spawn', childId: 'native-child' },
+      { kind: 'task_end', taskId: 'spawn', status: 'done', at: 2000 }])
+    const linked = child(false, 0)
+    linked.link = { parentSessionId: 'parent', taskId: 'agent-native-child', childId: 'native-child', label: '检查' }
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks).toMatchObject([{ id: 'spawn', status: 'done' }])
+    reducer.push([{ kind: 'user', title: '继续', at: 3000 }])
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks).toEqual([])
+    linked.view.startedAt = 4000
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks).toMatchObject([{ id: 'spawn', status: 'active', startedAt: 4000 }])
+  })
+
+  it.each(['claude', 'codex', 'gemini', 'cursor'])('recognizes a new native child turn for %s after a recorded completion', agent => {
+    const reducer = createReducer()
+    reducer.push([{ kind: 'task_start', taskId: 'child', task: 'agent', label: '检查', at: 1000 },
+      { kind: 'task_end', taskId: 'child', status: 'done', at: 2000 }])
+    const linked = child(false, 0)
+    linked.view.kind = agent
+    linked.view.startedAt = 3000
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks[0]).toMatchObject({ status: 'active', startedAt: 3000 })
+    linked.view.startedAt = 1000
+    expect(mergeChildTasks(reducer.snapshot(), [linked]).tasks[0].status).toBe('done')
+  })
+
+  it('ignores a delayed notice for an earlier assignment after the same task restarts', () => {
+    const reducer = createReducer()
+    reducer.push([{ kind: 'task_start', taskId: 'child', task: 'agent', label: '检查', at: 1000 },
+      { kind: 'task_end', taskId: 'child', status: 'done', at: 2000 },
+      { kind: 'task_start', taskId: 'child', task: 'agent', label: '重新检查', at: 3000 },
+      { kind: 'task_end', taskId: 'child', status: 'error', at: 2000 }])
+    expect(reducer.snapshot().tasks[0]).toMatchObject({ status: 'active', startedAt: 3000 })
+  })
+
   it.each(['claude', 'codex', 'gemini', 'cursor'])('shows explicit child questions for %s and separates consecutive approvals', agent => {
     const reducer = createReducer()
     const store = new ActivityStore()

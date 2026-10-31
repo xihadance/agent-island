@@ -78,7 +78,48 @@ it.each(['item/tool/requestUserInput', 'tool/requestUserInput'])('joins loaded t
   await new Promise(resolve => setTimeout(resolve, 20))
   connector.update()
   expect(messages.some(message => message.id === 14)).toBe(false)
+  const mcp = { id: 'chrome-permission', method: 'mcpServer/elicitation/request', params: {
+    threadId: 'live-thread', turnId: 'mcp-turn', serverName: 'chrome_devtools', mode: 'openai/userVerification', description: '批准浏览器访问'
+  } }
+  peer!.send(JSON.stringify(mcp))
+  await wait(() => connector.approvals.length === 1)
+  expect(connector.approvals).toMatchObject([{ activityId: 'codex-live-thread', operation: { kind: 'mcp', name: 'chrome_devtools' } }])
+  expect(messages.some(message => message.id === 'chrome-permission')).toBe(false)
+  peer!.send(JSON.stringify({ method: 'serverRequest/resolved', params: { requestId: 'chrome-permission' } }))
+  await wait(() => connector.approvals.length === 0)
   preferences = patchPreferences(preferences, { automation: { enabled: false } })
   connector.update()
   expect(connector.status).toBe('disabled')
+})
+
+it.each(['turn/completed', 'thread/closed'])('refreshes visible MCP permissions when %s settles the native request', async method => {
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  await once(server, 'listening')
+  cleanup.push(() => new Promise<void>(resolve => { for (const socket of server.clients) socket.terminate(); server.close(() => resolve()) }))
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('没有监听端口')
+  let peer: WebSocket | undefined
+  server.on('connection', socket => {
+    peer = socket
+    socket.on('message', data => {
+      const message = JSON.parse(data.toString())
+      if (message.id && message.method) socket.send(JSON.stringify({ id: message.id, result: message.method === 'thread/loaded/list' ? { data: [], nextCursor: null } : {} }))
+    })
+  })
+  const preferences = patchPreferences(normalizePreferences(undefined), { automation: { enabled: true, codexUrl: `ws://127.0.0.1:${address.port}` } })
+  let visibleIds: string[] = []
+  const connector = new CodexAutomation(() => preferences, () => { visibleIds = connector.approvals.map(request => request.id) }, () => {})
+  cleanup.push(() => connector.stop())
+  connector.update()
+  await wait(() => connector.status === 'connected')
+  peer!.send(JSON.stringify({ id: 'chrome', method: 'mcpServer/elicitation/request', params: {
+    threadId: 'native', turnId: 'turn', serverName: 'chrome_devtools', mode: 'openai/userVerification'
+  } }))
+  await wait(() => visibleIds.length === 1)
+  peer!.send(JSON.stringify({ method, params: { threadId: 'other', turn: { id: 'turn' } } }))
+  await new Promise(resolve => setTimeout(resolve, 20))
+  expect(visibleIds).toHaveLength(1)
+  peer!.send(JSON.stringify({ method, params: { threadId: 'native', turn: { id: 'turn' } } }))
+  await wait(() => connector.approvals.length === 0)
+  expect(visibleIds).toEqual([])
 })

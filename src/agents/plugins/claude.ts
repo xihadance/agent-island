@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
-import { cleanText, errorText, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, safeId, textOf, timestampEvents } from '../events'
+import { cleanText, errorText, eventTimestamp, isRecord, jsonlRows, messageEvents, outputText, parseMaybeRecord, safeId, textOf, timestampEvents } from '../events'
 import type { AgentEvent, AgentPlugin, ChildLink, ParsedTranscript, SessionRegistration } from '../types'
 
 /**
@@ -35,14 +35,18 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
   let continuedInSessionId: string | undefined
   let cwd: string | undefined
   let sessionId: string | undefined
+  let childSessionId: string | undefined
   /** A shutdown record only means something once this transcript has said anything. */
   let spoke = false
   return (text) => {
     const events: AgentEvent[] = []
     for (const row of jsonlRows(text)) {
       if (!isRecord(row)) continue
+      // Diagnostic snapshots replay old requests; they are not new execution events.
+      if (row.type === 'api-request' || row.type === 'api-request-blob') continue
       if (typeof row.cwd === 'string') cwd = row.cwd
       if (typeof row.sessionId === 'string') sessionId = row.sessionId
+      if (row.isSidechain === true && typeof row.agentId === 'string') childSessionId = row.agentId
       const message = isRecord(row.message) ? row.message : row
       const content = outputText(message.content)
       // A local command's caveat and command can arrive in separate file appends.
@@ -100,6 +104,11 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
           if (event.at !== undefined && !starts.has(event.callId)) starts.set(event.callId, event.at)
           if (event.operation?.kind === 'agent' && isSpawn(row, event.callId)) {
             agentCalls.add(event.callId)
+            const blocks = Array.isArray(message.content) ? message.content : []
+            const block = blocks.find(item => isRecord(item) && item.id === event.callId)
+            const input = isRecord(block) && isRecord(block.input) ? block.input : {}
+            const name = textOf(input.name)
+            if (name) owners.set(name, safeId(event.callId))
             events.push({ kind: 'task_start', taskId: safeId(event.callId), task: 'agent', label: event.title, at: event.at })
           }
         }
@@ -107,6 +116,7 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
       events.push(...timestampEvents(launchEvents(row, titles, starts, agentCalls, owners), row))
       for (const event of rowEvents) {
         if (event.kind === 'tool_result' && event.callId) {
+          if (!event.ok && agentCalls.has(event.callId)) events.push({ kind: 'task_end', taskId: safeId(event.callId), status: 'error', at: event.at })
           titles.delete(event.callId)
           starts.delete(event.callId)
           agentCalls.delete(event.callId)
@@ -114,7 +124,7 @@ function createClaudeParser(): (text: string) => ParsedTranscript {
       }
     }
     if (events.length) spoke = true
-    return { events, continuedInSessionId, cwd, sessionId }
+    return { events, continuedInSessionId, cwd, sessionId: childSessionId || sessionId }
   }
 }
 
@@ -144,10 +154,13 @@ function launchEvents(row: Record<string, unknown>, titles: Map<string, string>,
   if (!agentCalls.has(callId)) return []
   const agentId = textOf(result.agentId) || textOf(result.agent_id)
   if (agentId) owners.set(agentId, taskId)
+  const name = textOf(result.name)
+  if (name) owners.set(name, taskId)
+  const links: AgentEvent[] = agentId ? [{ kind: 'task_link', taskId, childId: safeId(agentId) }] : []
   const status = textOf(result.status)
-  if (SPAWNED.has(status)) return []
+  if (SPAWNED.has(status) || result.isAsync === true) return links
   const failed = status === 'failed' || status === 'error' || (isRecord(block) && block.is_error === true)
-  return [{ kind: 'task_end', taskId, status: failed ? 'error' : 'done', detail: cleanText(outputText(result.content)).slice(0, 160) || undefined }]
+  return [...links, { kind: 'task_end', taskId, status: failed ? 'error' : 'done', detail: cleanText(outputText(result.content)).slice(0, 160) || undefined }]
 }
 
 /** Notifications arrive as user rows, queue entries, or queued-command attachments. */
@@ -162,12 +175,25 @@ function notificationText(row: Record<string, unknown>): string | null {
   const message = isRecord(row.message) ? row.message : {}
   const text = typeof message.content === 'string' ? message.content : outputText(message.content)
   const origin = isRecord(row.origin) ? textOf(row.origin.kind) : ''
-  return origin === 'task-notification' || /^\s*<task-notification>/.test(text) ? text : null
+  return origin === 'task-notification' || /^\s*<(?:task-notification|teammate-message)\b/.test(text) ? text : null
 }
 
 function notificationEvents(row: Record<string, unknown>, owners: Map<string, string>): AgentEvent[] | null {
   const text = notificationText(row)
   if (text === null) return null
+  if (/^\s*<teammate-message\b/.test(text)) {
+    return [...text.matchAll(/<teammate-message([^>]*)>([\s\S]*?)<\/teammate-message>/g)].flatMap(([_, attributes, body]): AgentEvent[] => {
+      const sender = attributes.match(/teammate_id="([^"]+)"/)?.[1] ?? ''
+      const owner = owners.get(sender)
+      if (!owner) return []
+      const notice = parseMaybeRecord(body.trim())
+      if (notice.from !== undefined && notice.from !== sender) return []
+      const status = notice.type === 'idle_notification' ? notice.idleReason === 'error' ? 'error' : 'done'
+        : notice.type === 'shutdown_approved' ? 'stopped' : undefined
+      if (!status) return []
+      return [{ kind: 'task_end', taskId: owner, status, at: eventTimestamp(notice) }]
+    })
+  }
   if (!/<task-notification>|background agents? (?:was|were) stopped/i.test(text)) return row.type === 'user' ? null : []
   if (/background agents? (?:was|were) stopped/i.test(text) && !/<task-id>/.test(text)) {
     return [{ kind: 'task_end', taskId: '*', status: 'stopped' }]
@@ -202,6 +228,7 @@ async function claudeChild(file: string): Promise<ChildLink | null> {
     parentSessionId,
     // Spawned from the main thread: the parent's tool_use id. Nested teammates have none.
     taskId: safeId(toolUseId || `agent-${agentId}`),
+    childId: safeId(agentId),
     label: textOf(meta.name) || textOf(meta.description) || textOf(meta.agentType) || '子 Agent'
   }
 }

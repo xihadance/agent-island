@@ -4,7 +4,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { activityId, parseSession } from './parse'
 import { pluginFor } from './plugins'
 import { createReducer } from './reduce'
-import type { AgentPlugin, ChildLink, SessionView } from './types'
+import type { AgentEvent, AgentPlugin, ChildLink, SessionView } from './types'
 
 const CHUNK_BYTES = 64 * 1024
 const CHECK_BYTES = 512
@@ -78,6 +78,8 @@ interface ReaderState {
 export class SessionReader {
   private readonly states = new Map<string, ReaderState>()
 
+  constructor(private readonly onEvents?: (kind: string, sessionId: string, events: readonly AgentEvent[]) => void) {}
+
   retain(files: ReadonlySet<string>): void {
     for (const file of this.states.keys()) if (!files.has(file)) this.states.delete(file)
   }
@@ -126,7 +128,11 @@ export class SessionReader {
         if (parsed.cwd) state.cwd = parsed.cwd
         if (parsed.client) state.client = parsed.client
         if (parsed.continuedInSessionId) state.continuedInSessionId = parsed.continuedInSessionId
-        if (parsed.events.length) { state.seen = true; state.reducer.push(parsed.events) }
+        if (parsed.events.length) {
+          state.seen = true
+          state.reducer.push(parsed.events)
+          this.onEvents?.(kind, state.nativeId ?? sessionId, parsed.events)
+        }
       }
       while (state.offset < end) {
         const chunk = await range(state.offset, Math.min(CHUNK_BYTES, end - state.offset))

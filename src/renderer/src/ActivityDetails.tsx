@@ -1,6 +1,10 @@
+import { createContext, useContext, useId } from 'react'
 import { MAX_VISIBLE_TASKS, OPERATION_LABEL, STATE_LABEL, TASK_STATUS_LABEL, type Activity, type ActivityTask } from '../../shared/activity'
 import { ActivityIcon } from './activity-icons'
 import { TaskExecutionTime } from './TaskExecutionTime'
+
+export const TaskExpansionContext = createContext<{ open: string | null; toggle: (key: string) => void } | null>(null)
+export const taskDisclosureKey = (activityId: string, task: ActivityTask): string => JSON.stringify([activityId, task.id, task.startedAt])
 
 /** Count of sub-agents and background commands still running, for compact rows. */
 export function TaskBadge({ activity }: { activity: Activity }) {
@@ -35,27 +39,46 @@ export function Tasks({ activity }: { activity: Activity }) {
         <span>{active ? `${active} 个进行中` : '全部结束'}{tasks.length > visible.length ? ` · 共 ${tasks.length} 个` : ''}</span>
       </div>
       <ul>
-        {visible.map((task) => <TaskRow key={task.id} task={task} />)}
+        {visible.map((task) => <TaskRow key={task.id} activityId={activity.id} task={task} />)}
       </ul>
     </section>
   )
 }
 
-function TaskRow({ task }: { task: ActivityTask }) {
+function TaskRow({ activityId, task }: { activityId: string; task: ActivityTask }) {
+  const expansion = useContext(TaskExpansionContext)
+  const detailId = useId()
+  const key = taskDisclosureKey(activityId, task)
+  const expanded = expansion?.open === key
   const state = task.status === 'active' ? task.requestKind === 'input' ? 'waiting' : task.requestKind === 'approval' ? 'approval' : task.state : undefined
   const icon = task.status === 'active' ? state ?? task.kind : task.status
-  return (
-    <li data-task={task.id} data-status={task.status} data-state={state} data-kind={task.kind} title={task.detail ? `${task.label}\n${task.detail}` : task.label}>
+  const summary = (
+    <>
       <ActivityIcon kind={icon} animated={task.status === 'active' && state !== 'approval' && state !== 'waiting'} />
       <span className="task-copy">
         <span className="task-label">{task.label}</span>
-        {task.detail && <span className="task-detail">{task.detail}</span>}
+        {task.kind === 'command' && task.detail && <span className="task-detail">{task.detail}</span>}
       </span>
       <span className="task-meta">
         <span className="task-state" data-testid="task-status">{task.status === 'active' && task.requestKind === 'input' ? '需要你回复' : state ? STATE_LABEL[state] : TASK_STATUS_LABEL[task.status]}</span>
         <TaskExecutionTime task={task} />
       </span>
       <span className="sr-only">{task.kind === 'agent' ? '子 Agent' : '后台命令'}</span>
+    </>
+  )
+  const detail = task.detail?.replace(/\s+/g, ' ').trim() || '暂未记录执行任务'
+  return (
+    <li data-task={task.id} data-status={task.status} data-state={state} data-kind={task.kind}
+      title={task.kind === 'command' ? task.detail ? `${task.label}\n${task.detail}` : task.label : undefined}>
+      {task.kind === 'agent' ? <>
+        <button type="button" className="task-toggle" aria-expanded={expanded} aria-controls={expanded ? detailId : undefined}
+          title={`${expanded ? '收起' : '查看'}最近任务：${task.label}`} onClick={(event) => { event.stopPropagation(); expansion?.toggle(key) }}
+          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') event.stopPropagation() }}>
+          {summary}
+          <svg className="task-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 6 3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+        {expanded && <span id={detailId} className="task-recent" data-testid="task-recent" title={detail}>最近任务：{detail}</span>}
+      </> : summary}
     </li>
   )
 }

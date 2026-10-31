@@ -295,16 +295,21 @@ function codexEvent(payload: Record<string, unknown>, calls: Map<string, Call>):
     return [{ kind: 'approval', title: '申请额外权限', callId, ...(reason ? { reason } : {}) }]
   }
   if (type === 'item_completed' && isRecord(payload.item)) {
-    if (payload.item.type === 'CollabAgentToolCall') return collabEvents(payload.item)
+    if (payload.item.type === 'CollabAgentToolCall' || payload.item.type === 'collabAgentToolCall') return collabEvents(payload.item)
     const questions = payload.item.questions
     if (payload.item.type === 'AgentMessage' && Array.isArray(questions) && questions.length > 0) {
       return [toolEvent('request_user_input_async', { questions }, textOf(payload.item.id) || undefined)]
     }
-    if (payload.item.type === 'SubAgentActivity' && payload.item.kind === 'started') {
+    if (payload.item.type === 'SubAgentActivity' || payload.item.type === 'subAgentActivity') {
       const item = payload.item
-      const taskId = safeId(textOf(item.agent_thread_id))
+      const nativeId = textOf(item.agent_thread_id) || textOf(item.agentThreadId)
+      if (!nativeId) return []
+      const taskId = safeId(nativeId)
       if (!taskId) return []
-      const label = textOf(item.agent_path).split('/').filter(Boolean).pop() || '子 Agent'
+      if (item.kind === 'completed' || item.kind === 'interrupted') return [{ kind: 'task_end', taskId,
+        status: item.kind === 'completed' ? 'done' : 'stopped', at: eventTimestamp({ timestamp: payload.completed_at_ms }) }]
+      if (item.kind !== 'started') return []
+      const label = (textOf(item.agent_path) || textOf(item.agentPath)).split('/').filter(Boolean).pop() || '子 Agent'
       return [{ kind: 'task_start', taskId, task: 'agent', label,
         at: eventTimestamp({ timestamp: payload.started_at_ms }) }]
     }
@@ -313,10 +318,11 @@ function codexEvent(payload: Record<string, unknown>, calls: Map<string, Call>):
 }
 
 function collabEvents(item: Record<string, unknown>): AgentEvent[] {
-  const tool = textOf(item.tool)
+  const tool = textOf(item.tool).replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)
   const agents = Array.isArray(item.receiver_agents) ? item.receiver_agents.filter(isRecord) : []
-  const ids = Array.isArray(item.receiver_thread_ids)
-    ? item.receiver_thread_ids.map(textOf).filter(Boolean)
+  const receivers = item.receiver_thread_ids ?? item.receiverThreadIds
+  const ids = Array.isArray(receivers)
+    ? receivers.map(textOf).filter(Boolean)
     : agents.map((agent) => textOf(agent.thread_id)).filter(Boolean)
   const nickname = (id: string): string => textOf(agents.find((agent) => agent.thread_id === id)?.agent_nickname)
   if (tool === 'spawn_agent') {
@@ -325,10 +331,11 @@ function collabEvents(item: Record<string, unknown>): AgentEvent[] {
     return ids.map((id) => ({ kind: 'task_start', taskId: safeId(id), task: 'agent', label: nickname(id) || '子 Agent', ...(prompt ? { detail: prompt } : {}) }))
   }
   if (tool === 'wait' || tool === 'wait_agent') {
-    const states = isRecord(item.agents_states) ? item.agents_states : {}
+    const raw = item.agents_states ?? item.agentsStates
+    const states = isRecord(raw) ? raw : {}
     return Object.entries(states).flatMap(([id, state]) => agentEnd(id, state))
   }
-  if (tool === 'close_agent') return ids.map((id) => ({ kind: 'task_end', taskId: safeId(id), status: 'stopped' }))
+  if (tool === 'close_agent' && item.status === 'completed') return ids.map((id) => ({ kind: 'task_end', taskId: safeId(id), status: 'stopped' }))
   return []
 }
 
@@ -343,7 +350,8 @@ function notificationEvents(text: string): AgentEvent[] {
 function agentEnd(id: string, state: unknown): AgentEvent[] {
   const [key, message] = typeof state === 'string'
     ? [state, '']
-    : isRecord(state) ? [Object.keys(state)[0] ?? '', textOf(Object.values(state)[0])] : ['', '']
+    : isRecord(state) ? typeof state.status === 'string' ? [state.status, textOf(state.message)]
+      : [Object.keys(state)[0] ?? '', textOf(Object.values(state)[0])] : ['', '']
   const status = key === 'completed' ? 'done'
     : key === 'errored' || key === 'error' || key === 'failed' ? 'error'
       : key === 'shutdown' || key === 'interrupted' || key === 'not_found' ? 'stopped' : undefined

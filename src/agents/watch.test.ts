@@ -823,6 +823,36 @@ describe('SessionWatcher', () => {
     expect(store.list()[0].tasks?.[0]).toMatchObject({ status: 'done', detail: 'EP06 完成' })
   })
 
+  it('merges Claude sidechains with parent session ids and no toolUseId without reviving idle teammates', async () => {
+    const { roots } = tempHome()
+    const session = '44444444-4444-4444-4444-444444444444'
+    const parent = path.join(roots.claude, 'project', `${session}.jsonl`)
+    const child = path.join(roots.claude, 'project', session, 'subagents', 'agent-a-reviewer.jsonl')
+    writeJsonl(parent, [
+      { type: 'assistant', timestamp: NOW - 3000, sessionId: session, message: { content: [{ type: 'tool_use', id: 'spawn', name: 'Agent', input: { name: 'reviewer', description: '检查测试' } }] } },
+      { type: 'user', timestamp: NOW - 2000, sessionId: session, toolUseResult: { status: 'teammate_spawned', agentId: 'a-reviewer', name: 'reviewer' }, message: { content: [{ type: 'tool_result', tool_use_id: 'spawn' }] } },
+      { type: 'assistant', timestamp: NOW - 1000, sessionId: session, message: { stop_reason: 'end_turn', content: [{ type: 'text', text: '等待检查结果' }] } }
+    ])
+    writeJsonl(child, [{ type: 'assistant', timestamp: NOW - 1500, sessionId: session, agentId: 'a-reviewer', isSidechain: true,
+      message: { content: [{ type: 'tool_use', id: 'read', name: 'Read', input: { file_path: '/project/test.ts' } }] } }])
+    writeFileSync(child.replace(/\.jsonl$/, '.meta.json'), JSON.stringify({ name: 'reviewer' }))
+    touch(parent, NOW)
+    touch(child, NOW)
+    const store = newStore()
+    const watcher = watcherFor(store, roots, () => new Set(['claude']))
+    await watcher.scan()
+    expect(store.list()).toHaveLength(1)
+    expect(store.list()[0].tasks).toMatchObject([{ id: 'spawn', status: 'active', detail: '读取文件 test.ts' }])
+    appendFileSync(parent, JSON.stringify({ type: 'user', timestamp: NOW, sessionId: session, message: {
+      content: '<teammate-message teammate_id="reviewer">{"type":"idle_notification","from":"reviewer","idleReason":"available"}</teammate-message>'
+    } }) + '\n')
+    await watcher.scan()
+    expect(store.list()[0]).toMatchObject({ state: 'success', tasks: [{ id: 'spawn', status: 'done' }] })
+    appendFileSync(parent, JSON.stringify({ type: 'user', timestamp: NOW + 1000, sessionId: session, message: { content: '继续' } }) + '\n')
+    await watcher.scan()
+    expect(store.list()[0].tasks).toBeUndefined()
+  })
+
   it('folds forked Codex histories into one root while retaining each child identity and state', async () => {
     const { roots } = tempHome()
     const ids = ['11111111-aaaa-1111-1111-111111111111', '22222222-bbbb-2222-2222-222222222222', '33333333-cccc-3333-3333-333333333333']

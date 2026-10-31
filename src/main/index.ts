@@ -27,6 +27,9 @@ import { remoteIntegrationStatus, setRemoteIntegration, writeHookLauncher, type 
 import { codexCommandStatus, setCodexCommandIntegration, writeCodexLaunchConfig, type CodexCommandOptions } from './codex-command'
 import { codexLaunchRoute } from '../shared/codex-launch'
 import { localQuestions } from '../control/local-questions'
+import { localApprovals } from '../control/local-approvals'
+import { withNativeApprovals } from '../shared/native-approval'
+import { ClaudeHookObserver } from './claude-hook-observer'
 import { withQuestionRequests } from '../shared/question-request'
 import { UpdateChecker } from './updater'
 import { createAutoInstaller } from './auto-update'
@@ -63,6 +66,7 @@ let quitting = false
 let historySequence = 0
 const history: AutomationEntry[] = []
 const recentHooks = new Set<string>()
+const claudeHookObserver = new ClaudeHookObserver(() => publishActivities())
 const attention = new AttentionTracker()
 const codexLaunchToken = randomBytes(32).toString('hex')
 const behaviorListeners = new Set<() => void>()
@@ -109,7 +113,7 @@ async function boot(): Promise<void> {
   islandMode = preferences.mode
   hostedCodex = new ManagedCodexPool(() => { control?.syncManagedCodex(); codex?.update(); notifySettings() })
   codex = new CodexAutomationGroup(automationPreferences, () => preferences.codexServer.enabled ? hostedCodex?.urls ?? [] : [preferences.automation.codexUrl],
-    notifySettings, decision => reportDecision('Codex', decision))
+    () => { notifySettings(); publishActivities() }, decision => reportDecision('Codex', decision))
   let config: RemoteConfig | undefined
   try { config = readRemoteConfig(remoteConfigFile()) }
   catch { reportControlLoadFailure() }
@@ -122,6 +126,7 @@ async function boot(): Promise<void> {
       control: loadControl,
       claudeHook: payload => {
         const decision = decideClaude(payload, automationPreferences())
+        if (!control?.status().enabled) claudeHookObserver.hook(payload, decision.action)
         const key = createHash('sha256').update(JSON.stringify([payload, decision.action, decision.summary])).digest('hex')
         if (!recentHooks.has(key)) {
           recentHooks.add(key)
@@ -309,7 +314,10 @@ function currentBehavior(): IslandBehavior {
 
 function visibleActivities(activities = store?.list() ?? []) {
   const hub = control?.status().enabled ? control.hub.store : undefined
-  return withQuestionRequests(activities, hub ? localQuestions({ sessions: hub.sessions(), requests: hub.requests() }) : [])
+  const state = hub ? { sessions: hub.sessions(), requests: hub.requests() } : undefined
+  const questions = withQuestionRequests(activities, state ? localQuestions(state) : [])
+  return state ? withNativeApprovals(questions, localApprovals(state))
+    : withNativeApprovals(claudeHookObserver.present(questions), codex?.approvals ?? [])
 }
 
 function publishActivities(activities = store?.list() ?? []): void {
@@ -571,7 +579,10 @@ async function installUpdate(): Promise<void> {
 
 function syncWatcher(): void {
   const enabled = preferences.watchSessions && process.env.CUTE_ISLAND_WATCH !== '0'
-  if (enabled && !watcher && store) { watcher = new SessionWatcher(store); watcher.start() }
+  if (enabled && !watcher && store) {
+    watcher = new SessionWatcher(store, { onEvents: (kind, id, events) => claudeHookObserver.transcript(kind, id, events) })
+    watcher.start()
+  }
   else if (!enabled && watcher) { watcher.stop(); watcher = null }
 }
 
